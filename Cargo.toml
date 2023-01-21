@@ -1,0 +1,7 @@
+[workspace]
+members = ["crates/*"]
+
+[workspace.package]
+rust-version = "1.66"
+edition = "2021"
+license = "GPL-3.0-or-later"
