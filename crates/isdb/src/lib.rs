@@ -4,9 +4,11 @@
 
 pub mod crc32;
 pub mod demux;
+pub mod descriptor;
 pub mod packet;
 pub mod pid;
 pub mod psi;
+pub mod time;
 mod utils;
 
 pub use packet::Packet;

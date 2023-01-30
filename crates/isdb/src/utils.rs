@@ -1,3 +1,6 @@
+use std::fmt;
+use std::ops;
+
 /// `data`からビッグエンディアンで16ビット符号無し整数を読み込む。
 ///
 /// 事前に`data`の長さが2以上あると分かるようなコードであれば最適化が期待できる。
@@ -14,6 +17,34 @@ pub fn read_be_32(data: &[u8]) -> u32 {
     u32::from_be_bytes(data[..4].try_into().unwrap())
 }
 
+/// `b`からBCDを読み取る。
+#[inline]
+pub fn read_bcd_digit(b: u8) -> u8 {
+    ((b >> 4) * 10) + (b & 0x0F)
+}
+
+/// `data`から`digits`桁のBCDで数値を読み込む。
+pub fn read_bcd<T>(data: &[u8], digits: usize) -> T
+where
+    T: Default
+        + From<u8>
+        + ops::Add<T, Output = T>
+        + ops::Mul<T, Output = T>
+        + ops::AddAssign<T>
+        + ops::MulAssign<T>,
+{
+    let mut value = data[..digits / 2].iter().fold(T::default(), |value, &v| {
+        value * 100.into() + read_bcd_digit(v).into()
+    });
+
+    if (digits & 1) != 0 {
+        value *= 10.into();
+        value += (data[digits / 2] >> 4).into();
+    }
+
+    value
+}
+
 /// 要素数`N`のヒープに確保される配列を、`f`を呼び出した戻り値で生成する。
 pub fn boxed_array<T, const N: usize, F>(f: F) -> Box<[T; N]>
 where
@@ -23,6 +54,15 @@ where
 
     // Safety: 要素数の分かっている`Box<[T]>`から`Box<[T; N]>`への変換でしかない
     unsafe { Box::from_raw(Box::into_raw(slice) as *mut [T; N]) }
+}
+
+/// 内包する値を`fmt::UpperHex`で出力する。
+pub struct UpperHex<T>(pub T);
+
+impl<T: fmt::UpperHex> fmt::Debug for UpperHex<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::UpperHex::fmt(&self.0, f)
+    }
 }
 
 /// スライス型用拡張トレイト。
@@ -86,6 +126,20 @@ mod tests {
     #[test]
     fn test_read_be_u32() {
         assert_eq!(read_be_32(b"\x12\x34\x56\x78\x9A\xBC\xDE"), 0x12345678);
+    }
+
+    #[test]
+    fn test_read_bcd() {
+        assert_eq!(read_bcd_digit(0x12), 12);
+
+        assert_eq!(read_bcd::<u32>(&[0x12, 0x34, 0x56, 0x78], 1), 1);
+        assert_eq!(read_bcd::<u32>(&[0x12, 0x34, 0x56, 0x78], 2), 12);
+        assert_eq!(read_bcd::<u32>(&[0x12, 0x34, 0x56, 0x78], 3), 123);
+        assert_eq!(read_bcd::<u32>(&[0x12, 0x34, 0x56, 0x78], 4), 1234);
+        assert_eq!(read_bcd::<u32>(&[0x12, 0x34, 0x56, 0x78], 5), 12345);
+        assert_eq!(read_bcd::<u32>(&[0x12, 0x34, 0x56, 0x78], 6), 123456);
+        assert_eq!(read_bcd::<u32>(&[0x12, 0x34, 0x56, 0x78], 7), 1234567);
+        assert_eq!(read_bcd::<u32>(&[0x12, 0x34, 0x56, 0x78], 8), 12345678);
     }
 
     #[test]
