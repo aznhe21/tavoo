@@ -7,7 +7,10 @@ license.workspace = true
 rust-version.workspace = true
 
 [dependencies]
+arrayvec = "0.7.2"
+log = "0.4.17"
 memchr = "2.5.0"
+thiserror = "1.0.38"
 
 [dev-dependencies]
 assert_matches = "1.5.0"

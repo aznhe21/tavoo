@@ -1,6 +1,7 @@
 //! PID関連。
 
 use std::fmt;
+use std::ops;
 
 /// MPEG2-TSのPID（13ビット）。
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -120,6 +121,143 @@ pid_delegate_fmt!(
     fmt::UpperHex,
 );
 
+/// [`Pid`]をキーにして値`V`にアクセスができるテーブル。
+///
+/// データはヒープに確保される。
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[repr(transparent)]
+pub struct PidTable<V>(Box<[V; Pid::MAX as usize + 1]>);
+
+impl<V> PidTable<V> {
+    /// `f`を呼び出した戻り値から`PidTable`を生成する。
+    #[inline]
+    pub fn from_fn<F: FnMut(Pid) -> V>(mut f: F) -> PidTable<V> {
+        PidTable(crate::utils::boxed_array(|i| f(Pid::new(i as u16))))
+    }
+
+    /// 内部の配列を返す。
+    #[inline]
+    pub fn into_inner(self) -> Box<[V; Pid::MAX as usize + 1]> {
+        self.0
+    }
+
+    /// テーブルを回すイテレーターを返す。
+    #[inline]
+    pub fn iter(&self) -> std::slice::Iter<V> {
+        self.0.iter()
+    }
+
+    /// テーブルを可変で回すイテレーターを返す。
+    #[inline]
+    pub fn iter_mut(&mut self) -> std::slice::IterMut<V> {
+        self.0.iter_mut()
+    }
+}
+
+impl<V> From<Box<[V; Pid::MAX as usize + 1]>> for PidTable<V> {
+    #[inline]
+    fn from(table: Box<[V; Pid::MAX as usize + 1]>) -> Self {
+        PidTable(table)
+    }
+}
+
+impl<V> From<PidTable<V>> for Box<[V; Pid::MAX as usize + 1]> {
+    #[inline]
+    fn from(table: PidTable<V>) -> Self {
+        table.0
+    }
+}
+
+impl<V> IntoIterator for PidTable<V> {
+    type Item = V;
+    type IntoIter = std::array::IntoIter<V, { Pid::MAX as usize + 1 }>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
+    }
+}
+
+impl<'a, V> IntoIterator for &'a PidTable<V> {
+    type Item = &'a V;
+    type IntoIter = std::slice::Iter<'a, V>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl<'a, V> IntoIterator for &'a mut PidTable<V> {
+    type Item = &'a mut V;
+    type IntoIter = std::slice::IterMut<'a, V>;
+
+    #[inline]
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter_mut()
+    }
+}
+
+impl<V> ops::Index<Pid> for PidTable<V> {
+    type Output = V;
+
+    #[inline]
+    fn index(&self, pid: Pid) -> &Self::Output {
+        &self.0[pid.get() as usize]
+    }
+}
+
+impl<V> ops::IndexMut<Pid> for PidTable<V> {
+    #[inline]
+    fn index_mut(&mut self, pid: Pid) -> &mut Self::Output {
+        &mut self.0[pid.get() as usize]
+    }
+}
+
+impl<V> AsRef<[V]> for PidTable<V> {
+    #[inline]
+    fn as_ref(&self) -> &[V] {
+        &*self.0
+    }
+}
+
+impl<V> AsMut<[V]> for PidTable<V> {
+    #[inline]
+    fn as_mut(&mut self) -> &mut [V] {
+        &mut *self.0
+    }
+}
+
+impl<V> ops::Deref for PidTable<V> {
+    type Target = [V; Pid::MAX as usize + 1];
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &*self.0
+    }
+}
+
+impl<V> ops::DerefMut for PidTable<V> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut *self.0
+    }
+}
+
+impl<V> std::borrow::Borrow<[V]> for PidTable<V> {
+    #[inline]
+    fn borrow(&self) -> &[V] {
+        &*self.0
+    }
+}
+
+impl<V> std::borrow::BorrowMut<[V]> for PidTable<V> {
+    #[inline]
+    fn borrow_mut(&mut self) -> &mut [V] {
+        &mut *self.0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -178,5 +316,44 @@ mod tests {
 
         assert_eq!(format!("{:?}", Pid::PAT), "Pid(0x0000)");
         assert_eq!(format!("{:?}", Pid::NULL), "Pid(0x1FFF)");
+    }
+
+    #[test]
+    fn test_pid_table() {
+        let table = PidTable::from_fn(|i| i);
+        assert_eq!(table[Pid::PAT], Pid::PAT);
+        assert_eq!(
+            table.clone().into_inner(),
+            crate::utils::boxed_array(|i| Pid::new(i as u16)),
+        );
+        assert_eq!(
+            Box::<[Pid; Pid::MAX as usize + 1]>::from(table.clone()),
+            crate::utils::boxed_array(|i| Pid::new(i as u16)),
+        );
+        assert_eq!(
+            PidTable::<_>::from(crate::utils::boxed_array(|i| Pid::new(i as u16))),
+            table,
+        );
+
+        let slice: &[Pid; Pid::MAX as usize + 1] = &*table;
+        assert_eq!(slice, &*(0..=Pid::MAX).map(Pid::new).collect::<Vec<Pid>>());
+
+        assert_eq!(table.iter().find(|pid| pid.get() >= 0x10), Some(&Pid::NIT));
+
+        let mut table2 = table.clone();
+        for pid in table2.iter_mut() {
+            *pid = Pid::PAT;
+        }
+        assert_eq!(table2, PidTable::from_fn(|_| Pid::PAT));
+        for pid in 0..=Pid::MAX {
+            table2[Pid::new(pid)] = Pid::CAT;
+        }
+        assert_eq!(table2, PidTable::from_fn(|_| Pid::CAT));
+
+        assert!(table
+            .clone()
+            .into_iter()
+            .enumerate()
+            .all(|(i, pid)| i == pid.get() as usize));
     }
 }
