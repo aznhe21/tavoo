@@ -1,48 +1,10 @@
 use std::fmt;
 use std::ops;
 
-/// `data`からビッグエンディアンで16ビット符号無し整数を読み込む。
-///
-/// 事前に`data`の長さが2以上あると分かるようなコードであれば最適化が期待できる。
-#[inline]
-pub fn read_be_16(data: &[u8]) -> u16 {
-    u16::from_be_bytes(data[..2].try_into().unwrap())
-}
-
-/// `data`からビッグエンディアンで32ビット符号無し整数を読み込む。
-///
-/// 事前に`data`の長さが4以上あると分かるようなコードであれば最適化が期待できる。
-#[inline]
-pub fn read_be_32(data: &[u8]) -> u32 {
-    u32::from_be_bytes(data[..4].try_into().unwrap())
-}
-
 /// `b`からBCDを読み取る。
 #[inline]
 pub fn read_bcd_digit(b: u8) -> u8 {
     ((b >> 4) * 10) + (b & 0x0F)
-}
-
-/// `data`から`digits`桁のBCDで数値を読み込む。
-pub fn read_bcd<T>(data: &[u8], digits: usize) -> T
-where
-    T: Default
-        + From<u8>
-        + ops::Add<T, Output = T>
-        + ops::Mul<T, Output = T>
-        + ops::AddAssign<T>
-        + ops::MulAssign<T>,
-{
-    let mut value = data[..digits / 2].iter().fold(T::default(), |value, &v| {
-        value * 100.into() + read_bcd_digit(v).into()
-    });
-
-    if (digits & 1) != 0 {
-        value *= 10.into();
-        value += (data[digits / 2] >> 4).into();
-    }
-
-    value
 }
 
 /// 要素数`N`のヒープに確保される配列を、`f`を呼び出した戻り値で生成する。
@@ -94,6 +56,84 @@ impl<T> SliceExt for [T] {
     }
 }
 
+/// バイト列用拡張トレイト。
+pub trait BytesExt {
+    /// 長さ2のバイト列からビッグエンディアンで16ビット符号無し整数を読み込む。
+    ///
+    /// 事前に`data`の長さが2であると分かるようなコードであれば最適化が期待できる。
+    ///
+    /// # パニック
+    ///
+    /// 長さが2でない場合、このメソッドはパニックする。
+    fn read_be_16(&self) -> u16;
+
+    /// 長さ4のバイト列からビッグエンディアンで32ビット符号無し整数を読み込む。
+    ///
+    /// 事前に`data`の長さが4であると分かるようなコードであれば最適化が期待できる。
+    ///
+    /// # パニック
+    ///
+    /// 長さが2でない場合、このメソッドはパニックする。
+    fn read_be_32(&self) -> u32;
+
+    /// 長さ8のバイト列からビッグエンディアンで64ビット符号無し整数を読み込む。
+    ///
+    /// 事前に`data`の長さが8であると分かるようなコードであれば最適化が期待できる。
+    ///
+    /// # パニック
+    ///
+    /// 長さが2でない場合、このメソッドはパニックする。
+    fn read_be_64(&self) -> u64;
+
+    /// バイト列から`digits`桁のBCDで数値を読み込む。
+    fn read_bcd<T>(&self, digits: usize) -> T
+    where
+        T: Default
+            + From<u8>
+            + ops::Add<T, Output = T>
+            + ops::Mul<T, Output = T>
+            + ops::AddAssign<T>
+            + ops::MulAssign<T>;
+}
+
+impl BytesExt for [u8] {
+    #[inline]
+    fn read_be_16(&self) -> u16 {
+        u16::from_be_bytes(self.try_into().unwrap())
+    }
+
+    #[inline]
+    fn read_be_32(&self) -> u32 {
+        u32::from_be_bytes(self.try_into().unwrap())
+    }
+
+    #[inline]
+    fn read_be_64(&self) -> u64 {
+        u64::from_be_bytes(self.try_into().unwrap())
+    }
+
+    fn read_bcd<T>(&self, digits: usize) -> T
+    where
+        T: Default
+            + From<u8>
+            + ops::Add<T, Output = T>
+            + ops::Mul<T, Output = T>
+            + ops::AddAssign<T>
+            + ops::MulAssign<T>,
+    {
+        let mut value = self[..digits / 2].iter().fold(T::default(), |value, &v| {
+            value * 100.into() + read_bcd_digit(v).into()
+        });
+
+        if (digits & 1) != 0 {
+            value *= 10.into();
+            value += (self[digits / 2] >> 4).into();
+        }
+
+        value
+    }
+}
+
 /// 条件が常に一致しているものとして事前条件を示す。
 ///
 /// 後続する処理ではこの条件が満たされることを前提とした最適化が行われる可能性がある。
@@ -119,27 +159,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_read_be_u16() {
-        assert_eq!(read_be_16(b"\x12\x34\x56\x78"), 0x1234);
-    }
-
-    #[test]
-    fn test_read_be_u32() {
-        assert_eq!(read_be_32(b"\x12\x34\x56\x78\x9A\xBC\xDE"), 0x12345678);
-    }
-
-    #[test]
     fn test_read_bcd() {
         assert_eq!(read_bcd_digit(0x12), 12);
-
-        assert_eq!(read_bcd::<u32>(&[0x12, 0x34, 0x56, 0x78], 1), 1);
-        assert_eq!(read_bcd::<u32>(&[0x12, 0x34, 0x56, 0x78], 2), 12);
-        assert_eq!(read_bcd::<u32>(&[0x12, 0x34, 0x56, 0x78], 3), 123);
-        assert_eq!(read_bcd::<u32>(&[0x12, 0x34, 0x56, 0x78], 4), 1234);
-        assert_eq!(read_bcd::<u32>(&[0x12, 0x34, 0x56, 0x78], 5), 12345);
-        assert_eq!(read_bcd::<u32>(&[0x12, 0x34, 0x56, 0x78], 6), 123456);
-        assert_eq!(read_bcd::<u32>(&[0x12, 0x34, 0x56, 0x78], 7), 1234567);
-        assert_eq!(read_bcd::<u32>(&[0x12, 0x34, 0x56, 0x78], 8), 12345678);
     }
 
     #[test]
@@ -173,5 +194,34 @@ mod tests {
             Some((&[0, 1, 2] as &[_], &[] as &[_])),
         );
         assert_eq!([0, 1, 2].split_at_checked(4), None);
+    }
+
+    #[test]
+    fn test_bytes_ext() {
+        std::panic::catch_unwind(|| b"".read_be_16()).unwrap_err();
+        std::panic::catch_unwind(|| b"000".read_be_16()).unwrap_err();
+        std::panic::catch_unwind(|| b"".read_be_32()).unwrap_err();
+        std::panic::catch_unwind(|| b"00000".read_be_32()).unwrap_err();
+        std::panic::catch_unwind(|| b"".read_be_64()).unwrap_err();
+        std::panic::catch_unwind(|| b"000000000".read_be_64()).unwrap_err();
+
+        assert_eq!(b"\x12\x34\x56\x78"[0..=1].read_be_16(), 0x1234);
+        assert_eq!(
+            b"\x12\x34\x56\x78\x9A\xBC\xDE"[0..=3].read_be_32(),
+            0x12345678,
+        );
+        assert_eq!(
+            b"\x12\x34\x56\x78\x9A\xBC\xDE\xFF".read_be_64(),
+            0x123456789ABCDEFF,
+        );
+
+        assert_eq!([0x12, 0x34, 0x56, 0x78].read_bcd::<u32>(1), 1);
+        assert_eq!([0x12, 0x34, 0x56, 0x78].read_bcd::<u32>(2), 12);
+        assert_eq!([0x12, 0x34, 0x56, 0x78].read_bcd::<u32>(3), 123);
+        assert_eq!([0x12, 0x34, 0x56, 0x78].read_bcd::<u32>(4), 1234);
+        assert_eq!([0x12, 0x34, 0x56, 0x78].read_bcd::<u32>(5), 12345);
+        assert_eq!([0x12, 0x34, 0x56, 0x78].read_bcd::<u32>(6), 123456);
+        assert_eq!([0x12, 0x34, 0x56, 0x78].read_bcd::<u32>(7), 1234567);
+        assert_eq!([0x12, 0x34, 0x56, 0x78].read_bcd::<u32>(8), 12345678);
     }
 }

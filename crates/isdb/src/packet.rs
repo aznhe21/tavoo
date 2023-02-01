@@ -5,6 +5,7 @@ use std::io::{self, Read};
 use std::time::Duration;
 
 use crate::pid::Pid;
+use crate::utils::BytesExt;
 
 const SYNC_BYTE: u8 = 0x47;
 
@@ -122,7 +123,7 @@ impl Packet {
     /// PID（13ビット）を返す。
     #[inline]
     pub fn pid(&self) -> Pid {
-        Pid::new(crate::utils::read_be_16(&self.0[1..]) & 0b0001_1111_1111_1111)
+        Pid::read(&self.0[1..])
     }
 
     /// transport scrambling control（2ビット）を返す。
@@ -275,9 +276,9 @@ pub struct AdaptationField<'a> {
 
 impl<'a> AdaptationField<'a> {
     fn read_pcr(data: &[u8; 6]) -> Pcr {
-        let base = ((crate::utils::read_be_32(&data[0..]) as u64) << 1)
-            | (((data[4] & 0b10000000) >> 7) as u64);
-        let extension = crate::utils::read_be_16(&data[4..]) & 0b0000_0001_1111_1111;
+        let base =
+            ((data[0..=3].read_be_32() as u64) << 1) | (((data[4] & 0b10000000) >> 7) as u64);
+        let extension = data[4..=5].read_be_16() & 0b0000_0001_1111_1111;
         Pcr { base, extension }
     }
 
@@ -340,7 +341,7 @@ impl<'a> AdaptationField<'a> {
             let mut v = &af[2..1 + len];
             let ltw = if ltw_flag && v.len() >= 2 {
                 let ltw_valid_flag = v[0] & 0b10000000 != 0;
-                let ltw_offset = crate::utils::read_be_16(v) & 0b0111_1111_1111_1111;
+                let ltw_offset = v[0..=1].read_be_16() & 0b0111_1111_1111_1111;
                 v = &v[2..];
 
                 Some(LegalTimeWindow {
@@ -352,7 +353,7 @@ impl<'a> AdaptationField<'a> {
             };
             let piecewise = if piecewise_rate_flag && v.len() >= 3 {
                 let piecewise_rate =
-                    ((v[0] & 0b00111111) as u32) << 16 | (crate::utils::read_be_16(&v[1..]) as u32);
+                    ((v[0] & 0b00111111) as u32) << 16 | (v[1..=2].read_be_16() as u32);
                 v = &v[3..];
 
                 Some(Piecewise { piecewise_rate })

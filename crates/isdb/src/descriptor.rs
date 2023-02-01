@@ -4,7 +4,7 @@ use std::fmt;
 
 use crate::pid::Pid;
 use crate::time::{DateTime, MjdDate};
-use crate::utils::SliceExt;
+use crate::utils::{BytesExt, SliceExt};
 
 /// 記述子を表すトレイト。
 pub trait Descriptor<'a>: Sized {
@@ -126,7 +126,7 @@ impl<'a> Descriptor<'a> for ConditionalAccessDescriptor<'a> {
             return None;
         }
 
-        let ca_system_id = crate::utils::read_be_16(&data[0..]);
+        let ca_system_id = data[0..=1].read_be_16();
         let ca_pid = Pid::read(&data[2..]);
         let private_data = &data[4..];
 
@@ -176,7 +176,7 @@ impl Descriptor<'_> for ServiceListDescriptor {
         let services = data
             .chunks_exact(3)
             .map(|chunk| {
-                let service_id = crate::utils::read_be_16(&chunk[0..]);
+                let service_id = chunk[0..=1].read_be_16();
                 let service_type = chunk[2];
                 ServiceEntry {
                     service_id,
@@ -217,12 +217,12 @@ impl Descriptor<'_> for SatelliteDeliverySystemDescriptor {
             return None;
         }
 
-        let frequency = crate::utils::read_bcd(&data[0..=3], 8);
-        let orbital_position = crate::utils::read_bcd(&data[4..=5], 4);
+        let frequency = data[0..=3].read_bcd(8);
+        let orbital_position = data[4..=5].read_bcd(4);
         let west_east_flag = data[6] & 0b10000000 != 0;
         let polarization = (data[6] & 0b01100000) >> 5;
         let modulation = data[6] & 0b00011111;
-        let system_rate = crate::utils::read_bcd(&data[7..=10], 7);
+        let system_rate = data[7..=10].read_bcd(7);
         let fec_inner = data[10] & 0b00001111;
 
         Some(SatelliteDeliverySystemDescriptor {
@@ -263,11 +263,11 @@ impl Descriptor<'_> for CableDeliverySystemDescriptor {
             return None;
         }
 
-        let frequency = crate::utils::read_bcd(&data[0..=3], 8);
+        let frequency = data[0..=3].read_bcd(8);
         let frame_type = (data[5] & 0b11110000) >> 4;
         let fec_outer = data[5] & 0b00001111;
         let modulation = data[6];
-        let symbol_rate = crate::utils::read_bcd(&data[7..=10], 7);
+        let symbol_rate = data[7..=10].read_bcd(7);
         let fec_inner = data[10] & 0b00001111;
 
         Some(CableDeliverySystemDescriptor {
@@ -347,9 +347,9 @@ impl<'a> Descriptor<'a> for LinkageDescriptor<'a> {
             return None;
         }
 
-        let transport_stream_id = crate::utils::read_be_16(&data[0..]);
-        let original_network_id = crate::utils::read_be_16(&data[2..]);
-        let service_id = crate::utils::read_be_16(&data[4..]);
+        let transport_stream_id = data[0..=1].read_be_16();
+        let original_network_id = data[2..=3].read_be_16();
+        let service_id = data[4..=5].read_be_16();
         let linkage_type = data[6];
         let private_data = &data[7..];
 
@@ -638,9 +638,9 @@ impl Descriptor<'_> for LocalTimeOffsetDescriptor {
                 let country_code = chunk[0..=2].try_into().unwrap();
                 let country_region_id = (chunk[3] & 0b11111100) >> 2;
                 let local_time_offset_polarity = (chunk[3] & 0b00000001) != 0;
-                let local_time_offset = crate::utils::read_be_16(&chunk[4..]);
-                let time_of_change = DateTime::read(chunk[6..].try_into().unwrap());
-                let next_time_offset = crate::utils::read_be_16(&chunk[11..]);
+                let local_time_offset = chunk[4..=5].read_be_16();
+                let time_of_change = DateTime::read(chunk[6..=10].try_into().unwrap());
+                let next_time_offset = chunk[11..=12].read_be_16();
 
                 LocalTimeOffsetEntry {
                     country_code,
@@ -1084,9 +1084,9 @@ impl<'a> Descriptor<'a> for HyperlinkDescriptor<'a> {
                     return None;
                 }
 
-                let original_network_id = crate::utils::read_be_16(&selector[0..]);
-                let transport_stream_id = crate::utils::read_be_16(&selector[2..]);
-                let service_id = crate::utils::read_be_16(&selector[4..]);
+                let original_network_id = selector[0..=1].read_be_16();
+                let transport_stream_id = selector[2..=3].read_be_16();
+                let service_id = selector[4..=5].read_be_16();
 
                 SelectorInfo::LinkServiceInfo(LinkServiceInfo {
                     original_network_id,
@@ -1100,10 +1100,10 @@ impl<'a> Descriptor<'a> for HyperlinkDescriptor<'a> {
                     return None;
                 }
 
-                let original_network_id = crate::utils::read_be_16(&selector[0..]);
-                let transport_stream_id = crate::utils::read_be_16(&selector[2..]);
-                let service_id = crate::utils::read_be_16(&selector[4..]);
-                let event_id = crate::utils::read_be_16(&selector[6..]);
+                let original_network_id = selector[0..=1].read_be_16();
+                let transport_stream_id = selector[2..=3].read_be_16();
+                let service_id = selector[4..=5].read_be_16();
+                let event_id = selector[6..=7].read_be_16();
 
                 SelectorInfo::LinkEventInfo(LinkEventInfo {
                     original_network_id,
@@ -1118,12 +1118,12 @@ impl<'a> Descriptor<'a> for HyperlinkDescriptor<'a> {
                     return None;
                 }
 
-                let original_network_id = crate::utils::read_be_16(&selector[0..]);
-                let transport_stream_id = crate::utils::read_be_16(&selector[2..]);
-                let service_id = crate::utils::read_be_16(&selector[4..]);
-                let event_id = crate::utils::read_be_16(&selector[6..]);
+                let original_network_id = selector[0..=1].read_be_16();
+                let transport_stream_id = selector[2..=3].read_be_16();
+                let service_id = selector[4..=5].read_be_16();
+                let event_id = selector[6..=7].read_be_16();
                 let component_tag = selector[8];
-                let module_id = crate::utils::read_be_16(&selector[9..]);
+                let module_id = selector[9..=10].read_be_16();
 
                 SelectorInfo::LinkModuleInfo(LinkModuleInfo {
                     original_network_id,
@@ -1140,10 +1140,10 @@ impl<'a> Descriptor<'a> for HyperlinkDescriptor<'a> {
                     return None;
                 }
 
-                let original_network_id = crate::utils::read_be_16(&selector[0..]);
-                let transport_stream_id = crate::utils::read_be_16(&selector[2..]);
-                let service_id = crate::utils::read_be_16(&selector[4..]);
-                let content_id = crate::utils::read_be_32(&selector[6..]);
+                let original_network_id = selector[0..=1].read_be_16();
+                let transport_stream_id = selector[2..=3].read_be_16();
+                let service_id = selector[4..=5].read_be_16();
+                let content_id = selector[6..=9].read_be_32();
 
                 SelectorInfo::LinkContentInfo(LinkContentInfo {
                     original_network_id,
@@ -1158,12 +1158,12 @@ impl<'a> Descriptor<'a> for HyperlinkDescriptor<'a> {
                     return None;
                 }
 
-                let original_network_id = crate::utils::read_be_16(&selector[0..]);
-                let transport_stream_id = crate::utils::read_be_16(&selector[2..]);
-                let service_id = crate::utils::read_be_16(&selector[4..]);
-                let content_id = crate::utils::read_be_32(&selector[6..]);
+                let original_network_id = selector[0..=1].read_be_16();
+                let transport_stream_id = selector[2..=3].read_be_16();
+                let service_id = selector[4..=5].read_be_16();
+                let content_id = selector[6..=9].read_be_32();
                 let component_tag = selector[10];
-                let module_id = crate::utils::read_be_16(&selector[11..]);
+                let module_id = selector[11..=12].read_be_16();
 
                 SelectorInfo::LinkContentModuleInfo(LinkContentModuleInfo {
                     original_network_id,
@@ -1180,9 +1180,9 @@ impl<'a> Descriptor<'a> for HyperlinkDescriptor<'a> {
                     return None;
                 }
 
-                let information_provider_id = crate::utils::read_be_16(&selector[0..]);
-                let event_relation_id = crate::utils::read_be_16(&selector[2..]);
-                let node_id = crate::utils::read_be_16(&selector[4..]);
+                let information_provider_id = selector[0..=1].read_be_16();
+                let event_relation_id = selector[2..=3].read_be_16();
+                let node_id = selector[4..=5].read_be_16();
 
                 SelectorInfo::LinkErtNodeInfo(LinkErtNodeInfo {
                     information_provider_id,
@@ -1374,10 +1374,10 @@ impl<'a> Descriptor<'a> for DownloadContentDescriptor<'a> {
         let compatibility_flag = data[0] & 0b00100000 != 0;
         let module_info_flag = data[0] & 0b00010000 != 0;
         let text_info_flag = data[0] & 0b00001000 != 0;
-        let component_size = crate::utils::read_be_32(&data[1..]);
-        let download_id = crate::utils::read_be_32(&data[5..]);
-        let time_out_value_dii = crate::utils::read_be_32(&data[9..]);
-        let leak_rate = crate::utils::read_be_32(&data[13..]) >> 10;
+        let component_size = data[1..=4].read_be_32();
+        let download_id = data[5..=8].read_be_32();
+        let time_out_value_dii = data[9..=12].read_be_32();
+        let leak_rate = data[13..=16].read_be_32() >> 10; // 22bit
         let component_tag = data[16];
 
         let mut data = &data[17..];
@@ -1387,8 +1387,8 @@ impl<'a> Descriptor<'a> for DownloadContentDescriptor<'a> {
                 return None;
             }
 
-            let compatibility_descriptor_length = crate::utils::read_be_16(&data[0..]);
-            let descriptor_count = crate::utils::read_be_16(&data[2..]);
+            let compatibility_descriptor_length = data[0..=1].read_be_16();
+            let descriptor_count = data[2..=3].read_be_16();
             data = &data[4..];
             if data.len() < compatibility_descriptor_length as usize {
                 log::debug!("invalid DownloadContentDescriptor::compatibility_descriptor_length");
@@ -1406,8 +1406,8 @@ impl<'a> Descriptor<'a> for DownloadContentDescriptor<'a> {
                 // let descriptor_length = data[1];
                 let specifier_type = data[2];
                 let specifier_data = data[3..=5].try_into().unwrap();
-                let model = crate::utils::read_be_16(&data[6..]);
-                let version = crate::utils::read_be_16(&data[8..]);
+                let model = data[6..=7].read_be_16();
+                let version = data[8..=9].read_be_16();
                 let sub_descriptor_count = data[10];
                 data = &data[11..];
 
@@ -1452,7 +1452,7 @@ impl<'a> Descriptor<'a> for DownloadContentDescriptor<'a> {
                 return None;
             }
 
-            let num_of_modules = crate::utils::read_be_16(&data[0..]);
+            let num_of_modules = data[0..=1].read_be_16();
             let mut modules = Vec::with_capacity(num_of_modules as usize);
             for _ in 0..num_of_modules {
                 if data.len() < 7 {
@@ -1460,8 +1460,8 @@ impl<'a> Descriptor<'a> for DownloadContentDescriptor<'a> {
                     return None;
                 }
 
-                let module_id = crate::utils::read_be_16(&data[0..]);
-                let module_size = crate::utils::read_be_32(&data[2..]);
+                let module_id = data[0..=1].read_be_16();
+                let module_size = data[2..=5].read_be_32();
                 let module_info_length = data[6];
                 let Some((module_info, rem)) = data[7..]
                     .split_at_checked(module_info_length as usize)
@@ -1553,9 +1553,9 @@ impl Descriptor<'_> for CaEmmTsDescriptor {
             return None;
         }
 
-        let ca_system_id = crate::utils::read_be_16(&data[0..]);
-        let transport_stream_id = crate::utils::read_be_16(&data[2..]);
-        let original_network_id = crate::utils::read_be_16(&data[4..]);
+        let ca_system_id = data[0..=1].read_be_16();
+        let transport_stream_id = data[2..=3].read_be_16();
+        let original_network_id = data[4..=5].read_be_16();
         let power_supply_period = data[6];
 
         Some(CaEmmTsDescriptor {
@@ -1591,7 +1591,7 @@ impl<'a> Descriptor<'a> for CaContractInfoDescriptor<'a> {
             return None;
         }
 
-        let ca_system_id = crate::utils::read_be_16(&data[0..]);
+        let ca_system_id = data[0..=1].read_be_16();
         let ca_unit_id = (data[2] & 0b11110000) >> 4;
         let num_of_component = data[2] & 0b00001111;
         let Some((component_tag, data)) = data[3..].split_at_checked(num_of_component as usize)
@@ -1650,13 +1650,10 @@ impl Descriptor<'_> for CaServiceDescriptor {
             return None;
         }
 
-        let ca_system_id = crate::utils::read_be_16(&data[0..]);
+        let ca_system_id = data[0..=1].read_be_16();
         let ca_broadcaster_group_id = data[2];
         let message_control = data[3];
-        let service_ids = data[4..]
-            .chunks_exact(2)
-            .map(crate::utils::read_be_16)
-            .collect();
+        let service_ids = data[4..].chunks_exact(2).map(<[u8]>::read_be_16).collect();
 
         Some(CaServiceDescriptor {
             ca_system_id,
@@ -1721,7 +1718,7 @@ impl<'a> Descriptor<'a> for TsInformationDescriptor<'a> {
             };
             let service_ids = service_ids
                 .chunks_exact(2)
-                .map(crate::utils::read_be_16)
+                .map(<[u8]>::read_be_16)
                 .collect();
             data = rem;
 
@@ -1793,7 +1790,7 @@ impl<'a> Descriptor<'a> for ExtendedBroadcasterDescriptor<'a> {
             broadcaster_ids
                 .chunks_exact(3)
                 .map(|chunk| {
-                    let original_network_id = crate::utils::read_be_16(&chunk[0..]);
+                    let original_network_id = chunk[0..=1].read_be_16();
                     let broadcaster_id = chunk[2];
 
                     BroadcasterId {
@@ -1819,7 +1816,7 @@ impl<'a> Descriptor<'a> for ExtendedBroadcasterDescriptor<'a> {
                     return None;
                 }
 
-                let terrestrial_broadcaster_id = crate::utils::read_be_16(&data[0..]);
+                let terrestrial_broadcaster_id = data[0..=1].read_be_16();
                 let number_of_affiliation_id_loop = (data[2] & 0b11110000) >> 4;
                 let number_of_broadcaster_id_loop = data[2] & 0b00001111;
 
@@ -1853,7 +1850,7 @@ impl<'a> Descriptor<'a> for ExtendedBroadcasterDescriptor<'a> {
                     return None;
                 }
 
-                let terrestrial_sound_broadcaster_id = crate::utils::read_be_16(&data[0..]);
+                let terrestrial_sound_broadcaster_id = data[0..=1].read_be_16();
                 let number_of_sound_broadcast_affiliation_id_loop = (data[2] & 0b11110000) >> 4;
                 let number_of_broadcaster_id_loop = data[2] & 0b00001111;
 
@@ -1938,9 +1935,9 @@ impl<'a> Descriptor<'a> for LogoTransmissionDescriptor<'a> {
                     return None;
                 }
 
-                let logo_id = crate::utils::read_be_16(&data[0..]) & 0b0000_0001_1111_1111;
-                let logo_version = crate::utils::read_be_16(&data[2..]) & 0b0000_1111_1111_1111;
-                let download_data_id = crate::utils::read_be_16(&data[4..]);
+                let logo_id = data[0..=1].read_be_16() & 0b0000_0001_1111_1111;
+                let logo_version = data[2..=3].read_be_16() & 0b0000_1111_1111_1111;
+                let download_data_id = data[4..=5].read_be_16();
 
                 LogoTransmissionDescriptor::Cdt1(LogoTransmissionCdt1 {
                     logo_id,
@@ -1954,7 +1951,7 @@ impl<'a> Descriptor<'a> for LogoTransmissionDescriptor<'a> {
                     return None;
                 }
 
-                let logo_id = crate::utils::read_be_16(&data[0..]) & 0b0000_0001_1111_1111;
+                let logo_id = data[0..=1].read_be_16() & 0b0000_0001_1111_1111;
 
                 LogoTransmissionDescriptor::Cdt2(LogoTransmissionCdt2 { logo_id })
             }
@@ -2015,7 +2012,7 @@ impl<'a> Descriptor<'a> for SeriesDescriptor<'a> {
             return None;
         }
 
-        let series_id = crate::utils::read_be_16(&data[0..]);
+        let series_id = data[0..=1].read_be_16();
         let repeat_label = (data[2] & 0b11110000) >> 4;
         let program_pattern = match (data[2] & 0b00001110) >> 1 {
             0x0 => ProgramPattern::Nonscheduled,
@@ -2031,8 +2028,8 @@ impl<'a> Descriptor<'a> for SeriesDescriptor<'a> {
         let expire_date_valid_flag = data[2] & 0b00000001 != 0;
         let expire_date =
             expire_date_valid_flag.then(|| MjdDate::read(&data[3..=4].try_into().unwrap()));
-        let episode_number = crate::utils::read_be_16(&data[5..]) >> 4; // 12bit
-        let last_episode_number = crate::utils::read_be_16(&data[6..]) & 0b0000_1111_1111_1111; // 12bit
+        let episode_number = data[5..=6].read_be_16() >> 4; // 12bit
+        let last_episode_number = data[6..=7].read_be_16() & 0b0000_1111_1111_1111; // 12bit
         let series_name = &data[8..];
 
         Some(SeriesDescriptor {
@@ -2102,10 +2099,10 @@ impl<'a> Descriptor<'a> for EventGroupDescriptor<'a> {
         fn read_other_networks(data: &[u8]) -> Vec<OtherNetwork> {
             data.chunks_exact(8)
                 .map(|chunk| {
-                    let original_network_id = crate::utils::read_be_16(&chunk[0..]);
-                    let transport_stream_id = crate::utils::read_be_16(&chunk[2..]);
-                    let service_id = crate::utils::read_be_16(&chunk[4..]);
-                    let event_id = crate::utils::read_be_16(&chunk[6..]);
+                    let original_network_id = chunk[0..=1].read_be_16();
+                    let transport_stream_id = chunk[2..=3].read_be_16();
+                    let service_id = chunk[4..=5].read_be_16();
+                    let event_id = chunk[6..=7].read_be_16();
                     OtherNetwork {
                         original_network_id,
                         transport_stream_id,
@@ -2130,8 +2127,8 @@ impl<'a> Descriptor<'a> for EventGroupDescriptor<'a> {
         let events = events
             .chunks_exact(4)
             .map(|chunk| {
-                let service_id = crate::utils::read_be_16(&chunk[0..]);
-                let event_id = crate::utils::read_be_16(&chunk[2..]);
+                let service_id = chunk[0..=1].read_be_16();
+                let event_id = chunk[2..=3].read_be_16();
 
                 ActualEvent {
                     service_id,
@@ -2378,13 +2375,13 @@ impl Descriptor<'_> for LdtLinkageDescriptor {
             return None;
         }
 
-        let original_service_id = crate::utils::read_be_16(&data[0..]);
-        let transport_stream_id = crate::utils::read_be_16(&data[2..]);
-        let original_network_id = crate::utils::read_be_16(&data[4..]);
+        let original_service_id = data[0..=1].read_be_16();
+        let transport_stream_id = data[2..=3].read_be_16();
+        let original_network_id = data[4..=5].read_be_16();
         let descriptors = data[6..]
             .chunks_exact(4)
             .map(|chunk| {
-                let description_id = crate::utils::read_be_16(&chunk[0..]);
+                let description_id = chunk[0..=1].read_be_16();
                 let description_type = chunk[2] & 0b00001111;
                 let user_defined = chunk[3];
 
@@ -2427,7 +2424,7 @@ impl<'a> Descriptor<'a> for AccessControlDescriptor<'a> {
             return None;
         }
 
-        let ca_system_id = crate::utils::read_be_16(&data[0..]);
+        let ca_system_id = data[0..=1].read_be_16();
         let transmission_type = (data[2] & 0b11100000) >> 5;
         let pid = Pid::read(&data[2..]);
         let private_data = &data[4..];
@@ -2489,7 +2486,7 @@ impl Descriptor<'_> for TerrestrialDeliverySystemDescriptor {
             return None;
         }
 
-        let area_code = crate::utils::read_be_16(&data[0..]) >> 4; // 12bit
+        let area_code = data[0..=1].read_be_16() >> 4; // 12bit
         let guard_interval = match (data[1] & 0b00001100) >> 2 {
             0b00 => GuardInterval::Guard1_32,
             0b01 => GuardInterval::Guard1_16,
@@ -2504,10 +2501,7 @@ impl Descriptor<'_> for TerrestrialDeliverySystemDescriptor {
             0b11 => TransmissionMode::Undefined,
             _ => unreachable!(),
         };
-        let frequencies = data[2..]
-            .chunks_exact(2)
-            .map(crate::utils::read_be_16)
-            .collect();
+        let frequencies = data[2..].chunks_exact(2).map(<[u8]>::read_be_16).collect();
 
         Some(TerrestrialDeliverySystemDescriptor {
             area_code,
@@ -2529,7 +2523,7 @@ impl Descriptor<'_> for PartialReceptionDescriptor {
     const TAG: u8 = 0xFB;
 
     fn read(data: &[u8]) -> Option<PartialReceptionDescriptor> {
-        let service_ids = data.chunks_exact(2).map(crate::utils::read_be_16).collect();
+        let service_ids = data.chunks_exact(2).map(<[u8]>::read_be_16).collect();
 
         Some(PartialReceptionDescriptor { service_ids })
     }
@@ -2576,7 +2570,7 @@ impl Descriptor<'_> for EmergencyInformationDescriptor {
                 return None;
             }
 
-            let service_id = crate::utils::read_be_16(&data[0..]);
+            let service_id = data[0..=1].read_be_16();
             let start_end_flag = data[2] & 0b10000000 != 0;
             let signal_level = match (data[2] & 0b01000000) >> 6 {
                 0 => SignalType::First,
@@ -2591,7 +2585,7 @@ impl Descriptor<'_> for EmergencyInformationDescriptor {
             };
             let area_code = area_code
                 .chunks_exact(2)
-                .map(crate::utils::read_be_16)
+                .map(<[u8]>::read_be_16)
                 .map(|w| (w & 0b1111_1111_1111_0000) >> 4)
                 .collect();
             data = rem;
@@ -2626,7 +2620,7 @@ impl<'a> Descriptor<'a> for DataComponentDescriptor<'a> {
             return None;
         }
 
-        let data_component_id = crate::utils::read_be_16(&data[0..]);
+        let data_component_id = data[0..=1].read_be_16();
         let additional_data_component_info = &data[2..];
 
         Some(DataComponentDescriptor {

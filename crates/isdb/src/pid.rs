@@ -3,6 +3,8 @@
 use std::fmt;
 use std::ops;
 
+use crate::utils::BytesExt;
+
 /// MPEG2-TSのPID（13ビット）。
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[repr(transparent)]
@@ -71,7 +73,7 @@ impl Pid {
     /// `data`の長さが2未満の場合、このメソッドはパニックする。
     #[inline]
     pub fn read(data: &[u8]) -> Pid {
-        Pid(crate::utils::read_be_16(data) & 0x1FFF)
+        Pid(data[0..=1].read_be_16() & 0x1FFF)
     }
 
     /// PIDを`u16`で返す。

@@ -2,6 +2,8 @@
 
 use std::fmt::{self, Write};
 
+use crate::utils::BytesExt;
+
 fn write_hundreds<W: Write>(w: &mut W, n: u8) -> fmt::Result {
     let h = b'0' + n / 10;
     let l = b'0' + n % 10;
@@ -25,7 +27,7 @@ pub struct MjdDate {
 impl MjdDate {
     /// `data`から`MjdDate`を読み取る。
     pub fn read(data: &[u8; 2]) -> MjdDate {
-        let mjd = crate::utils::read_be_16(data);
+        let mjd = data.read_be_16();
         let yd = ((mjd as f32 - 15078.2) / 365.25) as u16;
         let md = ((mjd as f32 - 14956.1 - (yd as f32 * 365.25) as u16 as f32) / 30.6001) as u8;
 

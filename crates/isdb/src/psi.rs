@@ -2,6 +2,8 @@
 
 use thiserror::Error;
 
+use crate::utils::BytesExt;
+
 /// [`PsiSection::parse`]で発生するエラー。
 ///
 /// セクション長が確定したあとで発生するエラーにはセクション長が付随する。
@@ -59,7 +61,7 @@ impl<'a> PsiSection<'a> {
             return Err(PsiError::EndOfPsi);
         }
         let section_syntax_indicator = buf[1] & 0b10000000 != 0;
-        let section_length = crate::utils::read_be_16(&buf[1..]) & 0b0000_1111_1111_1111;
+        let section_length = buf[1..=2].read_be_16() & 0b0000_1111_1111_1111;
 
         let Some(psi) = buf.get(..3 + section_length as usize) else {
             return Err(PsiError::InsufficientLength);
@@ -74,7 +76,7 @@ impl<'a> PsiSection<'a> {
                 return Err(PsiError::Corrupted(psi.len()));
             }
 
-            let table_id_extension = crate::utils::read_be_16(&psi[3..]);
+            let table_id_extension = psi[3..=4].read_be_16();
             let version_number = (psi[5] & 0b00111110) >> 1;
             let current_next_indicator = psi[5] & 0b00000001 != 0;
             let section_number = psi[6];
@@ -96,7 +98,7 @@ impl<'a> PsiSection<'a> {
             (None, &psi[3..psi.len() - 4])
         };
 
-        let crc32 = crate::utils::read_be_32(&psi[psi.len() - 4..]);
+        let crc32 = psi[psi.len() - 4..].read_be_32();
 
         Ok(PsiSection {
             table_id,
