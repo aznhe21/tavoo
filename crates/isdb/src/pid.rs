@@ -29,6 +29,8 @@ impl Pid {
     pub const BAT: Pid = Pid::new(0x0011);
     /// Event Information Table
     pub const EIT: Pid = Pid::new(0x0012);
+    /// Collective term for EITs for display on fixed receiver units.
+    pub const H_EIT: Pid = Self::EIT;
     /// Running Status Table
     pub const RST: Pid = Pid::new(0x0013);
     /// Time and Date Table
@@ -42,6 +44,22 @@ impl Pid {
     pub const DIT: Pid = Pid::new(0x001E);
     /// Selection Information Table
     pub const SIT: Pid = Pid::new(0x001F);
+    /// Partial Content Announcement Table
+    pub const PCAT: Pid = Pid::new(0x0022);
+    /// Software Download Trigger Table
+    pub const SDTT: Pid = Pid::new(0x0023);
+    /// Broadcaster Information Table
+    pub const BIT: Pid = Pid::new(0x0024);
+    /// Network Board Information Table
+    pub const NBIT: Pid = Pid::new(0x0025);
+    /// Linked Description Table
+    pub const LDT: Pid = Pid::new(0x0025);
+    /// Collective term for EITs for display on mobile receiver units
+    pub const M_EIT: Pid = Pid::new(0x0026);
+    /// Collective term for EITs for display on partial receiver units.
+    pub const L_EIT: Pid = Pid::new(0x0027);
+    /// Common Data Table
+    pub const CDT: Pid = Pid::new(0x0029);
     /// Null packet
     pub const NULL: Pid = Pid::new(0x1FFF);
 
