@@ -51,32 +51,6 @@ pub trait Filter {
     fn on_pes_packet(&mut self, pid: Pid, payload: &[u8]);
 }
 
-impl<T: Filter> Filter for std::rc::Rc<std::cell::RefCell<T>> {
-    fn on_transport_error(&mut self) {
-        self.borrow_mut().on_transport_error();
-    }
-
-    fn on_format_error(&mut self) {
-        self.borrow_mut().on_format_error();
-    }
-
-    fn on_packet(&mut self, packet: &Packet) -> Option<PacketType> {
-        self.borrow_mut().on_packet(packet)
-    }
-
-    fn on_discontinued(&mut self, pid: Pid) {
-        self.borrow_mut().on_discontinued(pid);
-    }
-
-    fn on_psi_section(&mut self, pid: Pid, psi: &PsiSection) {
-        self.borrow_mut().on_psi_section(pid, psi);
-    }
-
-    fn on_pes_packet(&mut self, pid: Pid, payload: &[u8]) {
-        self.borrow_mut().on_pes_packet(pid, payload);
-    }
-}
-
 /// TSパケットを分離する。
 pub struct Demuxer<T> {
     filter: T,
