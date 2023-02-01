@@ -4,6 +4,7 @@ use std::fmt;
 
 use crate::pid::Pid;
 use crate::time::{DateTime, MjdDate};
+use crate::types::{ServiceType, StreamType};
 use crate::utils::{BytesExt, SliceExt};
 
 /// 記述子を表すトレイト。
@@ -159,7 +160,7 @@ pub struct ServiceEntry {
     /// Service id
     pub service_id: u16,
     /// Service type
-    pub service_type: u8,
+    pub service_type: ServiceType,
 }
 
 /// サービスリスト記述子。
@@ -177,7 +178,7 @@ impl Descriptor<'_> for ServiceListDescriptor {
             .chunks_exact(3)
             .map(|chunk| {
                 let service_id = chunk[0..=1].read_be_16();
-                let service_type = chunk[2];
+                let service_type = ServiceType(chunk[2]);
                 ServiceEntry {
                     service_id,
                     service_type,
@@ -285,7 +286,7 @@ impl Descriptor<'_> for CableDeliverySystemDescriptor {
 #[derive(Debug)]
 pub struct ServiceDescriptor<'a> {
     /// service_type
-    pub service_type: u8,
+    pub service_type: ServiceType,
     /// service provider name
     pub service_provider_name: &'a [u8],
     /// service name
@@ -316,7 +317,7 @@ impl<'a> Descriptor<'a> for ServiceDescriptor<'a> {
         }
 
         Some(ServiceDescriptor {
-            service_type,
+            service_type: ServiceType(service_type),
             service_provider_name,
             service_name,
         })
@@ -849,7 +850,7 @@ pub struct AudioComponentDescriptor<'a> {
     /// component_tag
     pub component_tag: u8,
     /// stream_type
-    pub stream_type: u8,
+    pub stream_type: StreamType,
     /// simulcast_group_tag
     pub simulcast_group_tag: u8,
     /// main_component_flag
@@ -878,7 +879,7 @@ impl<'a> Descriptor<'a> for AudioComponentDescriptor<'a> {
         let stream_content = data[0] & 0b00001111;
         let component_type = data[1];
         let component_tag = data[2];
-        let stream_type = data[3];
+        let stream_type = StreamType(data[3]);
         let simulcast_group_tag = data[4];
         let es_multi_lingual_flag = (data[5] & 0b10000000) != 0;
         let main_component_flag = (data[5] & 0b01000000) != 0;
