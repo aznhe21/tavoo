@@ -29,15 +29,22 @@ pub struct RawDescriptor<'a> {
 
 impl<'a> fmt::Debug for RawDescriptor<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        struct PrintBytes<'a>(&'a [u8]);
+        impl<'a> fmt::Debug for PrintBytes<'a> {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "{} bytes", self.0.len())
+            }
+        }
+
         f.debug_struct("RawDescriptor")
             .field("tag", &crate::utils::UpperHex(self.tag))
-            .field("data", &self.data)
+            .field("data", &PrintBytes(self.data))
             .finish()
     }
 }
 
 /// 複数の記述子からなる記述子群。
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DescriptorBlock<'a>(&'a [u8]);
 
 impl<'a> DescriptorBlock<'a> {
@@ -76,6 +83,14 @@ impl<'a> DescriptorBlock<'a> {
     }
 }
 
+impl<'a> fmt::Debug for DescriptorBlock<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("DescriptorBlock(")?;
+        f.debug_list().entries(self).finish()?;
+        f.write_str(")")
+    }
+}
+
 impl<'a> IntoIterator for &DescriptorBlock<'a> {
     type Item = RawDescriptor<'a>;
     type IntoIter = DescriptorIter<'a>;
@@ -86,7 +101,7 @@ impl<'a> IntoIterator for &DescriptorBlock<'a> {
 }
 
 /// [`DescriptorBlock`]のイテレーター。
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DescriptorIter<'a>(&'a [u8]);
 
 impl<'a> Iterator for DescriptorIter<'a> {
@@ -106,6 +121,14 @@ impl<'a> Iterator for DescriptorIter<'a> {
 }
 
 impl<'a> std::iter::FusedIterator for DescriptorIter<'a> {}
+
+impl<'a> fmt::Debug for DescriptorIter<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("DescriptorIter(")?;
+        f.debug_list().entries(self.clone()).finish()?;
+        f.write_str(")")
+    }
+}
 
 /// 限定受信方式記述子。
 #[derive(Debug)]
