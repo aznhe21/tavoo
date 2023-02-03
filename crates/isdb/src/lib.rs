@@ -4,7 +4,7 @@
 
 pub mod crc32;
 pub mod demux;
-pub mod descriptor;
+pub mod desc;
 pub mod packet;
 pub mod pid;
 pub mod psi;
