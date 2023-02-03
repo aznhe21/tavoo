@@ -1477,6 +1477,8 @@ impl<'a> Descriptor<'a> for DownloadContentDescriptor<'a> {
             }
 
             let num_of_modules = data[0..=1].read_be_16();
+            data = &data[2..];
+
             let mut modules = Vec::with_capacity(num_of_modules as usize);
             for _ in 0..num_of_modules {
                 if data.len() < 7 {
@@ -2205,8 +2207,8 @@ impl<'a> Descriptor<'a> for SiParameterDescriptor<'a> {
 
         let parameter_version = data[0];
         let update_time = MjdDate::read(&data[1..=2].try_into().unwrap());
-
         let mut data = &data[3..];
+
         let mut tables = Vec::new();
         while !data.is_empty() {
             let [table_id, table_description_length, ref rem @ ..] = *data else {
@@ -2295,8 +2297,8 @@ impl<'a> Descriptor<'a> for ComponentGroupDescriptor<'a> {
         let component_group_type = (data[0] & 0b11100000) >> 5;
         let total_bit_rate_flag = data[0] & 0b00010000 != 0;
         let num_of_group = data[0] & 0b00001111;
-
         let mut data = &data[1..];
+
         let mut groups = Vec::with_capacity(num_of_group as usize);
         for _ in 0..num_of_group {
             if data.len() < 1 {
@@ -2306,6 +2308,7 @@ impl<'a> Descriptor<'a> for ComponentGroupDescriptor<'a> {
 
             let component_group_id = (data[0] & 0b11110000) >> 4;
             let num_of_ca_unit = data[0] & 0b00001111;
+            data = &data[1..];
 
             let mut ca_units = Vec::with_capacity(num_of_ca_unit as usize);
             for _ in 0..num_of_ca_unit {
