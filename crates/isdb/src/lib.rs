@@ -3,6 +3,7 @@
 #![deny(missing_docs)]
 
 pub mod crc32;
+pub mod data_module;
 pub mod demux;
 pub mod desc;
 pub mod packet;
