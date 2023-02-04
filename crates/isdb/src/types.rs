@@ -1,7 +1,5 @@
 //! ARIB STD-B10で定義されている、定数を伴う型。
 
-use std::fmt;
-
 /// サービスの種別。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ServiceType(pub u8);
@@ -57,94 +55,68 @@ impl ServiceType {
     }
 }
 
-impl fmt::Display for ServiceType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let s = match *self {
-            ServiceType::DIGITAL_TV => "デジタルTVサービス",
-            ServiceType::DIGITAL_AUDIO => "デジタル音声サービス",
-            ServiceType::TEMPORARY_VIDEO => "臨時映像サービス",
-            ServiceType::TEMPORARY_AUDIO => "臨時音声サービス",
-            ServiceType::TEMPORARY_DATA => "臨時データサービス",
-            ServiceType::ENGINEERING => "エンジニアリングサービス",
-            ServiceType::PROMOTION_VIDEO => "プロモーション映像サービス",
-            ServiceType::PROMOTION_AUDIO => "プロモーション音声サービス",
-            ServiceType::PROMOTION_DATA => "プロモーションデータサービス",
-            ServiceType::ACCUMULATION_DATA => "事前蓄積用データサービス",
-            ServiceType::ACCUMULATION_ONLY_DATA => "蓄積専用データサービス",
-            ServiceType::BOOKMARK_LIST_DATA => "ブックマーク一覧データサービス",
-            ServiceType::SERVER_TYPE_SIMULTANEOUS => "サーバー型サイマルサービス",
-            ServiceType::INDEPENDENT_FILE => "独立ファイルサービス",
-            ServiceType::UHD_TV => "超高精細度4K専用TVサービス",
-            ServiceType::DATA => "データサービス",
-            ServiceType::TLV_ACCUMULATION => "TLVを用いた蓄積型サービス",
-            ServiceType::MULTIMEDIA => "マルチメディアサービス",
-            _ => return write!(f, "未定義（0x{:02X}）", self.0),
-        };
-        f.write_str(s)
-    }
-}
-
-/// ストリームの種別。
+/// ストリーム形式種別。
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StreamType(pub u8);
 
 impl StreamType {
-    /// ISO/IEC 11172-2 Video
+    /// ISO/IEC 11172-2映像。
     pub const MPEG1_VIDEO: StreamType = StreamType(0x01);
-
-    /// ITU-T Rec. H.262 | ISO/IEC 13818-2 Video or ISO/IEC 11172-2 constrained parameter video stream
+    /// ITU-T勧告H.262|ISO/IEC 13818-2映像またはISO/IEC 11172-2制約パラメータ映像ストリーム。
     pub const MPEG2_VIDEO: StreamType = StreamType(0x02);
-    /// ISO/IEC 11172-3 Audio
+    /// ISO/IEC 11172-3音声。
     pub const MPEG1_AUDIO: StreamType = StreamType(0x03);
-    /// ISO/IEC 13818-3 Audio
+    /// ISO/IEC 13818-3音声。
     pub const MPEG2_AUDIO: StreamType = StreamType(0x04);
-    /// ITU-T Rec. H.222.0 | ISO/IEC 13818-1 private_sections
+    /// ITU-T勧告H.222.0|ISO/IEC 13818-1プライベートセクション。
     pub const PRIVATE_SECTIONS: StreamType = StreamType(0x05);
-    /// ITU-T Rec. H.222.0 | ISO/IEC 13818-1 PES packets containing private data
+    /// プライベートデータを収容したITU-T勧告H.222.0|ISO/IEC 13818-1 PESパケット。
     pub const PRIVATE_DATA: StreamType = StreamType(0x06);
-    /// ISO/IEC 13522 MHEG
+    /// ISO/IEC 13522 MHEG。
     pub const MHEG: StreamType = StreamType(0x07);
-    /// ITU-T Rec. H.222.0 | ISO/IEC 13818-1 Annex A DSM-CC
+    /// ITU-T勧告H.222.0|ISO/IEC 13818-1付属書A DSM-CC。
     pub const DSM_CC: StreamType = StreamType(0x08);
-    /// ITU-T Rec. H.222.1
+    /// ITU-T勧告H.222.1。
     pub const ITU_T_REC_H222_1: StreamType = StreamType(0x09);
-    /// ISO/IEC 13818-6 type A
+    /// ISO/IEC 13818-6（タイプA）。
     pub const ISO_IEC_13818_6_TYPE_A: StreamType = StreamType(0x0A);
-    /// ISO/IEC 13818-6 type B
+    /// ISO/IEC 13818-6（タイプB）。
     pub const ISO_IEC_13818_6_TYPE_B: StreamType = StreamType(0x0B);
-    /// ISO/IEC 13818-6 type C
+    /// ISO/IEC 13818-6（タイプC）。
     pub const ISO_IEC_13818_6_TYPE_C: StreamType = StreamType(0x0C);
-    /// ISO/IEC 13818-6 type D
+    /// ISO/IEC 13818-6（タイプD）。
     pub const ISO_IEC_13818_6_TYPE_D: StreamType = StreamType(0x0D);
-    /// ITU-T Rec. H.222.0 | ISO/IEC 13818-1 auxiliary
+    /// それ以外でITU-T勧告H.222.0|ISO/IEC 13818-1で規定されるデータタイプ。
     pub const ISO_IEC_13818_1_AUXILIARY: StreamType = StreamType(0x0E);
-    /// ISO/IEC 13818-7 Audio with ADTS transport syntax
+    /// ISO/IEC 13818-7音声（ADTSトランスポート構造）。
     pub const AAC: StreamType = StreamType(0x0F);
-    /// ISO/IEC 14496-2 Visual
+    /// ISO/IEC 14496-2映像。
     pub const MPEG4_VISUAL: StreamType = StreamType(0x10);
-    /// ISO/IEC 14496-3 Audio with the LATM transport syntax as defined in ISO/IEC 14496-3 / AMD 1
+    /// ISO/IEC 14496-3音声（ISO/IEC 14496-3 / AMD 1で規定されるLATMトランスポート構造）。
     pub const MPEG4_AUDIO: StreamType = StreamType(0x11);
-    /// ISO/IEC 14496-1 SL-packetized stream or FlexMux stream carried in PES packets
+    /// PESパケットで伝送されるISO/IEC 14496-1 SLパケット化ストリームまたは
+    /// フレックスマックスストリーム。
     pub const ISO_IEC_14496_1_IN_PES: StreamType = StreamType(0x12);
-    /// ISO/IEC 14496-1 SL-packetized stream or FlexMux stream carried in ISO/IEC 14496_sections
+    /// ISO/IEC 14496セクションで伝送されるISO/IEC 14496-1 SLパケット化ストリームまたは
+    /// フレックスマックスストリーム。
     pub const ISO_IEC_14496_1_IN_SECTIONS: StreamType = StreamType(0x13);
-    /// ISO/IEC 13818-6 Synchronized Download Protocol
+    /// ISO/IEC 13818-6同期ダウンロードプロトコル。
     pub const ISO_IEC_13818_6_DOWNLOAD: StreamType = StreamType(0x14);
-    /// Metadata carried in PES packets
+    /// PESパケットで伝送されるメタデータ。
     pub const METADATA_IN_PES: StreamType = StreamType(0x15);
-    /// Metadata carried in metadata_sections
+    /// メタデータセクションで伝送されるメタデータ。
     pub const METADATA_IN_SECTIONS: StreamType = StreamType(0x16);
-    /// Metadata carried in ISO/IEC 13818-6 Data Carousel
+    /// ISO/IEC 13818-6データカルーセルで伝送されるメタデータ。
     pub const METADATA_IN_DATA_CAROUSEL: StreamType = StreamType(0x17);
-    /// Metadata carried in ISO/IEC 13818-6 Object Carousel
+    /// ISO/IEC 13818-6オブジェクトカルーセルで伝送されるメタデータ。
     pub const METADATA_IN_OBJECT_CAROUSEL: StreamType = StreamType(0x18);
-    /// Metadata carried in ISO/IEC 13818-6 Synchronized Download Protocol
+    /// ISO/IEC 13818-6同期ダウンロードプロトコルで伝送されるメタデータ。
     pub const METADATA_IN_DOWNLOAD_PROTOCOL: StreamType = StreamType(0x19);
-    /// ISO/IEC 13818-11 IPMP on MPEG-2 systems
+    /// IPMPストリーム（ISO/IEC 13818-11で規定されるMPEG-2 IPMP）。
     pub const IPMP: StreamType = StreamType(0x1A);
-    /// ITU-T Rec. H.264 | ISO/IEC 14496-10 Video
+    /// ITU-T勧告H.264|ISO/IEC 14496-10映像で規定されるAVC映像ストリーム。
     pub const H264: StreamType = StreamType(0x1B);
-    /// ITU-T Rec. H.265 | ISO/IEC 23008-2
+    /// HEVC映像ストリームまたはHEVC時間方向映像サブビットストリーム。
     pub const H265: StreamType = StreamType(0x24);
     /// ISO/IEC User Private
     pub const USER_PRIVATE: StreamType = StreamType(0x80);
@@ -162,9 +134,9 @@ impl StreamType {
     /// 無効
     pub const INVALID: StreamType = StreamType(0xFF);
 
-    /// 字幕
+    /// 字幕。
     pub const CAPTION: StreamType = Self::PRIVATE_DATA;
-    /// データ放送
+    /// データ放送。
     pub const DATA_CARROUSEL: StreamType = Self::ISO_IEC_13818_6_TYPE_D;
 
     /// 定義されているストリーム種別かどうかを返す。
@@ -173,43 +145,15 @@ impl StreamType {
     }
 }
 
-impl fmt::Display for StreamType {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let s = match *self {
-            StreamType::MPEG2_VIDEO => "ITU-T Rec. H.262 | ISO/IEC 13818-2 Video or ISO/IEC 11172-2 constrained parameter video stream",
-            StreamType::MPEG1_AUDIO => "ISO/IEC 11172-3 Audio",
-            StreamType::MPEG2_AUDIO => "ISO/IEC 13818-3 Audio",
-            StreamType::PRIVATE_SECTIONS => "ITU-T Rec. H.222.0 | ISO/IEC 13818-1 private_sections",
-            StreamType::PRIVATE_DATA => "ITU-T Rec. H.222.0 | ISO/IEC 13818-1 PES packets containing private data",
-            StreamType::MHEG => "ISO/IEC 13522 MHEG",
-            StreamType::DSM_CC => "ITU-T Rec. H.222.0 | ISO/IEC 13818-1 Annex A DSM-CC",
-            StreamType::ITU_T_REC_H222_1 => "ITU-T Rec. H.222.1",
-            StreamType::ISO_IEC_13818_6_TYPE_A => "ISO/IEC 13818-6 type A",
-            StreamType::ISO_IEC_13818_6_TYPE_B => "ISO/IEC 13818-6 type B",
-            StreamType::ISO_IEC_13818_6_TYPE_C => "ISO/IEC 13818-6 type C",
-            StreamType::ISO_IEC_13818_6_TYPE_D => "ISO/IEC 13818-6 type D",
-            StreamType::ISO_IEC_13818_1_AUXILIARY => "ITU-T Rec. H.222.0 | ISO/IEC 13818-1 auxiliary",
-            StreamType::AAC => "ISO/IEC 13818-7 Audio with ADTS transport syntax",
-            StreamType::MPEG4_VISUAL => "ISO/IEC 14496-2 Visual",
-            StreamType::MPEG4_AUDIO => "ISO/IEC 14496-3 Audio with the LATM transport syntax as defined in ISO/IEC 14496-3 / AMD 1",
-            StreamType::ISO_IEC_14496_1_IN_PES => "ISO/IEC 14496-1 SL-packetized stream or FlexMux stream carried in PES packets",
-            StreamType::ISO_IEC_14496_1_IN_SECTIONS => "ISO/IEC 14496-1 SL-packetized stream or FlexMux stream carried in ISO/IEC 14496_sections",
-            StreamType::ISO_IEC_13818_6_DOWNLOAD => "ISO/IEC 13818-6 Synchronized Download Protocol",
-            StreamType::METADATA_IN_PES => "Metadata carried in PES packets",
-            StreamType::METADATA_IN_SECTIONS => "Metadata carried in metadata_sections",
-            StreamType::METADATA_IN_DATA_CAROUSEL => "Metadata carried in ISO/IEC 13818-6 Data Carousel",
-            StreamType::METADATA_IN_OBJECT_CAROUSEL => "Metadata carried in ISO/IEC 13818-6 Object Carousel",
-            StreamType::METADATA_IN_DOWNLOAD_PROTOCOL => "Metadata carried in ISO/IEC 13818-6 Synchronized Download Protocol",
-            StreamType::IPMP => "ISO/IEC 13818-11 IPMP on MPEG-2 systems",
-            StreamType::H264 => "ITU-T Rec. H.264 | ISO/IEC 14496-10 Video",
-            StreamType::H265 => "ITU-T Rec. H.265 | ISO/IEC 23008-2",
-            StreamType::USER_PRIVATE => "ISO/IEC User Private",
-            StreamType::AC3 => "Dolby AC-3",
-            StreamType::DTS => "DTS",
-            StreamType::TRUEHD => "Dolby TrueHD",
-            StreamType::DOLBY_DIGITAL_PLUS => "Dolby Digital Plus",
-            _ => return write!(f, "未定義（0x{:02X}）", self.0),
-        };
-        f.write_str(s)
-    }
+/// 偏波。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Polarization {
+    /// 水平。
+    LinearHorizontal,
+    /// 垂直。
+    LinearVertical,
+    /// 左旋。
+    CircularLeft,
+    /// 右旋。
+    CircularRight,
 }
