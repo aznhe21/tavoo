@@ -9,7 +9,6 @@ pub mod packet;
 pub mod pid;
 pub mod psi;
 pub mod time;
-pub mod types;
 mod utils;
 
 pub use packet::Packet;

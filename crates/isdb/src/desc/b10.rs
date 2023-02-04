@@ -1,183 +1,99 @@
-//! ARIB STD-B10やARIB STD-B21で規定される記述子とその関連。
-
-use std::fmt;
+//! ARIB STD-B10で規定される記述子と関連する型の定義。
 
 use crate::pid::Pid;
 use crate::time::{DateTime, MjdDate};
-use crate::types::{Polarization, ServiceType, StreamType};
 use crate::utils::{BytesExt, SliceExt};
 
-/// 記述子を表すトレイト。
-pub trait Descriptor<'a>: Sized {
-    /// この記述子のタグ。
-    const TAG: u8;
+use super::base::Descriptor;
+use super::iso::ServiceType;
 
-    /// `data`から記述子を読み取る。
-    ///
-    /// `data`には`descriptor_tag`と`descriptor_length`は含まない。
-    fn read(data: &'a [u8]) -> Option<Self>;
-}
+/// ストリーム形式種別。
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct StreamType(pub u8);
 
-/// パース前の記述子。
-pub struct RawDescriptor<'a> {
-    /// 記述子のタグ。
-    pub tag: u8,
+impl StreamType {
+    /// ISO/IEC 11172-2映像。
+    pub const MPEG1_VIDEO: StreamType = StreamType(0x01);
+    /// ITU-T勧告H.262|ISO/IEC 13818-2映像またはISO/IEC 11172-2制約パラメータ映像ストリーム。
+    pub const MPEG2_VIDEO: StreamType = StreamType(0x02);
+    /// ISO/IEC 11172-3音声。
+    pub const MPEG1_AUDIO: StreamType = StreamType(0x03);
+    /// ISO/IEC 13818-3音声。
+    pub const MPEG2_AUDIO: StreamType = StreamType(0x04);
+    /// ITU-T勧告H.222.0|ISO/IEC 13818-1プライベートセクション。
+    pub const PRIVATE_SECTIONS: StreamType = StreamType(0x05);
+    /// プライベートデータを収容したITU-T勧告H.222.0|ISO/IEC 13818-1 PESパケット。
+    pub const PRIVATE_DATA: StreamType = StreamType(0x06);
+    /// ISO/IEC 13522 MHEG。
+    pub const MHEG: StreamType = StreamType(0x07);
+    /// ITU-T勧告H.222.0|ISO/IEC 13818-1付属書A DSM-CC。
+    pub const DSM_CC: StreamType = StreamType(0x08);
+    /// ITU-T勧告H.222.1。
+    pub const ITU_T_REC_H222_1: StreamType = StreamType(0x09);
+    /// ISO/IEC 13818-6（タイプA）。
+    pub const ISO_IEC_13818_6_TYPE_A: StreamType = StreamType(0x0A);
+    /// ISO/IEC 13818-6（タイプB）。
+    pub const ISO_IEC_13818_6_TYPE_B: StreamType = StreamType(0x0B);
+    /// ISO/IEC 13818-6（タイプC）。
+    pub const ISO_IEC_13818_6_TYPE_C: StreamType = StreamType(0x0C);
+    /// ISO/IEC 13818-6（タイプD）。
+    pub const ISO_IEC_13818_6_TYPE_D: StreamType = StreamType(0x0D);
+    /// それ以外でITU-T勧告H.222.0|ISO/IEC 13818-1で規定されるデータタイプ。
+    pub const ISO_IEC_13818_1_AUXILIARY: StreamType = StreamType(0x0E);
+    /// ISO/IEC 13818-7音声（ADTSトランスポート構造）。
+    pub const AAC: StreamType = StreamType(0x0F);
+    /// ISO/IEC 14496-2映像。
+    pub const MPEG4_VISUAL: StreamType = StreamType(0x10);
+    /// ISO/IEC 14496-3音声（ISO/IEC 14496-3 / AMD 1で規定されるLATMトランスポート構造）。
+    pub const MPEG4_AUDIO: StreamType = StreamType(0x11);
+    /// PESパケットで伝送されるISO/IEC 14496-1 SLパケット化ストリームまたは
+    /// フレックスマックスストリーム。
+    pub const ISO_IEC_14496_1_IN_PES: StreamType = StreamType(0x12);
+    /// ISO/IEC 14496セクションで伝送されるISO/IEC 14496-1 SLパケット化ストリームまたは
+    /// フレックスマックスストリーム。
+    pub const ISO_IEC_14496_1_IN_SECTIONS: StreamType = StreamType(0x13);
+    /// ISO/IEC 13818-6同期ダウンロードプロトコル。
+    pub const ISO_IEC_13818_6_DOWNLOAD: StreamType = StreamType(0x14);
+    /// PESパケットで伝送されるメタデータ。
+    pub const METADATA_IN_PES: StreamType = StreamType(0x15);
+    /// メタデータセクションで伝送されるメタデータ。
+    pub const METADATA_IN_SECTIONS: StreamType = StreamType(0x16);
+    /// ISO/IEC 13818-6データカルーセルで伝送されるメタデータ。
+    pub const METADATA_IN_DATA_CAROUSEL: StreamType = StreamType(0x17);
+    /// ISO/IEC 13818-6オブジェクトカルーセルで伝送されるメタデータ。
+    pub const METADATA_IN_OBJECT_CAROUSEL: StreamType = StreamType(0x18);
+    /// ISO/IEC 13818-6同期ダウンロードプロトコルで伝送されるメタデータ。
+    pub const METADATA_IN_DOWNLOAD_PROTOCOL: StreamType = StreamType(0x19);
+    /// IPMPストリーム（ISO/IEC 13818-11で規定されるMPEG-2 IPMP）。
+    pub const IPMP: StreamType = StreamType(0x1A);
+    /// ITU-T勧告H.264|ISO/IEC 14496-10映像で規定されるAVC映像ストリーム。
+    pub const H264: StreamType = StreamType(0x1B);
+    /// HEVC映像ストリームまたはHEVC時間方向映像サブビットストリーム。
+    pub const H265: StreamType = StreamType(0x24);
+    /// ISO/IEC User Private
+    pub const USER_PRIVATE: StreamType = StreamType(0x80);
+    /// Dolby AC-3
+    pub const AC3: StreamType = StreamType(0x81);
+    /// DTS
+    pub const DTS: StreamType = StreamType(0x82);
+    /// Dolby TrueHD
+    pub const TRUEHD: StreamType = StreamType(0x83);
+    /// Dolby Digital Plus
+    pub const DOLBY_DIGITAL_PLUS: StreamType = StreamType(0x87);
 
-    /// 記述子の内容。
-    pub data: &'a [u8],
-}
+    /// 未初期化
+    pub const UNINITIALIZED: StreamType = StreamType(0x00);
+    /// 無効
+    pub const INVALID: StreamType = StreamType(0xFF);
 
-impl<'a> fmt::Debug for RawDescriptor<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        struct PrintBytes<'a>(&'a [u8]);
-        impl<'a> fmt::Debug for PrintBytes<'a> {
-            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                write!(f, "{} bytes", self.0.len())
-            }
-        }
+    /// 字幕。
+    pub const CAPTION: StreamType = Self::PRIVATE_DATA;
+    /// データ放送。
+    pub const DATA_CARROUSEL: StreamType = Self::ISO_IEC_13818_6_TYPE_D;
 
-        f.debug_struct("RawDescriptor")
-            .field("tag", &crate::utils::UpperHex(self.tag))
-            .field("data", &PrintBytes(self.data))
-            .finish()
-    }
-}
-
-/// 複数の記述子からなる記述子群。
-#[derive(Clone)]
-pub struct DescriptorBlock<'a>(&'a [u8]);
-
-impl<'a> DescriptorBlock<'a> {
-    /// `data`から`length`バイト分の記述子群を読み取り後続データと共に返す。
-    ///
-    /// 記述子の内容はパースせず、`get`メソッドで初めてパースする。
-    ///
-    /// データ長が不足している場合は`None`を返す。
-    // `length`が`u16`なのは規格上`u16`以上の長さになることがなく、
-    // 呼び出し側でのキャストが無意味であるため。
-    pub fn read_with_len(data: &'a [u8], length: u16) -> Option<(DescriptorBlock<'a>, &'a [u8])> {
-        let (block, rem) = data.split_at_checked(length as usize)?;
-        Some((DescriptorBlock(block), rem))
-    }
-
-    /// `data`から記述子群を読み取り後続データと共に返す。
-    ///
-    /// 記述子の内容はパースせず、`get`メソッドで初めてパースする。
-    ///
-    /// データ長が不足している場合は`None`を返す。
-    #[inline]
-    pub fn read(data: &'a [u8]) -> Option<(DescriptorBlock<'a>, &'a [u8])> {
-        if data.len() < 2 {
-            return None;
-        }
-
-        let length = data[0..=1].read_be_16() & 0b0000_1111_1111_1111;
-        DescriptorBlock::read_with_len(&data[2..], length)
-    }
-
-    /// 内包する記述子群のイテレーターを返す。
-    #[inline]
-    pub fn iter(&self) -> DescriptorIter<'a> {
-        DescriptorIter(self.0)
-    }
-
-    /// 内包する記述子群から`T`のタグと一致する記述子を読み取って返す。
-    ///
-    /// `T`のタグと一致する記述子がない場合は`None`を返す。
-    pub fn get<T: Descriptor<'a>>(&self) -> Option<T> {
-        self.iter()
-            .find(|d| d.tag == T::TAG)
-            .and_then(|d| T::read(d.data))
-    }
-
-    /// 内包する記述子群から`T`のタグと一致する記述子をすべて読み取って返す。
-    pub fn get_all<T: Descriptor<'a>>(&self) -> impl Iterator<Item = T> + 'a {
-        self.iter().filter_map(|d| {
-            if d.tag == T::TAG {
-                T::read(d.data)
-            } else {
-                None
-            }
-        })
-    }
-}
-
-impl<'a> fmt::Debug for DescriptorBlock<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.write_str("DescriptorBlock(")?;
-        f.debug_list().entries(self).finish()?;
-        f.write_str(")")
-    }
-}
-
-impl<'a> IntoIterator for &DescriptorBlock<'a> {
-    type Item = RawDescriptor<'a>;
-    type IntoIter = DescriptorIter<'a>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter()
-    }
-}
-
-/// [`DescriptorBlock`]のイテレーター。
-#[derive(Clone)]
-pub struct DescriptorIter<'a>(&'a [u8]);
-
-impl<'a> Iterator for DescriptorIter<'a> {
-    type Item = RawDescriptor<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let [tag, length, ref rem @ ..] = *self.0 else {
-            return None;
-        };
-        let Some((data, tail)) = rem.split_at_checked(length as usize) else {
-            return None;
-        };
-
-        self.0 = tail;
-        Some(RawDescriptor { tag, data })
-    }
-}
-
-impl<'a> std::iter::FusedIterator for DescriptorIter<'a> {}
-
-impl<'a> fmt::Debug for DescriptorIter<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("DescriptorIter(")?;
-        f.debug_list().entries(self.clone()).finish()?;
-        f.write_str(")")
-    }
-}
-
-/// 限定受信方式記述子。
-#[derive(Debug)]
-pub struct ConditionalAccessDescriptor<'a> {
-    /// 限定受信方式識別。
-    pub ca_system_id: u16,
-    /// 限定受信PID。
-    pub ca_pid: Pid,
-    /// プライベートデータ。
-    pub private_data: &'a [u8],
-}
-
-impl<'a> Descriptor<'a> for ConditionalAccessDescriptor<'a> {
-    const TAG: u8 = 0x09;
-
-    fn read(data: &'a [u8]) -> Option<ConditionalAccessDescriptor<'a>> {
-        if data.len() < 4 {
-            log::debug!("invalid ConditionalAccessDescriptor");
-            return None;
-        }
-
-        let ca_system_id = data[0..=1].read_be_16();
-        let ca_pid = Pid::read(&data[2..=3]);
-        let private_data = &data[4..];
-
-        Some(ConditionalAccessDescriptor {
-            ca_system_id,
-            ca_pid,
-            private_data,
-        })
+    /// 定義されているストリーム種別かどうかを返す。
+    pub fn is_known(&self) -> bool {
+        matches!(self.0, 0x01..=0x1B | 0x24 | 0x80..=0x83 | 0x87)
     }
 }
 
@@ -194,96 +110,6 @@ impl<'a> Descriptor<'a> for NetworkNameDescriptor<'a> {
 
     fn read(data: &'a [u8]) -> Option<NetworkNameDescriptor<'a>> {
         Some(NetworkNameDescriptor { network_name: data })
-    }
-}
-
-/// サービスリスト記述子におけるサービス。
-#[derive(Debug)]
-pub struct ServiceEntry {
-    /// サービス識別。
-    pub service_id: u16,
-    /// サービス形式種別。
-    pub service_type: ServiceType,
-}
-
-/// サービスリスト記述子。
-#[derive(Debug)]
-pub struct ServiceListDescriptor {
-    /// サービスを格納する配列。
-    pub services: Vec<ServiceEntry>,
-}
-
-impl Descriptor<'_> for ServiceListDescriptor {
-    const TAG: u8 = 0x41;
-
-    fn read(data: &[u8]) -> Option<ServiceListDescriptor> {
-        let services = data
-            .chunks_exact(3)
-            .map(|chunk| {
-                let service_id = chunk[0..=1].read_be_16();
-                let service_type = ServiceType(chunk[2]);
-                ServiceEntry {
-                    service_id,
-                    service_type,
-                }
-            })
-            .collect();
-
-        Some(ServiceListDescriptor { services })
-    }
-}
-
-/// 衛星分配システム記述子。
-#[derive(Debug)]
-pub struct SatelliteDeliverySystemDescriptor {
-    /// 周波数（単位は10kHz）。
-    pub frequency: u32,
-    /// 軌道。
-    pub orbital_position: u16,
-    /// 東経西経フラグ。
-    pub west_east_flag: bool,
-    /// 偏波。
-    pub polarization: Polarization,
-    /// 変調（5ビット）。
-    pub modulation: u8,
-    /// シンボルレート。
-    pub symbol_rate: u32,
-    /// FEC（内符号、4ビット）。
-    pub fec_inner: u8,
-}
-
-impl Descriptor<'_> for SatelliteDeliverySystemDescriptor {
-    const TAG: u8 = 0x43;
-
-    fn read(data: &[u8]) -> Option<SatelliteDeliverySystemDescriptor> {
-        if data.len() != 11 {
-            log::debug!("invalid SatelliteDeliverySystemDescriptor");
-            return None;
-        }
-
-        let frequency = data[0..=3].read_bcd(8);
-        let orbital_position = data[4..=5].read_bcd(4);
-        let west_east_flag = data[6] & 0b10000000 != 0;
-        let polarization = match (data[6] & 0b01100000) >> 5 {
-            0b00 => Polarization::LinearHorizontal,
-            0b01 => Polarization::LinearVertical,
-            0b10 => Polarization::CircularLeft,
-            0b11 => Polarization::CircularRight,
-            _ => unreachable!(),
-        };
-        let modulation = data[6] & 0b00011111;
-        let symbol_rate = data[7..=10].read_bcd(7);
-        let fec_inner = data[10] & 0b00001111;
-
-        Some(SatelliteDeliverySystemDescriptor {
-            frequency,
-            orbital_position,
-            west_east_flag,
-            polarization,
-            modulation,
-            symbol_rate,
-            fec_inner,
-        })
     }
 }
 
@@ -1414,386 +1240,6 @@ impl Descriptor<'_> for VideoDecodeControlDescriptor {
     }
 }
 
-/// SubDescriptor
-#[derive(Debug)]
-pub struct SubDescriptor<'a> {
-    /// SubDescriptorType
-    pub sub_descriptor_type: u8,
-    /// additionalInformation
-    pub additional_information: &'a [u8],
-}
-
-/// [`DownloadContentDescriptor`]における`compatibility_descriptors`。
-#[derive(Debug)]
-pub struct CompatibilityDescriptor<'a> {
-    /// descriptorType
-    pub descriptor_type: u8,
-    /// `specifierType`
-    pub specifier_type: u8,
-    /// `specifierData()`
-    pub specifier_data: [u8; 3],
-    /// `model`
-    pub model: u16,
-    /// `version`
-    pub version: u16,
-    /// `subDescriptor()`の内容。
-    pub sub_descriptors: Vec<SubDescriptor<'a>>,
-}
-
-/// ダウンロードコンテンツ記述子におけるモジュール。
-#[derive(Debug)]
-pub struct ModuleInfo<'a> {
-    /// モジュール識別。
-    pub module_id: u16,
-    /// 当該モジュールのバイト長。
-    pub module_size: u32,
-    /// DIIにて記述される記述子。
-    pub module_info: &'a [u8],
-}
-
-/// ダウンロードコンテンツ記述子におけるサービス記述。
-#[derive(Debug)]
-pub struct ServiceDescription<'a> {
-    /// ISO 639-2で規定される3文字の言語コード。
-    pub lang_code: [u8; 3],
-    /// サービス記述。
-    // TODO: 文字符号？
-    pub text: &'a [u8],
-}
-
-/// ダウンロードコンテンツ記述子。
-#[derive(Debug)]
-pub struct DownloadContentDescriptor<'a> {
-    /// 再起動要否フラグ。
-    pub reboot: bool,
-    /// 既存モジュール追加フラグ。
-    pub add_on: bool,
-    /// コンポーネントサイズ。
-    pub component_size: u32,
-    /// ダウンロード識別。
-    pub download_id: u32,
-    /// DIIタイムアウト値（単位はミリ秒）。
-    pub time_out_value_dii: u32,
-    /// リークレート（単位は50bytes/s）。
-    pub leak_rate: u32,
-    /// コンポーネントタグ
-    pub component_tag: u8,
-    /// compatibilityDescriptor,
-    pub compatibility_descriptors: Option<Vec<CompatibilityDescriptor<'a>>>,
-    /// モジュールごとの情報。
-    pub modules: Option<Vec<ModuleInfo<'a>>>,
-    /// プライベートデータ。
-    pub private_data: &'a [u8],
-    /// サービス記述。
-    pub service_descs: Option<ServiceDescription<'a>>,
-}
-
-impl<'a> Descriptor<'a> for DownloadContentDescriptor<'a> {
-    const TAG: u8 = 0xC9;
-
-    fn read(data: &'a [u8]) -> Option<DownloadContentDescriptor<'a>> {
-        if data.len() < 17 {
-            log::debug!("invalid DownloadContentDescriptor");
-            return None;
-        }
-
-        let reboot = data[0] & 0b10000000 != 0;
-        let add_on = data[0] & 0b01000000 != 0;
-        let compatibility_flag = data[0] & 0b00100000 != 0;
-        let module_info_flag = data[0] & 0b00010000 != 0;
-        let text_info_flag = data[0] & 0b00001000 != 0;
-        let component_size = data[1..=4].read_be_32();
-        let download_id = data[5..=8].read_be_32();
-        let time_out_value_dii = data[9..=12].read_be_32();
-        let leak_rate = data[13..=16].read_be_32() >> 10; // 22bit
-        let component_tag = data[16];
-
-        let mut data = &data[17..];
-        let compatibility_descriptors = if compatibility_flag {
-            if data.len() < 4 {
-                log::debug!("invalid DownloadContentDescriptor::compatibility_flag");
-                return None;
-            }
-
-            let compatibility_descriptor_length = data[0..=1].read_be_16();
-            let descriptor_count = data[2..=3].read_be_16();
-            data = &data[4..];
-            if data.len() < compatibility_descriptor_length as usize {
-                log::debug!("invalid DownloadContentDescriptor::compatibility_descriptor_length");
-                return None;
-            }
-
-            let mut descriptors = Vec::with_capacity(descriptor_count as usize);
-            for _ in 0..descriptor_count {
-                if data.len() < 11 {
-                    log::debug!("invalid CompatibilityDescriptor");
-                    return None;
-                }
-
-                let descriptor_type = data[0];
-                // let descriptor_length = data[1];
-                let specifier_type = data[2];
-                let specifier_data = data[3..=5].try_into().unwrap();
-                let model = data[6..=7].read_be_16();
-                let version = data[8..=9].read_be_16();
-                let sub_descriptor_count = data[10];
-                data = &data[11..];
-
-                let mut sub_descriptors = Vec::with_capacity(sub_descriptor_count as usize);
-                for _ in 0..sub_descriptor_count {
-                    let [sub_descriptor_type, sub_descriptor_length, ref rem @ ..] = *data else {
-                        log::debug!("invalid SubDescriptor");
-                        return None;
-                    };
-                    let Some((additional_information, rem)) = rem
-                        .split_at_checked(sub_descriptor_length as usize)
-                    else {
-                        log::debug!("invalid SubDescriptor::additional_information");
-                        return None;
-                    };
-                    data = rem;
-
-                    sub_descriptors.push(SubDescriptor {
-                        sub_descriptor_type,
-                        additional_information,
-                    });
-                }
-
-                descriptors.push(CompatibilityDescriptor {
-                    descriptor_type,
-                    specifier_type,
-                    specifier_data,
-                    model,
-                    version,
-                    sub_descriptors,
-                });
-            }
-
-            Some(descriptors)
-        } else {
-            None
-        };
-
-        let modules = if module_info_flag {
-            if data.len() < 2 {
-                log::debug!("invalid DownloadContentDescriptor::num_of_modules");
-                return None;
-            }
-
-            let num_of_modules = data[0..=1].read_be_16();
-            data = &data[2..];
-
-            let mut modules = Vec::with_capacity(num_of_modules as usize);
-            for _ in 0..num_of_modules {
-                if data.len() < 7 {
-                    log::debug!("invalid DownloadContentDescriptor::modules");
-                    return None;
-                }
-
-                let module_id = data[0..=1].read_be_16();
-                let module_size = data[2..=5].read_be_32();
-                let module_info_length = data[6];
-                let Some((module_info, rem)) = data[7..]
-                    .split_at_checked(module_info_length as usize)
-                else {
-                    log::debug!("invalid DownloadContentDescriptor::module_info");
-                    return None;
-                };
-                data = rem;
-
-                modules.push(ModuleInfo {
-                    module_id,
-                    module_size,
-                    module_info,
-                });
-            }
-
-            Some(modules)
-        } else {
-            None
-        };
-
-        let [private_data_length, ref data @ ..] = *data else {
-            log::debug!("invalid DownloadContentDescriptor::private_data_length");
-            return None;
-        };
-        let Some((private_data, data)) = data.split_at_checked(private_data_length as usize) else {
-            log::debug!("invalid DownloadContentDescriptor::private_data");
-            return None;
-        };
-
-        let service_descs = if text_info_flag {
-            let Some((lang_code, rem)) = data.split_at_checked(3) else {
-                log::debug!("invalid DownloadContentDescriptor::lang_code");
-                return None;
-            };
-            let lang_code = lang_code.try_into().unwrap();
-
-            let [text_length, ref rem @ ..] = *rem else {
-                log::debug!("invalid DownloadContentDescriptor::text_length");
-                return None;
-            };
-            let Some((text, _rem)) = rem.split_at_checked(text_length as usize) else {
-                log::debug!("invalid DownloadContentDescriptor::text");
-                return None;
-            };
-            // data = _rem;
-
-            Some(ServiceDescription { lang_code, text })
-        } else {
-            None
-        };
-
-        Some(DownloadContentDescriptor {
-            reboot,
-            add_on,
-            component_size,
-            download_id,
-            time_out_value_dii,
-            leak_rate,
-            component_tag,
-            compatibility_descriptors,
-            modules,
-            private_data,
-            service_descs,
-        })
-    }
-}
-
-/// CA_EMM_TS記述子。
-#[derive(Debug)]
-pub struct CaEmmTsDescriptor {
-    /// 限定受信方式識別。
-    pub ca_system_id: u16,
-    /// トランスポートストリーム識別。
-    pub transport_stream_id: u16,
-    /// オリジナルネットワーク識別。
-    pub original_network_id: u16,
-    /// 電源保持時間（単位は分）。
-    pub power_supply_period: u8,
-}
-
-impl Descriptor<'_> for CaEmmTsDescriptor {
-    const TAG: u8 = 0xCA;
-
-    fn read(data: &[u8]) -> Option<CaEmmTsDescriptor> {
-        if data.len() != 7 {
-            log::debug!("invalid CaEmmTsDescriptor");
-            return None;
-        }
-
-        let ca_system_id = data[0..=1].read_be_16();
-        let transport_stream_id = data[2..=3].read_be_16();
-        let original_network_id = data[4..=5].read_be_16();
-        let power_supply_period = data[6];
-
-        Some(CaEmmTsDescriptor {
-            ca_system_id,
-            transport_stream_id,
-            original_network_id,
-            power_supply_period,
-        })
-    }
-}
-
-/// CA契約情報記述子。
-#[derive(Debug)]
-pub struct CaContractInfoDescriptor<'a> {
-    /// 限定受信方式識別。
-    pub ca_system_id: u16,
-    /// 課金単位／非課金単位の識別（4ビット）。
-    pub ca_unit_id: u8,
-    /// コンポーネントタグ。
-    pub component_tag: &'a [u8],
-    /// 契約確認情報。
-    pub contract_verification_info: &'a [u8],
-    /// 料金名称。
-    // TODO: 文字符号？
-    pub fee_name: &'a [u8],
-}
-
-impl<'a> Descriptor<'a> for CaContractInfoDescriptor<'a> {
-    const TAG: u8 = 0xCB;
-
-    fn read(data: &'a [u8]) -> Option<CaContractInfoDescriptor<'a>> {
-        if data.len() < 3 {
-            log::debug!("invalid CaContractInfoDescriptor");
-            return None;
-        }
-
-        let ca_system_id = data[0..=1].read_be_16();
-        let ca_unit_id = (data[2] & 0b11110000) >> 4;
-        let num_of_component = data[2] & 0b00001111;
-        let Some((component_tag, data)) = data[3..].split_at_checked(num_of_component as usize)
-        else {
-            log::debug!("invalid CaContractInfoDescriptor::component_tag");
-            return None;
-        };
-        let [contract_verification_info_length, ref data @ ..] = *data else {
-            log::debug!("invalid CaContractInfoDescriptor::contract_verification_info_length");
-            return None;
-        };
-        let Some((contract_verification_info, data)) = data
-            .split_at_checked(contract_verification_info_length as usize)
-        else {
-            log::debug!("invalid CaContractInfoDescriptor::contract_verification_info");
-            return None;
-        };
-        let [fee_name_length, ref data @ ..] = *data else {
-            log::debug!("invalid CaContractInfoDescriptor::fee_name_length");
-            return None;
-        };
-        let Some((fee_name, _)) = data.split_at_checked(fee_name_length as usize) else {
-            log::debug!("invalid CaContractInfoDescriptor::fee_name");
-            return None;
-        };
-
-        Some(CaContractInfoDescriptor {
-            ca_system_id,
-            ca_unit_id,
-            component_tag,
-            contract_verification_info,
-            fee_name,
-        })
-    }
-}
-
-/// CAサービス記述子。
-#[derive(Debug)]
-pub struct CaServiceDescriptor {
-    /// 限定受信方式識別。
-    pub ca_system_id: u16,
-    /// 事業体識別。
-    pub ca_broadcaster_group_id: u8,
-    /// 猶予期間。
-    pub message_control: u8,
-    /// サービス識別。
-    pub service_ids: Vec<u16>,
-}
-
-impl Descriptor<'_> for CaServiceDescriptor {
-    const TAG: u8 = 0xCC;
-
-    fn read(data: &[u8]) -> Option<CaServiceDescriptor> {
-        if data.len() < 4 {
-            log::debug!("invalid CaServiceDescriptor");
-            return None;
-        }
-
-        let ca_system_id = data[0..=1].read_be_16();
-        let ca_broadcaster_group_id = data[2];
-        let message_control = data[3];
-        let service_ids = data[4..].chunks_exact(2).map(<[u8]>::read_be_16).collect();
-
-        Some(CaServiceDescriptor {
-            ca_system_id,
-            ca_broadcaster_group_id,
-            message_control,
-            service_ids,
-        })
-    }
-}
-
 /// TS情報記述子における伝送種別。
 #[derive(Debug)]
 pub struct TsInformationTransmissionType {
@@ -2532,322 +1978,6 @@ impl Descriptor<'_> for LdtLinkageDescriptor {
             transport_stream_id,
             original_network_id,
             descriptors,
-        })
-    }
-}
-
-/// アクセス制御記述子。
-#[derive(Debug)]
-pub struct AccessControlDescriptor<'a> {
-    /// 限定受信方式識別。
-    pub ca_system_id: u16,
-    /// 伝送情報。
-    pub transmission_type: u8,
-    /// PID。
-    pub pid: Pid,
-    /// プライベートデータ。
-    pub private_data: &'a [u8],
-}
-
-impl<'a> Descriptor<'a> for AccessControlDescriptor<'a> {
-    const TAG: u8 = 0xF6;
-
-    fn read(data: &'a [u8]) -> Option<AccessControlDescriptor<'a>> {
-        if data.len() < 4 {
-            log::debug!("invalid AccessControlDescriptor");
-            return None;
-        }
-
-        let ca_system_id = data[0..=1].read_be_16();
-        let transmission_type = (data[2] & 0b11100000) >> 5;
-        let pid = Pid::read(&data[2..=3]);
-        let private_data = &data[4..];
-
-        Some(AccessControlDescriptor {
-            ca_system_id,
-            transmission_type,
-            pid,
-            private_data,
-        })
-    }
-}
-
-/// 地上分配システム記述子におけるガードインターバル。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum GuardInterval {
-    /// 1/32
-    Guard1_32,
-    /// 1/16
-    Guard1_16,
-    /// 1/8
-    Guard1_8,
-    /// 1/4
-    Guard1_4,
-}
-
-/// 地上分配システム記述子におけるモード情報。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TransmissionMode {
-    /// Mode 1。
-    Mode1,
-    /// Mode 2。
-    Mode2,
-    /// Mode 3。
-    Mode3,
-    /// 未定義。
-    Undefined,
-}
-
-/// 地上分配システム記述子。
-#[derive(Debug)]
-pub struct TerrestrialDeliverySystemDescriptor {
-    /// エリアコード。
-    pub area_code: u16,
-    /// ガードインターバル。
-    pub guard_interval: GuardInterval,
-    /// モード情報。
-    pub transmission_mode: TransmissionMode,
-    /// 周波数を格納する配列。単位は1/7MHz。
-    pub frequencies: Vec<u16>,
-}
-
-impl Descriptor<'_> for TerrestrialDeliverySystemDescriptor {
-    const TAG: u8 = 0xFA;
-
-    fn read(data: &[u8]) -> Option<TerrestrialDeliverySystemDescriptor> {
-        if data.len() < 2 {
-            log::debug!("invalid TerrestrialDeliverySystemDescriptor");
-            return None;
-        }
-
-        let area_code = data[0..=1].read_be_16() >> 4; // 12bit
-        let guard_interval = match (data[1] & 0b00001100) >> 2 {
-            0b00 => GuardInterval::Guard1_32,
-            0b01 => GuardInterval::Guard1_16,
-            0b10 => GuardInterval::Guard1_8,
-            0b11 => GuardInterval::Guard1_4,
-            _ => unreachable!(),
-        };
-        let transmission_mode = match data[1] & 0b00000011 {
-            0b00 => TransmissionMode::Mode1,
-            0b01 => TransmissionMode::Mode2,
-            0b10 => TransmissionMode::Mode3,
-            0b11 => TransmissionMode::Undefined,
-            _ => unreachable!(),
-        };
-        let frequencies = data[2..].chunks_exact(2).map(<[u8]>::read_be_16).collect();
-
-        Some(TerrestrialDeliverySystemDescriptor {
-            area_code,
-            guard_interval,
-            transmission_mode,
-            frequencies,
-        })
-    }
-}
-
-/// 部分受信記述子。
-#[derive(Debug)]
-pub struct PartialReceptionDescriptor {
-    /// サービス識別。
-    pub service_ids: Vec<u16>,
-}
-
-impl Descriptor<'_> for PartialReceptionDescriptor {
-    const TAG: u8 = 0xFB;
-
-    fn read(data: &[u8]) -> Option<PartialReceptionDescriptor> {
-        let service_ids = data.chunks_exact(2).map(<[u8]>::read_be_16).collect();
-
-        Some(PartialReceptionDescriptor { service_ids })
-    }
-}
-
-/// 緊急情報記述子における信号種別。
-#[derive(Debug)]
-pub enum SignalType {
-    /// 第1種開始信号。
-    First,
-    /// 第2種開始信号。
-    Second,
-}
-
-/// 緊急情報記述子における緊急情報。
-#[derive(Debug)]
-pub struct Emergency {
-    /// サービス識別。
-    pub service_id: u16,
-    /// 開始／終了フラグ。
-    pub start_end_flag: bool,
-    /// 信号種別。
-    pub signal_level: SignalType,
-    /// 地域符号を格納する配列（各12ビット）。
-    pub area_code: Vec<u16>,
-}
-
-/// 緊急情報記述子。
-#[derive(Debug)]
-pub struct EmergencyInformationDescriptor {
-    /// 緊急情報を格納する配列。
-    pub emergencies: Vec<Emergency>,
-}
-
-impl Descriptor<'_> for EmergencyInformationDescriptor {
-    const TAG: u8 = 0xFC;
-
-    fn read(mut data: &[u8]) -> Option<EmergencyInformationDescriptor> {
-        let mut emergencies = Vec::new();
-
-        while !data.is_empty() {
-            if data.len() < 4 {
-                log::debug!("invalid EmergencyInformationDescriptor");
-                return None;
-            }
-
-            let service_id = data[0..=1].read_be_16();
-            let start_end_flag = data[2] & 0b10000000 != 0;
-            let signal_level = match (data[2] & 0b01000000) >> 6 {
-                0 => SignalType::First,
-                1 => SignalType::Second,
-                _ => unreachable!(),
-            };
-            let area_code_length = data[3];
-            let Some((area_code, rem)) = data[4..].split_at_checked(2 * area_code_length as usize)
-            else {
-                log::debug!("invalid EmergencyInformationDescriptor::area_code");
-                return None;
-            };
-            let area_code = area_code
-                .chunks_exact(2)
-                .map(<[u8]>::read_be_16)
-                .map(|w| (w & 0b1111_1111_1111_0000) >> 4)
-                .collect();
-            data = rem;
-
-            emergencies.push(Emergency {
-                service_id,
-                start_end_flag,
-                signal_level,
-                area_code,
-            });
-        }
-
-        Some(EmergencyInformationDescriptor { emergencies })
-    }
-}
-
-/// データ符号化記述子。
-#[derive(Debug)]
-pub struct DataComponentDescriptor<'a> {
-    /// データ符号化方式識別。
-    pub data_component_id: u16,
-    /// 付加識別情報。
-    pub additional_data_component_info: &'a [u8],
-}
-
-impl<'a> Descriptor<'a> for DataComponentDescriptor<'a> {
-    const TAG: u8 = 0xFD;
-
-    fn read(data: &'a [u8]) -> Option<DataComponentDescriptor<'a>> {
-        if data.len() < 2 {
-            log::debug!("invalid DataComponentDescriptor");
-            return None;
-        }
-
-        let data_component_id = data[0..=1].read_be_16();
-        let additional_data_component_info = &data[2..];
-
-        Some(DataComponentDescriptor {
-            data_component_id,
-            additional_data_component_info,
-        })
-    }
-}
-
-/// 放送／非放送種別。
-#[derive(Debug)]
-pub enum BroadcastingType {
-    /// 放送。
-    Broadcasting,
-    /// 非放送。
-    Nonbroadcasting,
-    /// 未定義。
-    Undefined,
-}
-
-/// 放送の標準方式種別（6ビット）。
-// 未定義の値も扱うため列挙型ではなく構造体にする。
-#[derive(Debug)]
-pub struct BroadcastingSystem(pub u8);
-
-impl BroadcastingSystem {
-    /// 12.2～12.75GHzの周波数帯において27MHz帯域幅を使用する狭帯域伝送方式による
-    /// 衛星デジタル放送として規定する標準方式。
-    pub const NARROWBAND_27MHZ: BroadcastingSystem = BroadcastingSystem(0b000001);
-    /// 11.7～12.2GHzの周波数帯において34.5MHz帯域幅を使用する狭帯域伝送方式による
-    /// 衛星デジタル放送として規定する標準方式。
-    pub const NARROWBAND_34_5MHZ_LOW: BroadcastingSystem = BroadcastingSystem(0b000010);
-    /// 地上デジタルテレビジョン放送として規定する標準方式。
-    pub const TERRESTRIAL_TELEVISION: BroadcastingSystem = BroadcastingSystem(0b000011);
-    /// 12.2～12.75GHzの周波数帯において34.5MHz帯域幅を使用する狭帯域伝送方式による
-    /// 衛星デジタル放送として規定する標準方式。
-    pub const NARROWBAND_34_5MHZ_HIGH: BroadcastingSystem = BroadcastingSystem(0b000100);
-    /// 地上デジタル音声放送として規定する標準方式。
-    pub const TERRESTRIAL_SOUND: BroadcastingSystem = BroadcastingSystem(0b000101);
-    /// 12.2～12.75GHzの周波数帯において27MHz帯域幅を使用する高度狭帯域伝送方式による
-    /// 衛星デジタル放送として規定する標準方式。
-    pub const ADVANCED_NARROWBAND_27MHZ: BroadcastingSystem = BroadcastingSystem(0b000111);
-    /// 11.7～12.2GHzの周波数帯において34.5MHz帯域幅を使用する高度広帯域伝送による
-    /// 衛星デジタル放送として規定する標準方式。
-    pub const ADVANCED_BROADBAND_LOW: BroadcastingSystem = BroadcastingSystem(0b001000);
-    /// 12.2～12.75GHzの周波数帯において34.5MHz帯域幅を使用する高度広帯域伝送による
-    /// 衛星デジタル放送として規定する標準方式。
-    pub const ADVANCED_BROADBAND_HIGH: BroadcastingSystem = BroadcastingSystem(0b001001);
-    /// 207.5MHz～222MHzの周波数帯の電波を使用するセグメント連結伝送方式による
-    /// テレビジョン放送及びマルチメディア放送として規定する標準方式。
-    pub const VHF: BroadcastingSystem = BroadcastingSystem(0b001010);
-    /// 99MHz～108MHzの周波数の電波を使用するセグメント連結伝送方式による
-    /// マルチメディア放送として規定する標準方式。
-    pub const V_LOW: BroadcastingSystem = BroadcastingSystem(0b001011);
-}
-
-/// システム管理記述子。
-#[derive(Debug)]
-pub struct SystemManagementDescriptor<'a> {
-    /// 放送／非放送種別。
-    pub broadcasting_flag: BroadcastingType,
-    /// 放送の標準方式種別。
-    pub broadcasting_identifier: BroadcastingSystem,
-    /// 詳細の識別。
-    pub additional_broadcasting_identification: u8,
-    /// 付加識別情報。
-    pub additional_identification_info: &'a [u8],
-}
-
-impl<'a> Descriptor<'a> for SystemManagementDescriptor<'a> {
-    const TAG: u8 = 0xFE;
-
-    fn read(data: &'a [u8]) -> Option<SystemManagementDescriptor<'a>> {
-        if data.len() < 2 {
-            log::debug!("invalid SystemManagementDescriptor");
-            return None;
-        }
-
-        let broadcasting_flag = match (data[0] & 0b11000000) >> 6 {
-            0b00 => BroadcastingType::Broadcasting,
-            0b01 | 0b10 => BroadcastingType::Nonbroadcasting,
-            0b11 => BroadcastingType::Undefined,
-            _ => unreachable!(),
-        };
-        let broadcasting_identifier = BroadcastingSystem(data[0] & 0b00111111);
-        let additional_broadcasting_identification = data[1];
-        let additional_identification_info = &data[2..];
-
-        Some(SystemManagementDescriptor {
-            broadcasting_flag,
-            broadcasting_identifier,
-            additional_broadcasting_identification,
-            additional_identification_info,
         })
     }
 }
