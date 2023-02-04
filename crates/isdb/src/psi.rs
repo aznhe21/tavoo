@@ -33,19 +33,19 @@ pub enum PsiError {
 /// PSIのセクション。
 #[derive(Debug)]
 pub struct PsiSection<'a> {
-    /// table id
+    /// テーブル識別。
     pub table_id: u8,
-    /// section syntax indicator
+    /// セクションシンタクス指示。
     pub section_syntax_indicator: bool,
-    /// section length (12bit)
+    /// セクション長（12ビット）。
     pub section_length: u16,
 
-    /// table syntax section
-    pub syntax_section: Option<SyntaxSection>,
+    /// セクションシンタクス。
+    pub syntax: Option<PsiSectionSyntax>,
 
-    /// table data
+    /// PSIのデータ。
     pub data: &'a [u8],
-    /// crc32
+    /// CRC。
     pub crc32: u32,
 }
 
@@ -71,7 +71,7 @@ impl<'a> PsiSection<'a> {
             return Err(PsiError::Crc32(psi.len()));
         }
 
-        let (syntax_section, data) = if section_syntax_indicator {
+        let (syntax, data) = if section_syntax_indicator {
             if psi.len() < 3 + 4 + 5 {
                 return Err(PsiError::Corrupted(psi.len()));
             }
@@ -82,7 +82,7 @@ impl<'a> PsiSection<'a> {
             let section_number = psi[6];
             let last_section_number = psi[7];
 
-            let ss = SyntaxSection {
+            let ss = PsiSectionSyntax {
                 table_id_extension,
                 version_number,
                 current_next_indicator,
@@ -105,7 +105,7 @@ impl<'a> PsiSection<'a> {
             section_syntax_indicator,
             section_length,
 
-            syntax_section,
+            syntax,
 
             data,
             crc32,
@@ -119,17 +119,17 @@ impl<'a> PsiSection<'a> {
     }
 }
 
-/// table syntax section
+/// PSIセクションのシンタクス。
 #[derive(Debug)]
-pub struct SyntaxSection {
-    /// table id extension
+pub struct PsiSectionSyntax {
+    /// テーブル識別拡張。
     pub table_id_extension: u16,
-    /// version number (5bit)
+    /// バージョン番号（5ビット）。
     pub version_number: u8,
-    /// current/next indicator
+    /// カレントネクスト指示。
     pub current_next_indicator: bool,
-    /// section number
+    /// セクション番号。
     pub section_number: u8,
-    /// last section number
+    /// 最終セクション番号。
     pub last_section_number: u8,
 }

@@ -1,6 +1,6 @@
 //! ARIB STD-B10で定義されている、定数を伴う型。
 
-/// サービスの種別。
+/// サービス形式種別。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ServiceType(pub u8);
 

@@ -1,4 +1,4 @@
-//! MPEG2-TSにおける日付時刻。
+//! ARIB STD-B10で規定される日付時刻。
 
 use std::fmt::{self, Write};
 

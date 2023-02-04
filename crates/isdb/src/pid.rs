@@ -7,60 +7,59 @@ use crate::utils::BytesExt;
 
 /// MPEG2-TSのPID（13ビット）。
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[repr(transparent)]
 pub struct Pid(u16);
 
+// 定数のほとんどはARIB STD-B10による。
 impl Pid {
     /// PIDの最大値。
     pub const MAX: u16 = 0x1FFF;
 
-    /// Program Association Table
+    /// プログラムアソシエーションテーブル（Program Association Table）。
     pub const PAT: Pid = Pid::new(0x0000);
-    /// Conditional Access Table
+    /// 限定受信テーブル（Conditional Access Table）。
     pub const CAT: Pid = Pid::new(0x0001);
-    /// Transport Stream Description Table
-    pub const TSDT: Pid = Pid::new(0x0002);
 
-    /// Network Information Table
+    /// ネットワーク情報テーブル（Network Information Table）。
     pub const NIT: Pid = Pid::new(0x0010);
-    /// Service Description Table
+    /// サービス記述テーブル（Service Description Table）。
     pub const SDT: Pid = Pid::new(0x0011);
-    /// Bouquet Association Table
+    /// ブーケアソシエーションテーブル（Bouquet Association Table）。
     pub const BAT: Pid = Pid::new(0x0011);
-    /// Event Information Table
+    /// イベント情報テーブル（Event Information Table）。
     pub const EIT: Pid = Pid::new(0x0012);
-    /// Collective term for EITs for display on fixed receiver units.
+    /// 固定受信機での表示を目的としてEITの総称。
+    // ARIB TR-B14より。
     pub const H_EIT: Pid = Self::EIT;
-    /// Running Status Table
+    /// 進行状態テーブル（Running Status Table）。
     pub const RST: Pid = Pid::new(0x0013);
-    /// Time and Date Table
+    /// 時刻日付テーブル（Time and Date Table）。
     pub const TDT: Pid = Pid::new(0x0014);
-    /// Time Offset Table
+    /// 時刻日付オフセットテーブル（Time Offset Table）。
     pub const TOT: Pid = Pid::new(0x0014);
-    /// RAR Notification Table
-    pub const RNT: Pid = Pid::new(0x0016);
 
-    /// Discontinuity Information Table
+    /// 不連続情報テーブル（Discontinuity Information Table）。
     pub const DIT: Pid = Pid::new(0x001E);
-    /// Selection Information Table
+    /// 選択情報テーブル（Selection Information Table）。
     pub const SIT: Pid = Pid::new(0x001F);
-    /// Partial Content Announcement Table
+    /// 差分配信告知テーブル（Partial Content Announcement Table）。
     pub const PCAT: Pid = Pid::new(0x0022);
-    /// Software Download Trigger Table
+    /// ソフトウェアダウンロードトリガーテーブル（Software Download Trigger Table）。
     pub const SDTT: Pid = Pid::new(0x0023);
-    /// Broadcaster Information Table
+    /// ブロードキャスタ情報テーブル（Broadcaster Information Table）。
     pub const BIT: Pid = Pid::new(0x0024);
-    /// Network Board Information Table
+    /// ネットワーク掲示板情報テーブル（Network Board Information Table）。
     pub const NBIT: Pid = Pid::new(0x0025);
-    /// Linked Description Table
+    /// リンク記述テーブル（Linked Description Table）。
     pub const LDT: Pid = Pid::new(0x0025);
-    /// Collective term for EITs for display on mobile receiver units
+    /// 3セグメント受信機での表示を目的としたEITの総称。
+    // ARIB TR-B14より。
     pub const M_EIT: Pid = Pid::new(0x0026);
-    /// Collective term for EITs for display on partial receiver units.
+    /// 1セグメント受信機での表示を目的としたEITの総称。
+    // ARIB TR-B14より。
     pub const L_EIT: Pid = Pid::new(0x0027);
-    /// Common Data Table
+    /// 全受信機共通データテーブル（Common Data Table）。
     pub const CDT: Pid = Pid::new(0x0029);
-    /// Null packet
+    /// ヌルパケット（Null packet）。
     pub const NULL: Pid = Pid::new(0x1FFF);
 
     /// `Pid`を生成する。
@@ -145,7 +144,6 @@ pid_delegate_fmt!(
 ///
 /// データはヒープに確保される。
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-#[repr(transparent)]
 pub struct PidTable<V>(Box<[V; Pid::MAX as usize + 1]>);
 
 impl<V> PidTable<V> {
@@ -300,8 +298,8 @@ mod tests {
         assert!(Pid::new(0x0000) < Pid::new(0x0001));
         assert!(Pid::new(0x0001) > Pid::new(0x0000));
         assert_eq!(
-            [Pid::PAT, Pid::CAT, Pid::TSDT].into_iter().max(),
-            Some(Pid::TSDT),
+            [Pid::PAT, Pid::CAT, Pid::NIT].into_iter().max(),
+            Some(Pid::NIT),
         );
 
         assert_eq!(Pid::PAT.get(), 0x0000);

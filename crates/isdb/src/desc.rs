@@ -1,10 +1,10 @@
-//! 記述子。
+//! ARIB STD-B10やARIB STD-B21で規定される記述子とその関連。
 
 use std::fmt;
 
 use crate::pid::Pid;
 use crate::time::{DateTime, MjdDate};
-use crate::types::{ServiceType, StreamType};
+use crate::types::{Polarization, ServiceType, StreamType};
 use crate::utils::{BytesExt, SliceExt};
 
 /// 記述子を表すトレイト。
@@ -152,11 +152,11 @@ impl<'a> fmt::Debug for DescriptorIter<'a> {
 /// 限定受信方式記述子。
 #[derive(Debug)]
 pub struct ConditionalAccessDescriptor<'a> {
-    /// CA_system_id
+    /// 限定受信方式識別。
     pub ca_system_id: u16,
-    /// CA_PID
+    /// 限定受信PID。
     pub ca_pid: Pid,
-    /// private_data_byte
+    /// プライベートデータ。
     pub private_data: &'a [u8],
 }
 
@@ -170,7 +170,7 @@ impl<'a> Descriptor<'a> for ConditionalAccessDescriptor<'a> {
         }
 
         let ca_system_id = data[0..=1].read_be_16();
-        let ca_pid = Pid::read(&data[2..]);
+        let ca_pid = Pid::read(&data[2..=3]);
         let private_data = &data[4..];
 
         Some(ConditionalAccessDescriptor {
@@ -184,7 +184,8 @@ impl<'a> Descriptor<'a> for ConditionalAccessDescriptor<'a> {
 /// ネットワーク名記述子。
 #[derive(Debug)]
 pub struct NetworkNameDescriptor<'a> {
-    /// network name
+    /// ネットワーク名
+    // TODO: 文字符号
     pub network_name: &'a [u8],
 }
 
@@ -196,19 +197,19 @@ impl<'a> Descriptor<'a> for NetworkNameDescriptor<'a> {
     }
 }
 
-/// [`ServiceListDescriptor`]における`services`の要素。
+/// サービスリスト記述子におけるサービス。
 #[derive(Debug)]
 pub struct ServiceEntry {
-    /// Service id
+    /// サービス識別。
     pub service_id: u16,
-    /// Service type
+    /// サービス形式種別。
     pub service_type: ServiceType,
 }
 
 /// サービスリスト記述子。
 #[derive(Debug)]
 pub struct ServiceListDescriptor {
-    /// [`ServiceEntry`]の配列。
+    /// サービスを格納する配列。
     pub services: Vec<ServiceEntry>,
 }
 
@@ -235,19 +236,19 @@ impl Descriptor<'_> for ServiceListDescriptor {
 /// 衛星分配システム記述子。
 #[derive(Debug)]
 pub struct SatelliteDeliverySystemDescriptor {
-    /// frequency coded in 10kHz
+    /// 周波数（単位は10kHz）。
     pub frequency: u32,
-    /// orbital_position
+    /// 軌道。
     pub orbital_position: u16,
-    /// west_east_flag
+    /// 東経西経フラグ。
     pub west_east_flag: bool,
-    /// polarization (2bit)
-    pub polarization: u8,
-    /// modulation (5bit)
+    /// 偏波。
+    pub polarization: Polarization,
+    /// 変調（5ビット）。
     pub modulation: u8,
-    /// system_rate (28bit)
-    pub system_rate: u32,
-    /// FEC_inner (4bit)
+    /// シンボルレート。
+    pub symbol_rate: u32,
+    /// FEC（内符号、4ビット）。
     pub fec_inner: u8,
 }
 
@@ -263,9 +264,15 @@ impl Descriptor<'_> for SatelliteDeliverySystemDescriptor {
         let frequency = data[0..=3].read_bcd(8);
         let orbital_position = data[4..=5].read_bcd(4);
         let west_east_flag = data[6] & 0b10000000 != 0;
-        let polarization = (data[6] & 0b01100000) >> 5;
+        let polarization = match (data[6] & 0b01100000) >> 5 {
+            0b00 => Polarization::LinearHorizontal,
+            0b01 => Polarization::LinearVertical,
+            0b10 => Polarization::CircularLeft,
+            0b11 => Polarization::CircularRight,
+            _ => unreachable!(),
+        };
         let modulation = data[6] & 0b00011111;
-        let system_rate = data[7..=10].read_bcd(7);
+        let symbol_rate = data[7..=10].read_bcd(7);
         let fec_inner = data[10] & 0b00001111;
 
         Some(SatelliteDeliverySystemDescriptor {
@@ -274,7 +281,7 @@ impl Descriptor<'_> for SatelliteDeliverySystemDescriptor {
             west_east_flag,
             polarization,
             modulation,
-            system_rate,
+            symbol_rate,
             fec_inner,
         })
     }
@@ -283,17 +290,17 @@ impl Descriptor<'_> for SatelliteDeliverySystemDescriptor {
 /// 有線分配システム記述子。
 #[derive(Debug)]
 pub struct CableDeliverySystemDescriptor {
-    /// frequency coded in 100Hz
+    /// 周波数（単位は100Hz）。
     pub frequency: u32,
-    /// frame_type
+    /// 多重フレーム形式番号（4ビット）。
     pub frame_type: u8,
-    /// FEC_outer (4bit)
+    /// FEC（外側、4ビット）。
     pub fec_outer: u8,
-    /// modulation
+    /// 変調。
     pub modulation: u8,
-    /// symbol_rate (28bit)
+    /// シンボルレート（28ビット）。
     pub symbol_rate: u32,
-    /// FEC_inner (4bit)
+    /// FEC（内側、4ビット）。
     pub fec_inner: u8,
 }
 
@@ -327,11 +334,13 @@ impl Descriptor<'_> for CableDeliverySystemDescriptor {
 /// サービス記述子。
 #[derive(Debug)]
 pub struct ServiceDescriptor<'a> {
-    /// service_type
+    /// サービス形式種別。
     pub service_type: ServiceType,
-    /// service provider name
+    /// 事業者名。
+    // TODO: 文字符号
     pub service_provider_name: &'a [u8],
-    /// service name
+    /// サービス名。
+    // TODO: 文字符号
     pub service_name: &'a [u8],
 }
 
@@ -369,15 +378,15 @@ impl<'a> Descriptor<'a> for ServiceDescriptor<'a> {
 /// リンク記述子。
 #[derive(Debug)]
 pub struct LinkageDescriptor<'a> {
-    /// transport_stream_id
+    /// トランスポートストリーム識別。
     pub transport_stream_id: u16,
-    /// original_network_id
+    /// オリジナルネットワーク識別。
     pub original_network_id: u16,
-    /// service_id
+    /// サービス識別。
     pub service_id: u16,
-    /// linkage_type
+    /// リンク種別（4ビット）。
     pub linkage_type: u8,
-    /// private_data_byte
+    /// プライベートデータ。
     pub private_data: &'a [u8],
 }
 
@@ -409,11 +418,13 @@ impl<'a> Descriptor<'a> for LinkageDescriptor<'a> {
 /// 短形式イベント記述子。
 #[derive(Debug)]
 pub struct ShortEventDescriptor<'a> {
-    /// ISO 639-2で規定される3文字の国名コード。
+    /// ISO 639-2で規定される3文字の言語コード。
     pub lang_code: [u8; 3],
-    /// event_name_char
+    /// 番組名。
+    // TODO: 文字符号
     pub event_name: &'a [u8],
-    /// text_char
+    /// 番組記述。
+    // TODO: 文字符号
     pub text: &'a [u8],
 }
 
@@ -449,27 +460,30 @@ impl<'a> Descriptor<'a> for ShortEventDescriptor<'a> {
     }
 }
 
-/// [`ExtendedEventDescriptor`]における`items`の要素。
+/// 拡張形式イベント記述子における項目。
 #[derive(Debug)]
 pub struct ExtendedEventItem<'a> {
-    /// item_description_char
+    /// 項目名。
+    // TODO: 文字符号
     pub item_description: &'a [u8],
-    /// item_char
+    /// 項目記述。
+    // TODO: 文字符号
     pub item: &'a [u8],
 }
 
 /// 拡張形式イベント記述子。
 #[derive(Debug)]
 pub struct ExtendedEventDescriptor<'a> {
-    /// descriptor_number (4bit)
+    /// 記述子番号（4ビット）。
     pub descriptor_number: u8,
-    /// last_descriptor_number (4bit)
+    /// 最終記述子番号（4ビット）。
     pub last_descriptor_number: u8,
-    /// ISO 639-2で規定される3文字の国名コード。
+    /// ISO 639-2で規定される3文字の言語コード。
     pub lang_code: [u8; 3],
-    /// [`ExtendedEventItem`]の配列。
+    /// 項目を格納する配列。
     pub items: Vec<ExtendedEventItem<'a>>,
-    /// text_char
+    /// 拡張記述。
+    // TODO: 文字符号
     pub text: &'a [u8],
 }
 
@@ -539,15 +553,16 @@ impl<'a> Descriptor<'a> for ExtendedEventDescriptor<'a> {
 /// コンポーネント記述子。
 #[derive(Debug)]
 pub struct ComponentDescriptor<'a> {
-    /// stream_content (4bit)
+    /// コンポーネント内容（4ビット）。
     pub stream_content: u8,
-    /// component_type
+    /// コンポーネント種別。
     pub component_type: u8,
-    /// component_tag
+    /// コンポーネントタグ。
     pub component_tag: u8,
-    /// ISO 639-2で規定される3文字の国名コード。
+    /// ISO 639-2で規定される3文字の言語コード。
     pub lang_code: [u8; 3],
-    /// text_char
+    /// コンポーネント記述。
+    // TODO: 文字符号
     pub text: &'a [u8],
 }
 
@@ -579,7 +594,7 @@ impl<'a> Descriptor<'a> for ComponentDescriptor<'a> {
 /// ストリーム識別記述子。
 #[derive(Debug)]
 pub struct StreamIdDescriptor {
-    /// component_tag
+    /// コンポーネントタグ。
     pub component_tag: u8,
 }
 
@@ -599,13 +614,13 @@ impl Descriptor<'_> for StreamIdDescriptor {
 /// コンテント分類。
 #[derive(Debug)]
 pub struct ContentGenre {
-    /// content_nibble_level_1 (4bit)
+    /// ジャンル1（4ビット）。
     pub large_genre_classification: u8,
-    /// content_nibble_level_2 (4bit)
+    /// ジャンル2（4ビット）。
     pub middle_genre_classification: u8,
-    /// user_nibble (4bit)
+    /// ユーザジャンル（4ビット）。
     pub user_genre_1: u8,
-    /// user_nibble (4bit)
+    /// ユーザジャンル（4ビット）。
     pub user_genre_2: u8,
 }
 
@@ -650,24 +665,24 @@ impl Descriptor<'_> for ContentDescriptor {
 /// ローカル時間オフセット。
 #[derive(Debug)]
 pub struct LocalTimeOffsetEntry {
-    /// ISO 3166-1で規定される3文字の国名コード。
+    /// ISO 3166-1で規定される3文字の言語コード。
     pub country_code: [u8; 3],
-    /// country_region_id (6bit)
+    /// 国地域識別（6ビット）。
     pub country_region_id: u8,
-    /// local_time_offset_polarity
+    /// ローカル時間オフセット極性。
     pub local_time_offset_polarity: bool,
-    /// local_time_offset
+    /// ローカル時間オフセット。
     pub local_time_offset: u16,
-    /// time_of_change
+    /// 変更時刻。
     pub time_of_change: DateTime,
-    /// next_time_offset
+    /// 変更後時間オフセット。
     pub next_time_offset: u16,
 }
 
 /// ローカル時間オフセット記述子。
 #[derive(Debug)]
 pub struct LocalTimeOffsetDescriptor {
-    /// [`LocalTimeOffsetEntry`]の配列。
+    /// ローカル時間オフセットを格納する配列。
     pub time_offsets: Vec<LocalTimeOffsetEntry>,
 }
 
@@ -703,9 +718,9 @@ impl Descriptor<'_> for LocalTimeOffsetDescriptor {
 /// 階層伝送記述子。
 #[derive(Debug)]
 pub struct HierarchicalTransmissionDescriptor {
-    /// quality_level
+    /// 階層レベル。
     pub high_quality: bool,
-    /// reference_PID
+    /// 参照先PID。
     pub reference_pid: Pid,
 }
 
@@ -719,7 +734,7 @@ impl Descriptor<'_> for HierarchicalTransmissionDescriptor {
         }
 
         let high_quality = data[0] & 0b00000001 != 0;
-        let reference_pid = Pid::read(&data[1..]);
+        let reference_pid = Pid::read(&data[1..=2]);
 
         Some(HierarchicalTransmissionDescriptor {
             high_quality,
@@ -728,33 +743,33 @@ impl Descriptor<'_> for HierarchicalTransmissionDescriptor {
     }
 }
 
-/// digital copy control information
+/// デジタルコピー制御記述子におけるコンポーネント制御情報。
 #[derive(Debug)]
 pub struct ComponentControlEntry {
-    /// component_tag
+    /// コンポーネントタグ。
     pub component_tag: u8,
-    /// digital_recording_control_data (2bit)
+    /// デジタルコピー制御情報（2ビット）。
     pub digital_recording_control_data: u8,
-    /// copy_control_type (2bit)
+    /// コピー制御形式情報（2ビット）。
     pub copy_control_type: u8,
-    /// APS_control_data (2bit)
+    /// アナログ出力コピー制御情報（2ビット）。
     pub aps_control_data: Option<u8>,
-    /// maximum_bitrate
+    /// 最大伝送レート。
     pub maximum_bitrate: Option<u8>,
 }
 
 /// デジタルコピー制御記述子。
 #[derive(Debug)]
 pub struct DigitalCopyControlDescriptor {
-    /// digital_recording_control_data (2bit)
+    /// デジタルコピー制御情報（2ビット）。
     pub digital_recording_control_data: u8,
-    /// copy_control_type (2bit)
+    /// コピー制御形式情報（2ビット）。
     pub copy_control_type: u8,
-    /// APS_control_data (2bit)
+    /// アナログ出力コピー制御情報（2ビット）。
     pub aps_control_data: Option<u8>,
-    /// maximum_bitrate
+    /// 最大伝送レート。
     pub maximum_bitrate: Option<u8>,
-    /// digital copy control information in each component consisting event
+    /// 番組を構成するコンポーネントごとのデジタルコピー制御情報。
     pub component_controls: Option<Vec<ComponentControlEntry>>,
 }
 
@@ -848,7 +863,7 @@ impl Descriptor<'_> for DigitalCopyControlDescriptor {
     }
 }
 
-/// [`AudioComponentDescriptor`]における`quality_indicator`。
+/// 音声コンポーネント記述子における音質表示。
 #[derive(Debug)]
 pub enum QualityIndicator {
     /// Reserved for future use
@@ -861,19 +876,17 @@ pub enum QualityIndicator {
     Mode3,
 }
 
-/// [`AudioComponentDescriptor`]における`sampling_rate`。
+/// 音声コンポーネント記述子におけるサンプリング周波数。
 #[derive(Debug)]
 pub enum SamplingFrequency {
-    /// Reserved for future use (0b000)
-    Reserved1,
+    /// 予約
+    Reserved,
     /// 16kHZ
     SF16k,
     /// 22.05kHZ
     SF22_05k,
     /// 24kHZ
     SF24k,
-    /// Reserved (0b100)
-    Reserved2,
     /// 32kHZ
     SF32k,
     /// 44.1kHZ
@@ -885,27 +898,28 @@ pub enum SamplingFrequency {
 /// 音声コンポーネント記述子。
 #[derive(Debug)]
 pub struct AudioComponentDescriptor<'a> {
-    /// stream_content (4bit)
+    /// コンポーネント内容（4ビット）。
     pub stream_content: u8,
-    /// component_type
+    /// コンポーネント種別。
     pub component_type: u8,
-    /// component_tag
+    /// コンポーネントタグ。
     pub component_tag: u8,
-    /// stream_type
+    /// ストリーム形式種別。
     pub stream_type: StreamType,
-    /// simulcast_group_tag
+    /// サイマルキャストグループ識別。
     pub simulcast_group_tag: u8,
-    /// main_component_flag
+    /// 主コンポーネントフラグ。
     pub main_component_flag: bool,
-    /// quality_indicator
+    /// 音質表示。
     pub quality_indicator: QualityIndicator,
-    /// sampling_rate
+    /// サンプリング周波数。
     pub sampling_rate: SamplingFrequency,
-    /// ISO 639-2で規定される3文字の国名コード。
+    /// ISO 639-2で規定される3文字の言語コード。
     pub lang_code: [u8; 3],
-    /// ISO 639-2で規定される3文字の国名コード。
+    /// ISO 639-2で規定される3文字の言語コードその2。
     pub lang_code_2: Option<[u8; 3]>,
-    /// text
+    /// コンポーネント記述。
+    // TODO: 文字符号
     pub text: &'a [u8],
 }
 
@@ -933,11 +947,10 @@ impl<'a> Descriptor<'a> for AudioComponentDescriptor<'a> {
             _ => unreachable!(),
         };
         let sampling_rate = match (data[5] & 0b00001110) >> 1 {
-            0b000 => SamplingFrequency::Reserved1,
+            0b000 | 0b100 => SamplingFrequency::Reserved,
             0b001 => SamplingFrequency::SF16k,
             0b010 => SamplingFrequency::SF22_05k,
             0b011 => SamplingFrequency::SF24k,
-            0b100 => SamplingFrequency::Reserved2,
             0b101 => SamplingFrequency::SF32k,
             0b110 => SamplingFrequency::SF44_1k,
             0b111 => SamplingFrequency::SF48k,
@@ -977,113 +990,114 @@ impl<'a> Descriptor<'a> for AudioComponentDescriptor<'a> {
     }
 }
 
-/// [`HyperlinkDescriptor`]における`selector`の値。
+/// ハイパーリンク記述子におけるリンク先。
 #[derive(Debug)]
 pub enum SelectorInfo<'a> {
-    /// link_service_info
+    /// サービス。
     LinkServiceInfo(LinkServiceInfo),
-    /// link_event_info
+    /// イベント。
     LinkEventInfo(LinkEventInfo),
-    /// link_module_info
+    /// イベントの特定モジュール。
     LinkModuleInfo(LinkModuleInfo),
-    /// link_content_info
+    /// コンテント。
     LinkContentInfo(LinkContentInfo),
-    /// link_content_module_info
+    /// コンテントの特定モジュール。
     LinkContentModuleInfo(LinkContentModuleInfo),
-    /// link_ert_node_info
+    /// イベント関係テーブルのノード。
     LinkErtNodeInfo(LinkErtNodeInfo),
-    /// link_stored_content_info
+    /// 蓄積コンテント。
     LinkStoredContentInfo(LinkStoredContentInfo<'a>),
     /// 不明。
     Unknown(LinkUnknown<'a>),
 }
 
-/// link_service_info
+/// サービス。
 #[derive(Debug)]
 pub struct LinkServiceInfo {
-    /// original_network_id
+    /// オリジナルネットワーク識別。
     pub original_network_id: u16,
-    /// transport_stream_id
+    /// トランスポートストリーム識別。
     pub transport_stream_id: u16,
-    /// service_id
+    /// サービス識別。
     pub service_id: u16,
 }
 
-/// link_event_info
+/// イベント。
 #[derive(Debug)]
 pub struct LinkEventInfo {
-    /// original_network_id
+    /// オリジナルネットワーク識別。
     pub original_network_id: u16,
-    /// transport_stream_id
+    /// トランスポートストリーム識別。
     pub transport_stream_id: u16,
-    /// service_id
+    /// サービス識別。
     pub service_id: u16,
-    /// event_id
+    /// イベント識別。
     pub event_id: u16,
 }
 
-/// link_module_info
+/// イベントの特定モジュール。
 #[derive(Debug)]
 pub struct LinkModuleInfo {
-    /// original_network_id
+    /// オリジナルネットワーク識別。
     pub original_network_id: u16,
-    /// transport_stream_id
+    /// トランスポートストリーム識別。
     pub transport_stream_id: u16,
-    /// service_id
+    /// サービス識別。
     pub service_id: u16,
-    /// event_id
+    /// イベント識別。
     pub event_id: u16,
-    /// component_tag
+    /// コンポーネントタグ。
     pub component_tag: u8,
-    /// moduleId
+    /// モジュール識別。
     pub module_id: u16,
 }
 
-/// link_content_info
+/// コンテント。
 #[derive(Debug)]
 pub struct LinkContentInfo {
-    /// original_network_id
+    /// オリジナルネットワーク識別。
     pub original_network_id: u16,
-    /// transport_stream_id
+    /// トランスポートストリーム識別。
     pub transport_stream_id: u16,
-    /// service_id
+    /// サービス識別。
     pub service_id: u16,
-    /// content_id
+    /// コンテンツ識別。
     pub content_id: u32,
 }
 
-/// link_content_module_info
+/// コンテントの特定モジュール。
 #[derive(Debug)]
 pub struct LinkContentModuleInfo {
-    /// original_network_id
+    /// オリジナルネットワーク識別。
     pub original_network_id: u16,
-    /// transport_stream_id
+    /// トランスポートストリーム識別。
     pub transport_stream_id: u16,
-    /// service_id
+    /// サービス識別。
     pub service_id: u16,
-    /// content_id
+    /// コンテンツ識別。
     pub content_id: u32,
-    /// component_tag
+    /// コンポーネントタグ。
     pub component_tag: u8,
-    /// moduleId
+    /// モジュール識別。
     pub module_id: u16,
 }
 
-/// link_ert_node_info
+/// イベント関係テーブルのノード。
 #[derive(Debug)]
 pub struct LinkErtNodeInfo {
-    /// information_provider_id
+    /// 情報提供者識別。
     pub information_provider_id: u16,
-    /// event_relation_id
+    /// イベント関係識別。
     pub event_relation_id: u16,
-    /// node_id
+    /// ノード識別。
     pub node_id: u16,
 }
 
-/// link_stored_content_info
+/// 蓄積コンテント。
 #[derive(Debug)]
 pub struct LinkStoredContentInfo<'a> {
-    /// uri
+    /// URI文字
+    // TODO: 文字符号？
     pub uri: &'a [u8],
 }
 
@@ -1099,11 +1113,11 @@ pub struct LinkUnknown<'a> {
 /// ハイパーリンク記述子。
 #[derive(Debug)]
 pub struct HyperlinkDescriptor<'a> {
-    /// hyper_linkage_type
+    /// ハイパーリンク種別。
     pub hyper_linkage_type: u8,
-    /// link_destination_type + selector_byte
+    /// リンク先。
     pub selector: SelectorInfo<'a>,
-    /// private_data
+    /// プライベートデータ。
     pub private_data: &'a [u8],
 }
 
@@ -1248,26 +1262,97 @@ impl<'a> Descriptor<'a> for HyperlinkDescriptor<'a> {
     }
 }
 
-/// [`TargetRegionDescriptor`]における`target_region_spec`の値。
+/// 対象地域記述子における地域記述方式。
 #[derive(Debug)]
 pub enum TargetRegionSpec<'a> {
-    /// bs_prefecture_spec
+    /// BSデジタル用県域指定。
     BsPrefectureSpec(BsPrefectureSpec),
-    /// 不明な`target_region_spec`。
+    /// 不明な地域記述方式。
     Unknown(&'a [u8]),
 }
 
-/// Region designator in prefecture designation
+/// 県域指定ビットマップ。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PrefectureBitmap(pub [u8; 7]);
+
+macro_rules! prefactures {
+    ($($method:ident($bit:literal) => $jp:literal,)*) => {
+        $(
+            #[doc = concat!($jp, "が対象であるかどうかを返す。")]
+            #[inline]
+            pub fn $method(&self) -> bool {
+                self.0[($bit - 1) / 8] & (1 << (($bit - 1) % 8)) != 0
+            }
+        )*
+    };
+}
+
+impl PrefectureBitmap {
+    prefactures! {
+        has_east_hokkaido(1) => "東北海道",
+        has_west_hokkaido(2) => "西北海道",
+        has_aomori(3) => "青森県",
+        has_iwate(4) => "岩手県",
+        has_miyagi(5) => "宮城県",
+        has_akita(6) => "秋田県",
+        has_yamagata(7) => "山形県",
+        has_fukushima(8) => "福島県",
+        has_ibaraki(9) => "茨城県",
+        has_tochigi(10) => "栃木県",
+        has_gunma(11) => "群馬県",
+        has_saitama(12) => "埼玉県",
+        has_chiba(13) => "千葉県",
+        has_tokyo(14) => "東京都（島部を除く）",
+        has_kanagawa(15) => "神奈川県",
+        has_niigata(16) => "新潟県",
+        has_toyama(17) => "富山県",
+        has_ishikawa(18) => "石川県",
+        has_fukui(19) => "福井県",
+        has_yamanashi(20) => "山梨県",
+        has_nagano(21) => "長野県",
+        has_gifu(22) => "岐阜県",
+        has_shizuoka(23) => "静岡県",
+        has_aichi(24) => "愛知県",
+        has_mie(25) => "三重県",
+        has_shiga(26) => "滋賀県",
+        has_kyoto(27) => "京都府",
+        has_osaka(28) => "大阪府",
+        has_hyogo(29) => "兵庫県",
+        has_nara(30) => "奈良県",
+        has_wakayama(31) => "和歌山県",
+        has_tottori(32) => "鳥取県",
+        has_shimane(33) => "島根県",
+        has_okayama(34) => "岡山県",
+        has_hiroshima(35) => "広島県",
+        has_yamaguchi(36) => "山口県",
+        has_tokushima(37) => "徳島県",
+        has_kagawa(38) => "香川県",
+        has_ehime(39) => "愛媛県",
+        has_kochi(40) => "高知県",
+        has_fukuoka(41) => "福岡県",
+        has_saga(42) => "佐賀県",
+        has_nagasaki(43) => "長崎県",
+        has_kumamoto(44) => "熊本県",
+        has_oita(45) => "大分県",
+        has_miyazaki(46) => "宮崎県",
+        has_kagoshima(47) => "鹿児島県（南西諸島を除く）",
+        has_okinawa(48) => "沖縄県",
+        has_tokyo_island(49) => "東京都島部（伊豆・小笠原諸島）",
+        has_kagoshima_island(50) => "鹿児島県島部（南西諸島の鹿児島県域）",
+    }
+}
+
+/// BSデジタル用県域指定。
 #[derive(Debug)]
 pub struct BsPrefectureSpec {
-    /// prefecture_bitmap
-    pub prefecture_bitmap: [u8; 7],
+    /// 県域指定ビットマップ。
+    pub prefecture_bitmap: PrefectureBitmap,
 }
 
 /// 対象地域記述子。
 #[derive(Debug)]
 pub struct TargetRegionDescriptor<'a> {
-    /// target_region_spec
+    /// 地域記述方式。
     pub target_region_spec: TargetRegionSpec<'a>,
 }
 
@@ -1286,6 +1371,7 @@ impl<'a> Descriptor<'a> for TargetRegionDescriptor<'a> {
                     log::debug!("invalid TargetRegionDescriptor::BsPrefectureSpec");
                     return None;
                 };
+                let prefecture_bitmap = PrefectureBitmap(prefecture_bitmap);
 
                 TargetRegionSpec::BsPrefectureSpec(BsPrefectureSpec { prefecture_bitmap })
             }
@@ -1299,11 +1385,11 @@ impl<'a> Descriptor<'a> for TargetRegionDescriptor<'a> {
 /// ビデオデコードコントロール記述子。
 #[derive(Debug)]
 pub struct VideoDecodeControlDescriptor {
-    /// still_picture_flag
+    /// 静止画フラグ。
     pub still_picture_flag: bool,
-    /// sequence_end_code_flag
+    /// シーケンスエンドコードフラグ。
     pub sequence_end_code_flag: bool,
-    /// video_encode_format (4bit)
+    /// ビデオエンコードフォーマット（4ビット）。
     pub video_encode_format: u8,
 }
 
@@ -1354,53 +1440,52 @@ pub struct CompatibilityDescriptor<'a> {
     pub sub_descriptors: Vec<SubDescriptor<'a>>,
 }
 
-/// [`DownloadContentDescriptor`]における`modules`。
+/// ダウンロードコンテンツ記述子におけるモジュール。
 #[derive(Debug)]
 pub struct ModuleInfo<'a> {
-    /// module_id
+    /// モジュール識別。
     pub module_id: u16,
-    /// module_size
+    /// 当該モジュールのバイト長。
     pub module_size: u32,
-    /// module_info_byte
+    /// DIIにて記述される記述子。
     pub module_info: &'a [u8],
 }
 
-/// [`DownloadContentDescriptor`]における`text_info`。
+/// ダウンロードコンテンツ記述子におけるサービス記述。
 #[derive(Debug)]
-pub struct TextInfo<'a> {
-    /// ISO 639-2で規定される3文字の国名コード。
+pub struct ServiceDescription<'a> {
+    /// ISO 639-2で規定される3文字の言語コード。
     pub lang_code: [u8; 3],
-    /// text_char,
+    /// サービス記述。
+    // TODO: 文字符号？
     pub text: &'a [u8],
 }
 
 /// ダウンロードコンテンツ記述子。
 #[derive(Debug)]
 pub struct DownloadContentDescriptor<'a> {
-    /// reboot,
+    /// 再起動要否フラグ。
     pub reboot: bool,
-    /// add_on,
+    /// 既存モジュール追加フラグ。
     pub add_on: bool,
-    /// text_info_flag,
-    pub text_info_flag: bool,
-    /// component_size,
+    /// コンポーネントサイズ。
     pub component_size: u32,
-    /// download_id,
+    /// ダウンロード識別。
     pub download_id: u32,
-    /// time_out_value_DII,
+    /// DIIタイムアウト値（単位はミリ秒）。
     pub time_out_value_dii: u32,
-    /// leak_rate,
+    /// リークレート（単位は50bytes/s）。
     pub leak_rate: u32,
-    /// component_tag,
+    /// コンポーネントタグ
     pub component_tag: u8,
     /// compatibilityDescriptor,
     pub compatibility_descriptors: Option<Vec<CompatibilityDescriptor<'a>>>,
-    /// information for each module in the descriptor
+    /// モジュールごとの情報。
     pub modules: Option<Vec<ModuleInfo<'a>>>,
-    /// private_data_byte,
+    /// プライベートデータ。
     pub private_data: &'a [u8],
-    /// ISO_639_language_code + text_char
-    pub text_info: Option<TextInfo<'a>>,
+    /// サービス記述。
+    pub service_descs: Option<ServiceDescription<'a>>,
 }
 
 impl<'a> Descriptor<'a> for DownloadContentDescriptor<'a> {
@@ -1537,7 +1622,7 @@ impl<'a> Descriptor<'a> for DownloadContentDescriptor<'a> {
             return None;
         };
 
-        let text_info = if text_info_flag {
+        let service_descs = if text_info_flag {
             let Some((lang_code, rem)) = data.split_at_checked(3) else {
                 log::debug!("invalid DownloadContentDescriptor::lang_code");
                 return None;
@@ -1554,7 +1639,7 @@ impl<'a> Descriptor<'a> for DownloadContentDescriptor<'a> {
             };
             // data = _rem;
 
-            Some(TextInfo { lang_code, text })
+            Some(ServiceDescription { lang_code, text })
         } else {
             None
         };
@@ -1562,7 +1647,6 @@ impl<'a> Descriptor<'a> for DownloadContentDescriptor<'a> {
         Some(DownloadContentDescriptor {
             reboot,
             add_on,
-            text_info_flag,
             component_size,
             download_id,
             time_out_value_dii,
@@ -1571,7 +1655,7 @@ impl<'a> Descriptor<'a> for DownloadContentDescriptor<'a> {
             compatibility_descriptors,
             modules,
             private_data,
-            text_info,
+            service_descs,
         })
     }
 }
@@ -1579,13 +1663,13 @@ impl<'a> Descriptor<'a> for DownloadContentDescriptor<'a> {
 /// CA_EMM_TS記述子。
 #[derive(Debug)]
 pub struct CaEmmTsDescriptor {
-    /// CA_system_id
+    /// 限定受信方式識別。
     pub ca_system_id: u16,
-    /// transport_stream_id
+    /// トランスポートストリーム識別。
     pub transport_stream_id: u16,
-    /// original_network_id
+    /// オリジナルネットワーク識別。
     pub original_network_id: u16,
-    /// power_supply_period
+    /// 電源保持時間（単位は分）。
     pub power_supply_period: u8,
 }
 
@@ -1615,15 +1699,16 @@ impl Descriptor<'_> for CaEmmTsDescriptor {
 /// CA契約情報記述子。
 #[derive(Debug)]
 pub struct CaContractInfoDescriptor<'a> {
-    /// CA_system_id
+    /// 限定受信方式識別。
     pub ca_system_id: u16,
-    /// CA_unit_id (4bit)
+    /// 課金単位／非課金単位の識別（4ビット）。
     pub ca_unit_id: u8,
-    /// component_tag
+    /// コンポーネントタグ。
     pub component_tag: &'a [u8],
-    /// contract_verification_info
+    /// 契約確認情報。
     pub contract_verification_info: &'a [u8],
-    /// fee_name
+    /// 料金名称。
+    // TODO: 文字符号？
     pub fee_name: &'a [u8],
 }
 
@@ -1676,13 +1761,13 @@ impl<'a> Descriptor<'a> for CaContractInfoDescriptor<'a> {
 /// CAサービス記述子。
 #[derive(Debug)]
 pub struct CaServiceDescriptor {
-    /// CA_system_id
+    /// 限定受信方式識別。
     pub ca_system_id: u16,
-    /// ca_broadcaster_group_id
+    /// 事業体識別。
     pub ca_broadcaster_group_id: u8,
-    /// message_control
+    /// 猶予期間。
     pub message_control: u8,
-    /// service_id
+    /// サービス識別。
     pub service_ids: Vec<u16>,
 }
 
@@ -1709,24 +1794,25 @@ impl Descriptor<'_> for CaServiceDescriptor {
     }
 }
 
-/// [`TsInformationDescriptor`]における`transmissions`の要素。
+/// TS情報記述子における伝送種別。
 #[derive(Debug)]
-pub struct TsInformationTransmission {
-    /// transmission_type_info
+pub struct TsInformationTransmissionType {
+    /// 伝承種別情報。
     pub transmission_type_info: u8,
-    /// service_id
+    /// サービス識別。
     pub service_ids: Vec<u16>,
 }
 
 /// TS情報記述子。
 #[derive(Debug)]
 pub struct TsInformationDescriptor<'a> {
-    /// remote_control_key_id
+    /// リモコンキー識別。
     pub remote_control_key_id: u8,
-    /// ts_name_char
+    /// TS名記述。
+    // TODO: 文字符号
     pub ts_name: &'a [u8],
-    /// transmission_type_info + service_id
-    pub transmissions: Vec<TsInformationTransmission>,
+    /// 伝送種別を格納する配列。
+    pub transmission_types: Vec<TsInformationTransmissionType>,
 }
 
 impl<'a> Descriptor<'a> for TsInformationDescriptor<'a> {
@@ -1747,7 +1833,7 @@ impl<'a> Descriptor<'a> for TsInformationDescriptor<'a> {
             return None;
         };
 
-        let mut transmissions = Vec::with_capacity(transmission_type_count as usize);
+        let mut transmission_types = Vec::with_capacity(transmission_type_count as usize);
         for _ in 0..transmission_type_count {
             if data.len() < 2 {
                 log::debug!("invalid TsInformationTransmission");
@@ -1767,7 +1853,7 @@ impl<'a> Descriptor<'a> for TsInformationDescriptor<'a> {
                 .collect();
             data = rem;
 
-            transmissions.push(TsInformationTransmission {
+            transmission_types.push(TsInformationTransmissionType {
                 transmission_type_info,
                 service_ids,
             });
@@ -1776,54 +1862,54 @@ impl<'a> Descriptor<'a> for TsInformationDescriptor<'a> {
         Some(TsInformationDescriptor {
             remote_control_key_id,
             ts_name,
-            transmissions,
+            transmission_types,
         })
     }
 }
 
-/// broadcaster identifier
+/// 拡張ブロードキャスタ識別におけるブロードキャスタ識別。
 #[derive(Debug)]
 pub struct BroadcasterId {
-    /// original_network_id
+    /// オリジナルネットワーク識別。
     pub original_network_id: u16,
-    /// broadcaster_id
+    /// ブロードキャスタ識別。
     pub broadcaster_id: u8,
 }
 
-/// Digital terrestrial television broadcast
+/// 地上デジタルテレビジョン放送。
 #[derive(Debug)]
 pub struct DigitalTerrestrialTelevisionBroadcast<'a> {
-    /// terrestrial_broadcaster_id
+    /// 地上ブロードキャスタ識別。
     pub terrestrial_broadcaster_id: u16,
-    /// affiliation_id
+    /// 系列識別。
     pub affiliation_id: &'a [u8],
-    /// original_network_id + broadcaster_id
+    /// ブロードキャスタ識別を格納する配列。
     pub broadcaster_ids: Vec<BroadcasterId>,
-    /// private_data_byte
+    /// プライベートデータ。
     pub private_data: &'a [u8],
 }
 
-/// Digital terrestrial sound broadcast
+/// 地上デジタル音声放送。
 #[derive(Debug)]
 pub struct DigitalTerrestrialSoundBroadcast<'a> {
-    /// terrestrial_sound_broadcaster_id
+    /// 地上音声ブロードキャスタ識別。
     pub terrestrial_sound_broadcaster_id: u16,
-    /// sound_broadcast_affiliation_id
+    /// 音声放送系列識別。
     pub sound_broadcast_affiliation_id: &'a [u8],
-    /// original_network_id + broadcaster_id
+    /// ブロードキャスタ識別を格納する配列。
     pub broadcaster_ids: Vec<BroadcasterId>,
-    /// private_data
+    /// プライベートデータ。
     pub private_data: &'a [u8],
 }
 
 /// 拡張ブロードキャスタ記述子。
 #[derive(Debug)]
 pub enum ExtendedBroadcasterDescriptor<'a> {
-    /// Digital terrestrial television broadcast
+    /// 地上デジタルテレビジョン放送。
     DigitalTerrestrialTelevisionBroadcast(DigitalTerrestrialTelevisionBroadcast<'a>),
-    /// Digital terrestrial sound broadcast
+    /// 地上デジタル音声放送。
     DigitalTerrestrialSoundBroadcast(DigitalTerrestrialSoundBroadcast<'a>),
-    /// Not defined
+    /// 未定義。
     Unknown(&'a [u8]),
 }
 
@@ -1929,38 +2015,38 @@ impl<'a> Descriptor<'a> for ExtendedBroadcasterDescriptor<'a> {
     }
 }
 
-/// CDT transmission scheme 1
+/// CDT伝送方式1。
 ///
-/// when referring to CDT directly with download data identification
+/// CDTをダウンロードデータ識別で直接参照する場合。
 #[derive(Debug)]
 pub struct LogoTransmissionCdt1 {
-    /// logo_id (9bit)
+    /// ロゴ識別（9ビット）。
     pub logo_id: u16,
-    /// logo_version (12bit)
+    /// ロゴバージョン番号（12ビット）。
     pub logo_version: u16,
-    /// download_data_id
+    /// ダウンロードデータ識別。
     pub download_data_id: u16,
 }
 
-/// CDT transmission scheme 2
+/// CDT伝送方式2．
 ///
-/// when referring to CDT using logo identification indirectly with download data identification
+/// CDTをロゴ識別を用いてダウンロードデータ識別を間接的に参照する場合。
 #[derive(Debug)]
 pub struct LogoTransmissionCdt2 {
-    /// logo_id (9bit)
+    /// ロゴ識別（9ビット）。
     pub logo_id: u16,
 }
 
 /// ロゴ伝送記述子。
 #[derive(Debug)]
 pub enum LogoTransmissionDescriptor<'a> {
-    /// CDT transmission scheme 1
+    /// CDT伝送方式1。
     Cdt1(LogoTransmissionCdt1),
-    /// CDT transmission scheme 2
+    /// CDT伝送方式2．
     Cdt2(LogoTransmissionCdt2),
-    /// Simple logo system
+    /// 簡易ロゴ方式。
     Simple(&'a [u8]),
-    /// Reserved for future
+    /// 予約。
     Unknown(&'a [u8]),
 }
 
@@ -2007,44 +2093,44 @@ impl<'a> Descriptor<'a> for LogoTransmissionDescriptor<'a> {
     }
 }
 
-/// [`SeriesDescriptor`]における`program_pattern`の値。
+/// シリーズ記述子における編成パターン。
 #[derive(Debug)]
 pub enum ProgramPattern {
-    /// Nonscheduled
+    /// 不定期。
     Nonscheduled,
-    /// Regular program (every day, every day except week-end, only weekends, etc.),
-    /// programmed several days a week
+    /// 帯番組（毎日、平日のみ毎日、土・日のみなど）、週に複数回の編成。
     Regular,
-    /// Programmed about once a week
+    /// 週に1回程度の編成。
     OnceAWeek,
-    /// Programmed about once a month,
+    /// 月に1回程度の編成。
     OnceAMonth,
-    /// Programmed several events in a day
+    /// 同日内に複数話数の編成。
     SeveralEventsInADay,
-    /// Division of long hour program
+    /// 長時間番組の分割。
     Division,
-    /// Program for regular or irregular accumulation
+    /// 定期または不定期の蓄積用の編成。
     Accumulation,
-    /// Undefined
+    /// 未定義。
     Undefined,
 }
 
 /// シリーズ記述子。
 #[derive(Debug)]
 pub struct SeriesDescriptor<'a> {
-    /// series_id
+    /// シリーズ識別。
     pub series_id: u16,
-    /// repeat_label (4bit)
+    /// 再放送ラベル（4ビット）。
     pub repeat_label: u8,
-    /// program_pattern
+    /// 編成パターン。
     pub program_pattern: ProgramPattern,
-    /// expire_date
+    /// 有効期限。
     pub expire_date: Option<MjdDate>,
-    /// episode_number (12bit)
+    /// 話数（12ビット）。
     pub episode_number: u16,
-    /// last_episode_number (12bit)
+    /// 番組総数（12ビット）。
     pub last_episode_number: u16,
-    /// series_name_char
+    /// シリーズ名。
+    // TODO: 文字符号
     pub series_name: &'a [u8],
 }
 
@@ -2089,49 +2175,49 @@ impl<'a> Descriptor<'a> for SeriesDescriptor<'a> {
     }
 }
 
-/// [`EventGroupDescriptor`]における`event`。
+/// イベントグループ記述子におけるイベント。
 #[derive(Debug)]
 pub struct ActualEvent {
-    /// service_id
+    /// サービス識別。
     pub service_id: u16,
-    /// event_id
+    /// イベント識別。
     pub event_id: u16,
 }
 
-/// [`EventGroup`]における`RelayToOtherNetworks`か`MovementFromOtherNetworks`に入る値。
+/// イベントグループ記述子における`RelayToOtherNetworks`か`MovementFromOtherNetworks`に入る値。
 #[derive(Debug)]
 pub struct OtherNetwork {
-    /// original_network_id
+    /// オリジナルネットワーク識別。
     pub original_network_id: u16,
-    /// transport_stream_id
+    /// トランスポートストリーム識別。
     pub transport_stream_id: u16,
-    /// service_id
+    /// サービス識別。
     pub service_id: u16,
-    /// event_id
+    /// イベント識別。
     pub event_id: u16,
 }
 
-/// [`EventGroupDescriptor`]における`group`。
+/// イベントグループ記述子におけるグループ。
 #[derive(Debug)]
 pub enum EventGroup<'a> {
-    /// Event common
+    /// イベント共有。
     Common(&'a [u8]),
-    /// Event relay
+    /// イベントリレー。
     Relay(&'a [u8]),
-    /// Event movement
+    /// イベント移動。
     Movement(&'a [u8]),
-    /// Event relay to other networks
+    /// 他ネットワークへのイベントリレー。
     RelayToOtherNetworks(Vec<OtherNetwork>),
-    /// Event movement from other networks
+    /// 他ネットワークからのイベント移動。
     MovementFromOtherNetworks(Vec<OtherNetwork>),
-    /// Undefined
+    /// 未定義。
     Undefined(&'a [u8]),
 }
 
 /// イベントグループ記述子。
 #[derive(Debug)]
 pub struct EventGroupDescriptor<'a> {
-    /// service_id + event_id
+    /// イベントを格納する配列。
     pub events: Vec<ActualEvent>,
     /// group_type + ...
     pub group: EventGroup<'a>,
@@ -2195,23 +2281,23 @@ impl<'a> Descriptor<'a> for EventGroupDescriptor<'a> {
     }
 }
 
-/// [`SiParameterDescriptor`]における`tables`の要素。
+/// SI伝送パラメータ記述子におけるテーブル。
 #[derive(Debug)]
 pub struct SiParameterTable<'a> {
-    /// table_id
+    /// テーブル識別。
     pub table_id: u8,
-    /// table_description_byte
+    /// テーブル記述。
     pub table_description: &'a [u8],
 }
 
 /// SI伝送パラメータ記述子。
 #[derive(Debug)]
 pub struct SiParameterDescriptor<'a> {
-    /// parameter_version
+    /// パラメータバージョン。
     pub parameter_version: u8,
-    /// update_time
+    /// 更新日。
     pub update_time: MjdDate,
-    /// table_id + table_description_byte
+    /// テーブルを格納する配列。
     pub tables: Vec<SiParameterTable<'a>>,
 }
 
@@ -2259,7 +2345,8 @@ impl<'a> Descriptor<'a> for SiParameterDescriptor<'a> {
 /// ブロードキャスタ名記述子。
 #[derive(Debug)]
 pub struct BroadcasterNameDescriptor<'a> {
-    /// char
+    /// ブロードキャスタ名。
+    // TODO: 文字符号
     pub broadcaster_name: &'a [u8],
 }
 
@@ -2273,34 +2360,35 @@ impl<'a> Descriptor<'a> for BroadcasterNameDescriptor<'a> {
     }
 }
 
-/// [`ComponentGroup`]における`ca_units`の各要素。
+/// コンポーネントグループ記述子における課金単位。
 #[derive(Debug)]
 pub struct CaUnit<'a> {
-    /// CA_unit_id (4bit)
+    /// 課金単位識別。
     pub ca_unit_id: u8,
-    /// component_tag
+    /// コンポーネントタグ。
     pub component_tag: &'a [u8],
 }
 
-/// [`ComponentGroupDescriptor`]における`groups`の各要素。
+/// コンポーネントグループ記述子におけるグループ。
 #[derive(Debug)]
 pub struct ComponentGroup<'a> {
-    /// component_group_id (4bit)
+    /// コンポーネントグループ識別（4ビット）。
     pub component_group_id: u8,
-    /// [`CaUnit`]の配列。
+    /// 課金単位を格納する配列。
     pub ca_units: Vec<CaUnit<'a>>,
-    /// total_bit_rate
+    /// トータルビットレート。
     pub total_bit_rate: Option<u8>,
-    /// text_char
+    /// コンポーネントグループ記述。
+    // TODO: 文字符号
     pub text: &'a [u8],
 }
 
 /// コンポーネントグループ記述子。
 #[derive(Debug)]
 pub struct ComponentGroupDescriptor<'a> {
-    /// component_group_type
+    /// コンポーネントグループ種別（3ビット）。
     pub component_group_type: u8,
-    /// num_of_group
+    /// コンポーネントグループを格納する配列。
     pub groups: Vec<ComponentGroup<'a>>,
 }
 
@@ -2388,27 +2476,27 @@ impl<'a> Descriptor<'a> for ComponentGroupDescriptor<'a> {
     }
 }
 
-/// [`LdtLinkageDescriptor`]における`linked_descriptors`の要素。
+/// LDTリンク記述子におけるリンク先の記述に関する情報。
 #[derive(Debug)]
 pub struct LdtLinkedDescriptor {
-    /// description_id
+    /// 記述識別。
     pub description_id: u16,
-    /// description_type (4bit)
+    /// 記述形式識別（4ビット）。
     pub description_type: u8,
-    /// user_defined
+    /// 事業者定義ビット。
     pub user_defined: u8,
 }
 
 /// LDTリンク記述子。
 #[derive(Debug)]
 pub struct LdtLinkageDescriptor {
-    /// original_service_id
+    /// オリジナルサービス識別。
     pub original_service_id: u16,
-    /// transport_stream_id
+    /// トランスポートストリーム識別。
     pub transport_stream_id: u16,
-    /// original_network_id
+    /// オリジナルネットワーク識別。
     pub original_network_id: u16,
-    /// description_id + description_type + user_defined
+    /// リンク先の記述を格納する配列。
     pub descriptors: Vec<LdtLinkedDescriptor>,
 }
 
@@ -2451,13 +2539,13 @@ impl Descriptor<'_> for LdtLinkageDescriptor {
 /// アクセス制御記述子。
 #[derive(Debug)]
 pub struct AccessControlDescriptor<'a> {
-    /// CA_system_id
+    /// 限定受信方式識別。
     pub ca_system_id: u16,
-    /// Transmission_type
+    /// 伝送情報。
     pub transmission_type: u8,
-    /// PID
+    /// PID。
     pub pid: Pid,
-    /// private_data_byte
+    /// プライベートデータ。
     pub private_data: &'a [u8],
 }
 
@@ -2472,7 +2560,7 @@ impl<'a> Descriptor<'a> for AccessControlDescriptor<'a> {
 
         let ca_system_id = data[0..=1].read_be_16();
         let transmission_type = (data[2] & 0b11100000) >> 5;
-        let pid = Pid::read(&data[2..]);
+        let pid = Pid::read(&data[2..=3]);
         let private_data = &data[4..];
 
         Some(AccessControlDescriptor {
@@ -2484,7 +2572,7 @@ impl<'a> Descriptor<'a> for AccessControlDescriptor<'a> {
     }
 }
 
-/// [`TerrestrialDeliverySystemDescriptor`]の`guard_interval`。
+/// 地上分配システム記述子におけるガードインターバル。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GuardInterval {
     /// 1/32
@@ -2497,29 +2585,29 @@ pub enum GuardInterval {
     Guard1_4,
 }
 
-/// [`TerrestrialDeliverySystemDescriptor`]の`transmission_mode`。
+/// 地上分配システム記述子におけるモード情報。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransmissionMode {
-    /// Mode 1
+    /// Mode 1。
     Mode1,
-    /// Mode 2
+    /// Mode 2。
     Mode2,
-    /// Mode 3
+    /// Mode 3。
     Mode3,
-    /// Undefined
+    /// 未定義。
     Undefined,
 }
 
 /// 地上分配システム記述子。
 #[derive(Debug)]
 pub struct TerrestrialDeliverySystemDescriptor {
-    /// area_code
+    /// エリアコード。
     pub area_code: u16,
-    /// guard_interval
+    /// ガードインターバル。
     pub guard_interval: GuardInterval,
-    /// transmission_mode
+    /// モード情報。
     pub transmission_mode: TransmissionMode,
-    /// frequency
+    /// 周波数を格納する配列。単位は1/7MHz。
     pub frequencies: Vec<u16>,
 }
 
@@ -2561,7 +2649,7 @@ impl Descriptor<'_> for TerrestrialDeliverySystemDescriptor {
 /// 部分受信記述子。
 #[derive(Debug)]
 pub struct PartialReceptionDescriptor {
-    /// service_id
+    /// サービス識別。
     pub service_ids: Vec<u16>,
 }
 
@@ -2575,32 +2663,32 @@ impl Descriptor<'_> for PartialReceptionDescriptor {
     }
 }
 
-/// [`Emergency`]における`signal_level`の値。
+/// 緊急情報記述子における信号種別。
 #[derive(Debug)]
 pub enum SignalType {
-    /// 1st type start signal
+    /// 第1種開始信号。
     First,
-    /// 2nd type start signal
+    /// 第2種開始信号。
     Second,
 }
 
-/// [`EmergencyInformationDescriptor`]における`emergencies`の要素。
+/// 緊急情報記述子における緊急情報。
 #[derive(Debug)]
 pub struct Emergency {
-    /// service_id
+    /// サービス識別。
     pub service_id: u16,
-    /// start_end_flag
+    /// 開始／終了フラグ。
     pub start_end_flag: bool,
-    /// signal_level
+    /// 信号種別。
     pub signal_level: SignalType,
-    /// area_code (12bit)
+    /// 地域符号を格納する配列（各12ビット）。
     pub area_code: Vec<u16>,
 }
 
 /// 緊急情報記述子。
 #[derive(Debug)]
 pub struct EmergencyInformationDescriptor {
-    /// [`Emergency`]の配列。
+    /// 緊急情報を格納する配列。
     pub emergencies: Vec<Emergency>,
 }
 
@@ -2648,12 +2736,12 @@ impl Descriptor<'_> for EmergencyInformationDescriptor {
     }
 }
 
-/// データコンポーネント記述子。
+/// データ符号化記述子。
 #[derive(Debug)]
 pub struct DataComponentDescriptor<'a> {
-    /// data_component_id
+    /// データ符号化方式識別。
     pub data_component_id: u16,
-    /// additional_data_component_info
+    /// 付加識別情報。
     pub additional_data_component_info: &'a [u8],
 }
 
@@ -2676,55 +2764,63 @@ impl<'a> Descriptor<'a> for DataComponentDescriptor<'a> {
     }
 }
 
-/// Broadcasting/non-broadcasting
+/// 放送／非放送種別。
 #[derive(Debug)]
 pub enum BroadcastingType {
-    /// Broadcasting
+    /// 放送。
     Broadcasting,
-    /// Non-broadcasting
+    /// 非放送。
     Nonbroadcasting,
-    /// Undefined
+    /// 未定義。
     Undefined,
 }
 
-/// Standard broadcasting system
+/// 放送の標準方式種別（6ビット）。
+// 未定義の値も扱うため列挙型ではなく構造体にする。
 #[derive(Debug)]
-#[allow(non_camel_case_types)]
-pub enum BroadcastingSystem {
-    /// Standard system specified as digital satellite broadcasting using 27 MHz bandwidth in
-    /// 12.2 to 12.75 GHz frequency band
-    Satellite27MHz,
-    /// Standard system specified as digital satellite broadcasting using 34.5 MHz bandwidth in
-    /// 11.7 to 12.2 GHz frequency band
-    Satellite34_5MHz_Low,
-    /// Standard system specified as digital terrestrial television broadcasting.
-    TerrestrialTelevision,
-    /// Standard system specified as digital satellite broadcasting using 34.5 MHz bandwidth in
-    /// 12.2 to 12.75 GHz frequency band
-    Satellite34_5MHz_High,
-    /// Standard system specified as digital terrestrial sound broadcasting
-    TerrestrialSound,
-    /// Standard system specified as broadcasting operated by broadcasting satellites or
-    /// broadcasting stations in 2630 to 2655 MHz frequency band.
-    Satellites,
-    /// Standard system specified as digital satellite broadcasting based on advanced narrow-band
-    /// transmission system using 27 MHz bandwidth in 12.2 to 12.75 GHz frequency band
-    Narrowband,
+pub struct BroadcastingSystem(pub u8);
 
-    /// Undefined (6bit, 0b000000 or 0b001000-0b111111)
-    Undefined(u8),
+impl BroadcastingSystem {
+    /// 12.2～12.75GHzの周波数帯において27MHz帯域幅を使用する狭帯域伝送方式による
+    /// 衛星デジタル放送として規定する標準方式。
+    pub const NARROWBAND_27MHZ: BroadcastingSystem = BroadcastingSystem(0b000001);
+    /// 11.7～12.2GHzの周波数帯において34.5MHz帯域幅を使用する狭帯域伝送方式による
+    /// 衛星デジタル放送として規定する標準方式。
+    pub const NARROWBAND_34_5MHZ_LOW: BroadcastingSystem = BroadcastingSystem(0b000010);
+    /// 地上デジタルテレビジョン放送として規定する標準方式。
+    pub const TERRESTRIAL_TELEVISION: BroadcastingSystem = BroadcastingSystem(0b000011);
+    /// 12.2～12.75GHzの周波数帯において34.5MHz帯域幅を使用する狭帯域伝送方式による
+    /// 衛星デジタル放送として規定する標準方式。
+    pub const NARROWBAND_34_5MHZ_HIGH: BroadcastingSystem = BroadcastingSystem(0b000100);
+    /// 地上デジタル音声放送として規定する標準方式。
+    pub const TERRESTRIAL_SOUND: BroadcastingSystem = BroadcastingSystem(0b000101);
+    /// 12.2～12.75GHzの周波数帯において27MHz帯域幅を使用する高度狭帯域伝送方式による
+    /// 衛星デジタル放送として規定する標準方式。
+    pub const ADVANCED_NARROWBAND_27MHZ: BroadcastingSystem = BroadcastingSystem(0b000111);
+    /// 11.7～12.2GHzの周波数帯において34.5MHz帯域幅を使用する高度広帯域伝送による
+    /// 衛星デジタル放送として規定する標準方式。
+    pub const ADVANCED_BROADBAND_LOW: BroadcastingSystem = BroadcastingSystem(0b001000);
+    /// 12.2～12.75GHzの周波数帯において34.5MHz帯域幅を使用する高度広帯域伝送による
+    /// 衛星デジタル放送として規定する標準方式。
+    pub const ADVANCED_BROADBAND_HIGH: BroadcastingSystem = BroadcastingSystem(0b001001);
+    /// 207.5MHz～222MHzの周波数帯の電波を使用するセグメント連結伝送方式による
+    /// テレビジョン放送及びマルチメディア放送として規定する標準方式。
+    pub const VHF: BroadcastingSystem = BroadcastingSystem(0b001010);
+    /// 99MHz～108MHzの周波数の電波を使用するセグメント連結伝送方式による
+    /// マルチメディア放送として規定する標準方式。
+    pub const V_LOW: BroadcastingSystem = BroadcastingSystem(0b001011);
 }
 
 /// システム管理記述子。
 #[derive(Debug)]
 pub struct SystemManagementDescriptor<'a> {
-    /// broadcasting_flag
+    /// 放送／非放送種別。
     pub broadcasting_flag: BroadcastingType,
-    /// broadcasting_identifier (6bit)
+    /// 放送の標準方式種別。
     pub broadcasting_identifier: BroadcastingSystem,
-    /// additional_broadcasting_identification
+    /// 詳細の識別。
     pub additional_broadcasting_identification: u8,
-    /// additional_identification_info
+    /// 付加識別情報。
     pub additional_identification_info: &'a [u8],
 }
 
@@ -2743,17 +2839,7 @@ impl<'a> Descriptor<'a> for SystemManagementDescriptor<'a> {
             0b11 => BroadcastingType::Undefined,
             _ => unreachable!(),
         };
-        let broadcasting_identifier = match data[0] & 0b00111111 {
-            0b000001 => BroadcastingSystem::Satellite27MHz,
-            0b000010 => BroadcastingSystem::Satellite34_5MHz_Low,
-            0b000011 => BroadcastingSystem::TerrestrialTelevision,
-            0b000100 => BroadcastingSystem::Satellite34_5MHz_High,
-            0b000101 => BroadcastingSystem::TerrestrialSound,
-            0b000110 => BroadcastingSystem::Satellites,
-            0b000111 => BroadcastingSystem::Narrowband,
-            id @ (0b000000 | 0b000111..=0b111111) => BroadcastingSystem::Undefined(id),
-            _ => unreachable!(),
-        };
+        let broadcasting_identifier = BroadcastingSystem(data[0] & 0b00111111);
         let additional_broadcasting_identification = data[1];
         let additional_identification_info = &data[2..];
 
