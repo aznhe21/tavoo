@@ -48,12 +48,31 @@ impl<'a> fmt::Debug for RawDescriptor<'a> {
 pub struct DescriptorBlock<'a>(&'a [u8]);
 
 impl<'a> DescriptorBlock<'a> {
-    /// 複数の記述子を含む`data`から`DescriptorBlock`を生成する。
+    /// `data`から`length`バイト分の記述子群を読み取り後続データと共に返す。
     ///
-    /// `block`の中身は`get`で初めてパースされる。
+    /// 記述子の内容はパースせず、`get`メソッドで初めてパースする。
+    ///
+    /// データ長が不足している場合は`None`を返す。
+    // `length`が`u16`なのは規格上`u16`以上の長さになることがなく、
+    // 呼び出し側でのキャストが無意味であるため。
+    pub fn read_with_len(data: &'a [u8], length: u16) -> Option<(DescriptorBlock<'a>, &'a [u8])> {
+        let (block, rem) = data.split_at_checked(length as usize)?;
+        Some((DescriptorBlock(block), rem))
+    }
+
+    /// `data`から記述子群を読み取り後続データと共に返す。
+    ///
+    /// 記述子の内容はパースせず、`get`メソッドで初めてパースする。
+    ///
+    /// データ長が不足している場合は`None`を返す。
     #[inline]
-    pub fn new(block: &'a [u8]) -> DescriptorBlock<'a> {
-        DescriptorBlock(block)
+    pub fn read(data: &'a [u8]) -> Option<(DescriptorBlock<'a>, &'a [u8])> {
+        if data.len() < 2 {
+            return None;
+        }
+
+        let length = data[0..=1].read_be_16() & 0b0000_1111_1111_1111;
+        DescriptorBlock::read_with_len(&data[2..], length)
     }
 
     /// 内包する記述子群のイテレーターを返す。
