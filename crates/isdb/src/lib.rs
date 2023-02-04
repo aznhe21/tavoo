@@ -8,6 +8,7 @@ pub mod desc;
 pub mod packet;
 pub mod pid;
 pub mod psi;
+pub mod table;
 pub mod time;
 mod utils;
 

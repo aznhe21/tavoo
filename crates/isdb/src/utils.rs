@@ -7,6 +7,13 @@ pub fn read_bcd_digit(b: u8) -> u8 {
     ((b >> 4) * 10) + (b & 0x0F)
 }
 
+/// `data`からBCDの時間（秒単位）を読み込む。
+pub fn read_bcd_second(data: &[u8; 3]) -> u32 {
+    (read_bcd_digit(data[0]) as u32) * 3600
+        + (read_bcd_digit(data[1]) as u32) * 60
+        + (read_bcd_digit(data[2]) as u32)
+}
+
 /// 要素数`N`のヒープに確保される配列を、`f`を呼び出した戻り値で生成する。
 pub fn boxed_array<T, const N: usize, F>(f: F) -> Box<[T; N]>
 where
@@ -161,6 +168,15 @@ mod tests {
     #[test]
     fn test_read_bcd() {
         assert_eq!(read_bcd_digit(0x12), 12);
+    }
+
+    #[test]
+    fn test_read_bcd_second() {
+        // 12:34:56
+        assert_eq!(
+            read_bcd_second(&[0x12, 0x34, 0x56]),
+            12 * 60 * 60 + 34 * 60 + 56,
+        );
     }
 
     #[test]
