@@ -11,7 +11,6 @@ const SYNC_BYTE: u8 = 0x47;
 
 /// MPEG2-TSのパケット。
 #[derive(Clone, PartialEq, Eq, Hash)]
-#[repr(transparent)]
 pub struct Packet(pub [u8; 188]);
 
 impl Packet {
