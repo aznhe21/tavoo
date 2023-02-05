@@ -7,6 +7,7 @@ pub mod data_module;
 pub mod demux;
 pub mod desc;
 pub mod dsmcc;
+pub mod filters;
 pub mod lang;
 pub mod packet;
 pub mod pid;

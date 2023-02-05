@@ -8,6 +8,7 @@ rust-version.workspace = true
 
 [dependencies]
 arrayvec = "0.7.2"
+fxhash = "0.2.1"
 log = "0.4.17"
 memchr = "2.5.0"
 thiserror = "1.0.38"
