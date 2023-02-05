@@ -31,6 +31,75 @@ pub struct CompatibilityDescriptor<'a> {
     pub sub_descriptors: Vec<SubDescriptor<'a>>,
 }
 
+impl<'a> CompatibilityDescriptor<'a> {
+    /// `CompatibilityDescriptor`を読み取る。
+    ///
+    /// 戻り値は`Vec<CompatibilityDescriptor>`と、それを読み取ったあとの残りのバイト列である。
+    pub fn read(data: &'a [u8]) -> Option<(Vec<CompatibilityDescriptor<'a>>, &'a [u8])> {
+        if data.len() < 4 {
+            log::debug!("invalid CompatibilityDescriptor");
+            return None;
+        }
+
+        let compatibility_descriptor_length = data[0..=1].read_be_16();
+        let descriptor_count = data[2..=3].read_be_16();
+        let Some((mut data, tail)) = data[4..]
+            .split_at_checked(compatibility_descriptor_length as usize - 2)
+        else {
+            log::debug!("invalid CompatibilityDescriptor::compatibility_descriptor_length");
+            return None;
+        };
+
+        let mut descriptors = Vec::with_capacity(descriptor_count as usize);
+        for _ in 0..descriptor_count {
+            if data.len() < 11 {
+                log::debug!("invalid CompatibilityDescriptor::descriptor_type");
+                return None;
+            }
+
+            let descriptor_type = data[0];
+            // let descriptor_length = data[1];
+            let specifier_type = data[2];
+            let specifier_data = data[3..=5].try_into().unwrap();
+            let model = data[6..=7].read_be_16();
+            let version = data[8..=9].read_be_16();
+            let sub_descriptor_count = data[10];
+            data = &data[11..];
+
+            let mut sub_descriptors = Vec::with_capacity(sub_descriptor_count as usize);
+            for _ in 0..sub_descriptor_count {
+                let [sub_descriptor_type, sub_descriptor_length, ref rem @ ..] = *data else {
+                    log::debug!("invalid SubDescriptor");
+                    return None;
+                };
+                let Some((additional_information, rem)) = rem
+                    .split_at_checked(sub_descriptor_length as usize)
+                else {
+                    log::debug!("invalid SubDescriptor::additional_information");
+                    return None;
+                };
+                data = rem;
+
+                sub_descriptors.push(SubDescriptor {
+                    sub_descriptor_type,
+                    additional_information,
+                });
+            }
+
+            descriptors.push(CompatibilityDescriptor {
+                descriptor_type,
+                specifier_type,
+                specifier_data,
+                model,
+                version,
+                sub_descriptors,
+            });
+        }
+
+        Some((descriptors, tail))
+    }
+}
+
 /// ダウンロードコンテンツ記述子におけるモジュール。
 #[derive(Debug)]
 pub struct ModuleInfo<'a> {
@@ -101,64 +170,8 @@ impl<'a> Descriptor<'a> for DownloadContentDescriptor<'a> {
 
         let mut data = &data[17..];
         let compatibility_descriptors = if compatibility_flag {
-            if data.len() < 4 {
-                log::debug!("invalid DownloadContentDescriptor::compatibility_flag");
-                return None;
-            }
-
-            let compatibility_descriptor_length = data[0..=1].read_be_16();
-            let descriptor_count = data[2..=3].read_be_16();
-            data = &data[4..];
-            if data.len() < compatibility_descriptor_length as usize {
-                log::debug!("invalid DownloadContentDescriptor::compatibility_descriptor_length");
-                return None;
-            }
-
-            let mut descriptors = Vec::with_capacity(descriptor_count as usize);
-            for _ in 0..descriptor_count {
-                if data.len() < 11 {
-                    log::debug!("invalid CompatibilityDescriptor");
-                    return None;
-                }
-
-                let descriptor_type = data[0];
-                // let descriptor_length = data[1];
-                let specifier_type = data[2];
-                let specifier_data = data[3..=5].try_into().unwrap();
-                let model = data[6..=7].read_be_16();
-                let version = data[8..=9].read_be_16();
-                let sub_descriptor_count = data[10];
-                data = &data[11..];
-
-                let mut sub_descriptors = Vec::with_capacity(sub_descriptor_count as usize);
-                for _ in 0..sub_descriptor_count {
-                    let [sub_descriptor_type, sub_descriptor_length, ref rem @ ..] = *data else {
-                        log::debug!("invalid SubDescriptor");
-                        return None;
-                    };
-                    let Some((additional_information, rem)) = rem
-                        .split_at_checked(sub_descriptor_length as usize)
-                    else {
-                        log::debug!("invalid SubDescriptor::additional_information");
-                        return None;
-                    };
-                    data = rem;
-
-                    sub_descriptors.push(SubDescriptor {
-                        sub_descriptor_type,
-                        additional_information,
-                    });
-                }
-
-                descriptors.push(CompatibilityDescriptor {
-                    descriptor_type,
-                    specifier_type,
-                    specifier_data,
-                    model,
-                    version,
-                    sub_descriptors,
-                });
-            }
+            let (descriptors, rem) = CompatibilityDescriptor::read(data)?;
+            data = rem;
 
             Some(descriptors)
         } else {
