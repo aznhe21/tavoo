@@ -72,15 +72,16 @@ impl VersionIndicator {
 }
 
 /// 特定のトランスポートストリームに含まれるサービス。
+// h_eit_flag等の定義はARIB TR-B14による。
 #[derive(Debug)]
 pub struct SdtService<'a> {
     /// サービス識別。
     pub service_id: u16,
-    /// EIT_user_defined_flags[0] | H-EIT_flag
+    /// 当該サービスに対するH-EITが存在するかどうか。
     pub h_eit_flag: bool,
-    /// EIT_user_defined_flags[1] | M-EIT_flag
+    /// 当該サービスに対するM-EITが存在するかどうか。
     pub m_eit_flag: bool,
-    /// EIT_user_defined_flags[2] | L-EIT_flag
+    /// 当該サービスに対するL-EITが存在するかどうか。
     pub l_eit_flag: bool,
     /// EIT［スケジュール］フラグ。
     pub eit_schedule_flag: bool,
