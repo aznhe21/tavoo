@@ -1,5 +1,6 @@
 //! ARIB STD-B10で規定される記述子と関連する型の定義。
 
+use crate::lang::LangCode;
 use crate::pid::Pid;
 use crate::time::{DateTime, MjdDate};
 use crate::utils::{BytesExt, SliceExt};
@@ -244,8 +245,8 @@ impl<'a> Descriptor<'a> for LinkageDescriptor<'a> {
 /// 短形式イベント記述子。
 #[derive(Debug)]
 pub struct ShortEventDescriptor<'a> {
-    /// ISO 639-2で規定される3文字の言語コード。
-    pub lang_code: [u8; 3],
+    /// 言語コード。
+    pub lang_code: LangCode,
     /// 番組名。
     // TODO: 文字符号
     pub event_name: &'a [u8],
@@ -263,7 +264,7 @@ impl<'a> Descriptor<'a> for ShortEventDescriptor<'a> {
             return None;
         }
 
-        let lang_code = data[0..=2].try_into().unwrap();
+        let lang_code = LangCode(data[0..=2].try_into().unwrap());
         let event_name_length = data[3];
         let Some((event_name, data)) = data[4..].split_at_checked(event_name_length as usize) else {
             log::debug!("invalid ShortEventDescriptor::event_name");
@@ -304,8 +305,8 @@ pub struct ExtendedEventDescriptor<'a> {
     pub descriptor_number: u8,
     /// 最終記述子番号（4ビット）。
     pub last_descriptor_number: u8,
-    /// ISO 639-2で規定される3文字の言語コード。
-    pub lang_code: [u8; 3],
+    /// 言語コード。
+    pub lang_code: LangCode,
     /// 項目を格納する配列。
     pub items: Vec<ExtendedEventItem<'a>>,
     /// 拡張記述。
@@ -324,7 +325,7 @@ impl<'a> Descriptor<'a> for ExtendedEventDescriptor<'a> {
 
         let descriptor_number = (data[0] & 0b11110000) >> 4;
         let last_descriptor_number = data[0] & 0b00001111;
-        let lang_code = data[1..=3].try_into().unwrap();
+        let lang_code = LangCode(data[1..=3].try_into().unwrap());
         let length_of_items = data[4];
 
         let mut data = &data[5..];
@@ -385,8 +386,8 @@ pub struct ComponentDescriptor<'a> {
     pub component_type: u8,
     /// コンポーネントタグ。
     pub component_tag: u8,
-    /// ISO 639-2で規定される3文字の言語コード。
-    pub lang_code: [u8; 3],
+    /// 言語コード。
+    pub lang_code: LangCode,
     /// コンポーネント記述。
     // TODO: 文字符号
     pub text: &'a [u8],
@@ -404,7 +405,7 @@ impl<'a> Descriptor<'a> for ComponentDescriptor<'a> {
         let stream_content = data[0] & 0b00001111;
         let component_type = data[1];
         let component_tag = data[2];
-        let lang_code = data[3..=5].try_into().unwrap();
+        let lang_code = LangCode(data[3..=5].try_into().unwrap());
         let text = &data[6..];
 
         Some(ComponentDescriptor {
@@ -491,8 +492,8 @@ impl Descriptor<'_> for ContentDescriptor {
 /// ローカル時間オフセット。
 #[derive(Debug)]
 pub struct LocalTimeOffsetEntry {
-    /// ISO 3166-1で規定される3文字の言語コード。
-    pub country_code: [u8; 3],
+    /// 言語コード。
+    pub country_code: LangCode,
     /// 国地域識別（6ビット）。
     pub country_region_id: u8,
     /// ローカル時間オフセット極性。
@@ -519,7 +520,7 @@ impl Descriptor<'_> for LocalTimeOffsetDescriptor {
         let time_offsets = data
             .chunks_exact(13)
             .map(|chunk| {
-                let country_code = chunk[0..=2].try_into().unwrap();
+                let country_code = LangCode(chunk[0..=2].try_into().unwrap());
                 let country_region_id = (chunk[3] & 0b11111100) >> 2;
                 let local_time_offset_polarity = (chunk[3] & 0b00000001) != 0;
                 let local_time_offset = chunk[4..=5].read_be_16();
@@ -740,10 +741,10 @@ pub struct AudioComponentDescriptor<'a> {
     pub quality_indicator: QualityIndicator,
     /// サンプリング周波数。
     pub sampling_rate: SamplingFrequency,
-    /// ISO 639-2で規定される3文字の言語コード。
-    pub lang_code: [u8; 3],
-    /// ISO 639-2で規定される3文字の言語コードその2。
-    pub lang_code_2: Option<[u8; 3]>,
+    /// 言語コード。
+    pub lang_code: LangCode,
+    /// 言語コードその2。
+    pub lang_code_2: Option<LangCode>,
     /// コンポーネント記述。
     // TODO: 文字符号
     pub text: &'a [u8],
@@ -782,7 +783,7 @@ impl<'a> Descriptor<'a> for AudioComponentDescriptor<'a> {
             0b111 => SamplingFrequency::SF48k,
             _ => unreachable!(),
         };
-        let lang_code = data[6..=8].try_into().unwrap();
+        let lang_code = LangCode(data[6..=8].try_into().unwrap());
 
         let mut data = &data[9..];
         let lang_code_2 = if es_multi_lingual_flag {
@@ -790,7 +791,7 @@ impl<'a> Descriptor<'a> for AudioComponentDescriptor<'a> {
                 log::debug!("invalid AudioComponentDescriptor::ISO_639_language_code_2");
                 return None;
             };
-            let lang_code = lang_code.try_into().unwrap();
+            let lang_code = LangCode(lang_code.try_into().unwrap());
             data = rem;
 
             Some(lang_code)

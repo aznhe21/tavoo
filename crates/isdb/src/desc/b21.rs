@@ -1,5 +1,6 @@
 //! ARIB STD-B21で規定される記述子の定義。
 
+use crate::lang::LangCode;
 use crate::utils::{BytesExt, SliceExt};
 
 use super::base::Descriptor;
@@ -44,8 +45,8 @@ pub struct ModuleInfo<'a> {
 /// ダウンロードコンテンツ記述子におけるサービス記述。
 #[derive(Debug)]
 pub struct ServiceDescription<'a> {
-    /// ISO 639-2で規定される3文字の言語コード。
-    pub lang_code: [u8; 3],
+    /// 言語コード。
+    pub lang_code: LangCode,
     /// サービス記述。
     // TODO: 文字符号？
     pub text: &'a [u8],
@@ -217,7 +218,7 @@ impl<'a> Descriptor<'a> for DownloadContentDescriptor<'a> {
                 log::debug!("invalid DownloadContentDescriptor::lang_code");
                 return None;
             };
-            let lang_code = lang_code.try_into().unwrap();
+            let lang_code = LangCode(lang_code.try_into().unwrap());
 
             let [text_length, ref rem @ ..] = *rem else {
                 log::debug!("invalid DownloadContentDescriptor::text_length");

@@ -6,6 +6,7 @@ pub mod crc32;
 pub mod data_module;
 pub mod demux;
 pub mod desc;
+pub mod lang;
 pub mod packet;
 pub mod pid;
 pub mod psi;
