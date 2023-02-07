@@ -327,10 +327,13 @@ impl<'a> Descriptor<'a> for ExtendedEventDescriptor<'a> {
         let last_descriptor_number = data[0] & 0b00001111;
         let lang_code = LangCode(data[1..=3].try_into().unwrap());
         let length_of_items = data[4];
+        let Some((mut data, rem)) = data[5..].split_at_checked(length_of_items as usize) else {
+            log::debug!("invalid ExtendedEventDescriptor::length_of_items");
+            return None;
+        };
 
-        let mut data = &data[5..];
-        let mut items = Vec::with_capacity(length_of_items as usize);
-        for _ in 0..length_of_items {
+        let mut items = Vec::new();
+        while !data.is_empty() {
             let [item_description_length, ref rem @ ..] = *data else {
                 log::debug!("invalid ExtendedEventDescriptor::item_description_length");
                 return None;
@@ -358,7 +361,7 @@ impl<'a> Descriptor<'a> for ExtendedEventDescriptor<'a> {
             });
         }
 
-        let [text_length, ref text @ ..] = *data else {
+        let [text_length, ref text @ ..] = *rem else {
             log::debug!("invalid ExtendedEventDescriptor::text_length");
             return None;
         };

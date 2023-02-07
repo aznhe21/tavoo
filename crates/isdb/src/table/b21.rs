@@ -117,7 +117,7 @@ impl<'a> Sit<'a> {
 pub struct SdttSchedule {
     /// 開始時間。
     pub start_time: DateTime,
-    /// 継続時間。
+    /// 継続時間（単位は秒）。
     pub duration: u32,
 }
 
@@ -230,7 +230,7 @@ impl<'a> Sdtt<'a> {
                 .chunks_exact(8)
                 .map(|chunk| {
                     let start_time = DateTime::read(chunk[0..=4].try_into().unwrap());
-                    let duration = crate::utils::read_bcd_second(chunk[5..=7].try_into().unwrap());
+                    let duration = chunk[5..=7].read_bcd_second();
 
                     SdttSchedule {
                         start_time,

@@ -278,7 +278,7 @@ pub struct EitEvent<'a> {
     pub event_id: u16,
     /// 開始時間。
     pub start_time: DateTime,
-    /// 継続時間。
+    /// 継続時間（単位は秒）。
     pub duration: u32,
     /// 進行状態。
     pub running_status: RunningStatus,
@@ -335,7 +335,7 @@ impl<'a> EitCommon<'a> {
 
             let event_id = data[0..=1].read_be_16();
             let start_time = DateTime::read(data[2..=6].try_into().unwrap());
-            let duration = data[7..=9].read_bcd(6);
+            let duration = data[7..=9].read_bcd_second();
             let running_status = ((data[10] & 0b11100000) >> 5).into();
             let free_ca_mode = data[10] & 0b00010000 != 0;
             let Some((descriptors, rem)) = DescriptorBlock::read(&data[10..]) else {
@@ -534,7 +534,7 @@ impl<'a> Tot<'a> {
 pub struct PcatScheduleDescription {
     /// 開始時刻。
     pub start_time: DateTime,
-    /// 継続時間。
+    /// 継続時間（単位は秒）。
     pub duration: u32,
 }
 
@@ -625,7 +625,7 @@ impl<'a> Pcat<'a> {
                 .chunks_exact(8)
                 .map(|chunk| {
                     let start_time = DateTime::read(chunk[0..=4].try_into().unwrap());
-                    let duration = chunk[5..=7].read_bcd(6);
+                    let duration = chunk[5..=7].read_bcd_second();
 
                     PcatScheduleDescription {
                         start_time,

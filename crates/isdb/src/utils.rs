@@ -7,13 +7,6 @@ pub fn read_bcd_digit(b: u8) -> u8 {
     ((b >> 4) * 10) + (b & 0x0F)
 }
 
-/// `data`からBCDの時間（秒単位）を読み込む。
-pub fn read_bcd_second(data: &[u8; 3]) -> u32 {
-    (read_bcd_digit(data[0]) as u32) * 3600
-        + (read_bcd_digit(data[1]) as u32) * 60
-        + (read_bcd_digit(data[2]) as u32)
-}
-
 /// 要素数`N`のヒープに確保される配列を、`f`を呼び出した戻り値で生成する。
 pub fn boxed_array<T, const N: usize, F>(f: F) -> Box<[T; N]>
 where
@@ -101,6 +94,13 @@ pub trait BytesExt {
             + ops::Mul<T, Output = T>
             + ops::AddAssign<T>
             + ops::MulAssign<T>;
+
+    /// `data`からBCDの時間（秒単位）を読み込む。
+    ///
+    /// # パニック
+    ///
+    /// 長さが3未満の場合、このメソッドはパニックする。
+    fn read_bcd_second(&self) -> u32;
 }
 
 impl BytesExt for [u8] {
@@ -139,6 +139,13 @@ impl BytesExt for [u8] {
 
         value
     }
+
+    #[inline]
+    fn read_bcd_second(&self) -> u32 {
+        (read_bcd_digit(self[0]) as u32) * 3600
+            + (read_bcd_digit(self[1]) as u32) * 60
+            + (read_bcd_digit(self[2]) as u32)
+    }
 }
 
 /// 条件が常に一致しているものとして事前条件を示す。
@@ -168,15 +175,6 @@ mod tests {
     #[test]
     fn test_read_bcd() {
         assert_eq!(read_bcd_digit(0x12), 12);
-    }
-
-    #[test]
-    fn test_read_bcd_second() {
-        // 12:34:56
-        assert_eq!(
-            read_bcd_second(&[0x12, 0x34, 0x56]),
-            12 * 60 * 60 + 34 * 60 + 56,
-        );
     }
 
     #[test]
@@ -239,5 +237,11 @@ mod tests {
         assert_eq!([0x12, 0x34, 0x56, 0x78].read_bcd::<u32>(6), 123456);
         assert_eq!([0x12, 0x34, 0x56, 0x78].read_bcd::<u32>(7), 1234567);
         assert_eq!([0x12, 0x34, 0x56, 0x78].read_bcd::<u32>(8), 12345678);
+
+        // 12:34:56
+        assert_eq!(
+            [0x12, 0x34, 0x56].read_bcd_second(),
+            12 * 60 * 60 + 34 * 60 + 56,
+        );
     }
 }
