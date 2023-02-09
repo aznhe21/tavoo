@@ -1,7 +1,5 @@
-use std::cell::RefCell;
 use std::fs::File;
 use std::io::BufReader;
-use std::rc::Rc;
 
 use isdb::Pid;
 
@@ -19,32 +17,26 @@ struct Counter {
     counts: isdb::pid::PidTable<Count>,
 }
 
-struct Filter(Rc<RefCell<Counter>>);
+struct Filter<'a>(&'a mut Counter);
 
-impl isdb::demux::Filter for Filter {
+impl<'a> isdb::demux::Filter for Filter<'a> {
     fn on_pes_packet(&mut self, _: Pid, _: &[u8]) {}
     fn on_psi_section(&mut self, _: Pid, _: &isdb::psi::PsiSection) {}
 
     fn on_transport_error(&mut self) {
-        let mut counter = self.0.borrow_mut();
-
-        counter.input += 1;
-        counter.transport_error += 1;
+        self.0.input += 1;
+        self.0.transport_error += 1;
     }
 
     fn on_format_error(&mut self) {
-        let mut counter = self.0.borrow_mut();
-
-        counter.input += 1;
-        counter.format_error += 1;
+        self.0.input += 1;
+        self.0.format_error += 1;
     }
 
     fn on_packet(&mut self, packet: &isdb::Packet) -> Option<isdb::demux::PacketType> {
-        let mut counter = self.0.borrow_mut();
+        self.0.input += 1;
 
-        counter.input += 1;
-
-        let mut count = &mut counter.counts[packet.pid()];
+        let mut count = &mut self.0.counts[packet.pid()];
         count.input += 1;
         if packet.is_scrambled() {
             count.scrambled += 1;
@@ -55,9 +47,7 @@ impl isdb::demux::Filter for Filter {
     }
 
     fn on_discontinued(&mut self, pid: Pid) {
-        let mut counter = self.0.borrow_mut();
-
-        counter.counts[pid].continuity_error += 1;
+        self.0.counts[pid].continuity_error += 1;
     }
 }
 
@@ -88,19 +78,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let f = File::open(path)?;
     let f = BufReader::with_capacity(188 * 1024, f);
 
-    let counter = Rc::new(RefCell::new(Counter {
+    let mut counter = Counter {
         input: 0,
         format_error: 0,
         transport_error: 0,
         counts: isdb::pid::PidTable::from_fn(|_| Count::default()),
-    }));
+    };
 
-    let mut demuxer = isdb::demux::Demuxer::new(Filter(counter.clone()));
+    let mut demuxer = isdb::demux::Demuxer::new(Filter(&mut counter));
     for packet in isdb::Packet::iter(f) {
         demuxer.handle(&packet?);
     }
 
-    let counter = counter.borrow();
     let continuity_error = counter
         .counts
         .iter()
