@@ -7,6 +7,7 @@ use crate::demux;
 use crate::desc::{self, ServiceType, StreamType};
 use crate::dsmcc;
 use crate::packet::Packet;
+use crate::pes::PesPacket;
 use crate::pid::Pid;
 use crate::psi::PsiSection;
 use crate::table;
@@ -269,7 +270,7 @@ impl<F: FnMut(&LogoData)> LogoDownloadFilter<F> {
 }
 
 impl<F: FnMut(&LogoData)> demux::Filter for LogoDownloadFilter<F> {
-    fn on_pes_packet(&mut self, _: Pid, _: &[u8]) {}
+    fn on_pes_packet(&mut self, _: Pid, _: &PesPacket) {}
 
     fn on_packet(&mut self, packet: &Packet) -> Option<demux::PacketType> {
         let pid = packet.pid();

@@ -3,6 +3,7 @@
 use arrayvec::ArrayVec;
 
 use crate::packet::Packet;
+use crate::pes::{PesError, PesPacket};
 use crate::pid::{Pid, PidTable};
 use crate::psi::{PsiError, PsiSection};
 use crate::utils::SliceExt;
@@ -48,7 +49,7 @@ pub trait Filter {
     fn on_psi_section(&mut self, pid: Pid, psi: &PsiSection);
 
     /// PESパケットを分離した際に呼ばれる。
-    fn on_pes_packet(&mut self, pid: Pid, payload: &[u8]);
+    fn on_pes_packet(&mut self, pid: Pid, pes: &PesPacket);
 }
 
 /// TSパケットを分離する。
@@ -119,8 +120,13 @@ impl<T: Filter> Demuxer<T> {
             }),
         };
         match data {
-            PidData::Pes => {
-                self.filter.on_pes_packet(pid, payload);
+            PidData::Pes(pes) => {
+                pes.write(
+                    &mut self.filter,
+                    pid,
+                    payload,
+                    packet.unit_start_indicator(),
+                );
             }
             PidData::Psi(psi) => {
                 if packet.unit_start_indicator() {
@@ -160,14 +166,17 @@ impl Default for PidState {
 }
 
 enum PidData {
-    Pes,
+    Pes(PesPacketData),
     Psi(PsiSectionData),
 }
 
 impl PidData {
     #[inline]
     pub fn pes() -> PidData {
-        PidData::Pes
+        PidData::Pes(PesPacketData {
+            buffer: Box::new(ArrayVec::new()),
+            finished: false,
+        })
     }
 
     #[inline]
@@ -180,9 +189,47 @@ impl PidData {
     #[inline]
     pub fn packet_type(&self) -> PacketType {
         match self {
-            PidData::Pes => PacketType::Pes,
+            PidData::Pes(_) => PacketType::Pes,
             PidData::Psi(_) => PacketType::Psi,
         }
+    }
+}
+
+struct PesPacketData {
+    buffer: Box<ArrayVec<u8, 0x10005>>,
+    finished: bool,
+}
+
+impl PesPacketData {
+    pub fn write<T: Filter>(&mut self, filter: &mut T, pid: Pid, data: &[u8], is_start: bool) {
+        match (is_start, self.finished) {
+            (false, true) => return,
+            (false, false) => {}
+            (true, _) => {
+                self.buffer.clear();
+                self.finished = false;
+            }
+        }
+
+        // バッファに収まる形でdataを追記
+        let len = std::cmp::min(self.buffer.remaining_capacity(), data.len());
+        let _result = self.buffer.try_extend_from_slice(&data[..len]);
+        debug_assert!(_result.is_ok());
+
+        match PesPacket::parse(&**self.buffer) {
+            Err(PesError::InsufficientLength) => return,
+            Err(PesError::InvalidStartCode) => {
+                log::debug!("pes packet invalid start code: {:?}", pid);
+            }
+            Err(PesError::Corrupted) => {
+                log::debug!("pes packet corrupted: {:?}", pid);
+            }
+            Err(PesError::Crc16) => {
+                log::debug!("pes packet crc16 error: {:?}", pid);
+            }
+            Ok(pes) => filter.on_pes_packet(pid, &pes),
+        };
+        self.finished = true;
     }
 }
 
@@ -196,7 +243,7 @@ impl PsiSectionData {
             self.buffer.clear();
         }
 
-        // MAX_SECTION_BUFに収まる形でdataを追記
+        // バッファに収まる形でdataを追記
         let len = std::cmp::min(self.buffer.remaining_capacity(), data.len());
         let _result = self.buffer.try_extend_from_slice(&data[..len]);
         debug_assert!(_result.is_ok());

@@ -10,6 +10,7 @@ pub mod dsmcc;
 pub mod filters;
 pub mod lang;
 pub mod packet;
+pub mod pes;
 pub mod pid;
 pub mod psi;
 pub mod table;
