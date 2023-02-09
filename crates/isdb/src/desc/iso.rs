@@ -436,7 +436,7 @@ pub enum BroadcastingType {
 
 /// 放送の標準方式種別（6ビット）。
 // 未定義の値も扱うため列挙型ではなく構造体にする。
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BroadcastingSystem(pub u8);
 
 impl BroadcastingSystem {

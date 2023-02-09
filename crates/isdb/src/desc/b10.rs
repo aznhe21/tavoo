@@ -9,7 +9,7 @@ use super::base::Descriptor;
 use super::iso::ServiceType;
 
 /// ストリーム形式種別。
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StreamType(pub u8);
 
 impl StreamType {
