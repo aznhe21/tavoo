@@ -1,5 +1,6 @@
 //! ARIB STD-B21で規定される記述子の定義。
 
+use crate::eight::str::AribStr;
 use crate::lang::LangCode;
 use crate::utils::{BytesExt, SliceExt};
 
@@ -117,8 +118,7 @@ pub struct ServiceDescription<'a> {
     /// 言語コード。
     pub lang_code: LangCode,
     /// サービス記述。
-    // TODO: 文字符号？
-    pub text: &'a [u8],
+    pub text: &'a AribStr,
 }
 
 /// ダウンロードコンテンツ記述子。
@@ -241,6 +241,7 @@ impl<'a> Descriptor<'a> for DownloadContentDescriptor<'a> {
                 log::debug!("invalid DownloadContentDescriptor::text");
                 return None;
             };
+            let text = AribStr::from_bytes(text);
             // data = _rem;
 
             Some(ServiceDescription { lang_code, text })

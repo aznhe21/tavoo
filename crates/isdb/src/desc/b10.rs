@@ -1,5 +1,6 @@
 //! ARIB STD-B10で規定される記述子と関連する型の定義。
 
+use crate::eight::str::AribStr;
 use crate::lang::LangCode;
 use crate::pid::Pid;
 use crate::time::{DateTime, MjdDate};
@@ -102,15 +103,16 @@ impl StreamType {
 #[derive(Debug)]
 pub struct NetworkNameDescriptor<'a> {
     /// ネットワーク名
-    // TODO: 文字符号
-    pub network_name: &'a [u8],
+    pub network_name: &'a AribStr,
 }
 
 impl<'a> Descriptor<'a> for NetworkNameDescriptor<'a> {
     const TAG: u8 = 0x40;
 
     fn read(data: &'a [u8]) -> Option<NetworkNameDescriptor<'a>> {
-        Some(NetworkNameDescriptor { network_name: data })
+        Some(NetworkNameDescriptor {
+            network_name: AribStr::from_bytes(data),
+        })
     }
 }
 
@@ -164,11 +166,9 @@ pub struct ServiceDescriptor<'a> {
     /// サービス形式種別。
     pub service_type: ServiceType,
     /// 事業者名。
-    // TODO: 文字符号
-    pub service_provider_name: &'a [u8],
+    pub service_provider_name: &'a AribStr,
     /// サービス名。
-    // TODO: 文字符号
-    pub service_name: &'a [u8],
+    pub service_name: &'a AribStr,
 }
 
 impl<'a> Descriptor<'a> for ServiceDescriptor<'a> {
@@ -196,8 +196,8 @@ impl<'a> Descriptor<'a> for ServiceDescriptor<'a> {
 
         Some(ServiceDescriptor {
             service_type: ServiceType(service_type),
-            service_provider_name,
-            service_name,
+            service_provider_name: AribStr::from_bytes(service_provider_name),
+            service_name: AribStr::from_bytes(service_name),
         })
     }
 }
@@ -248,11 +248,9 @@ pub struct ShortEventDescriptor<'a> {
     /// 言語コード。
     pub lang_code: LangCode,
     /// 番組名。
-    // TODO: 文字符号
-    pub event_name: &'a [u8],
+    pub event_name: &'a AribStr,
     /// 番組記述。
-    // TODO: 文字符号
-    pub text: &'a [u8],
+    pub text: &'a AribStr,
 }
 
 impl<'a> Descriptor<'a> for ShortEventDescriptor<'a> {
@@ -270,6 +268,7 @@ impl<'a> Descriptor<'a> for ShortEventDescriptor<'a> {
             log::debug!("invalid ShortEventDescriptor::event_name");
             return None;
         };
+        let event_name = AribStr::from_bytes(event_name);
         let [text_length, ref text @ ..] = *data else {
             log::debug!("invalid ShortEventDescriptor::text_length");
             return None;
@@ -278,6 +277,7 @@ impl<'a> Descriptor<'a> for ShortEventDescriptor<'a> {
             log::debug!("invalid ShortEventDescriptor::text");
             return None;
         }
+        let text = AribStr::from_bytes(text);
 
         Some(ShortEventDescriptor {
             lang_code,
@@ -291,11 +291,9 @@ impl<'a> Descriptor<'a> for ShortEventDescriptor<'a> {
 #[derive(Debug)]
 pub struct ExtendedEventItem<'a> {
     /// 項目名。
-    // TODO: 文字符号
-    pub item_description: &'a [u8],
+    pub item_description: &'a AribStr,
     /// 項目記述。
-    // TODO: 文字符号
-    pub item: &'a [u8],
+    pub item: &'a AribStr,
 }
 
 /// 拡張形式イベント記述子。
@@ -310,8 +308,7 @@ pub struct ExtendedEventDescriptor<'a> {
     /// 項目を格納する配列。
     pub items: Vec<ExtendedEventItem<'a>>,
     /// 拡張記述。
-    // TODO: 文字符号
-    pub text: &'a [u8],
+    pub text: &'a AribStr,
 }
 
 impl<'a> Descriptor<'a> for ExtendedEventDescriptor<'a> {
@@ -344,6 +341,7 @@ impl<'a> Descriptor<'a> for ExtendedEventDescriptor<'a> {
                 log::debug!("invalid ExtendedEventDescriptor::item_description");
                 return None;
             };
+            let item_description = AribStr::from_bytes(item_description);
 
             let [item_length, ref rem @ ..] = *rem else {
                 log::debug!("invalid ExtendedEventDescriptor::item_length");
@@ -353,6 +351,7 @@ impl<'a> Descriptor<'a> for ExtendedEventDescriptor<'a> {
                 log::debug!("invalid ExtendedEventDescriptor::item");
                 return None;
             };
+            let item = AribStr::from_bytes(item);
             data = rem;
 
             items.push(ExtendedEventItem {
@@ -369,6 +368,7 @@ impl<'a> Descriptor<'a> for ExtendedEventDescriptor<'a> {
             log::debug!("invalid ExtendedEventDescriptor::text");
             return None;
         }
+        let text = AribStr::from_bytes(text);
 
         Some(ExtendedEventDescriptor {
             descriptor_number,
@@ -392,8 +392,7 @@ pub struct ComponentDescriptor<'a> {
     /// 言語コード。
     pub lang_code: LangCode,
     /// コンポーネント記述。
-    // TODO: 文字符号
-    pub text: &'a [u8],
+    pub text: &'a AribStr,
 }
 
 impl<'a> Descriptor<'a> for ComponentDescriptor<'a> {
@@ -409,7 +408,7 @@ impl<'a> Descriptor<'a> for ComponentDescriptor<'a> {
         let component_type = data[1];
         let component_tag = data[2];
         let lang_code = LangCode(data[3..=5].try_into().unwrap());
-        let text = &data[6..];
+        let text = AribStr::from_bytes(&data[6..]);
 
         Some(ComponentDescriptor {
             stream_content,
@@ -749,8 +748,7 @@ pub struct AudioComponentDescriptor<'a> {
     /// 言語コードその2。
     pub lang_code_2: Option<LangCode>,
     /// コンポーネント記述。
-    // TODO: 文字符号
-    pub text: &'a [u8],
+    pub text: &'a AribStr,
 }
 
 impl<'a> Descriptor<'a> for AudioComponentDescriptor<'a> {
@@ -802,7 +800,7 @@ impl<'a> Descriptor<'a> for AudioComponentDescriptor<'a> {
             None
         };
 
-        let text = data;
+        let text = AribStr::from_bytes(data);
 
         Some(AudioComponentDescriptor {
             stream_content,
@@ -927,8 +925,7 @@ pub struct LinkErtNodeInfo {
 #[derive(Debug)]
 pub struct LinkStoredContentInfo<'a> {
     /// URI文字
-    // TODO: 文字符号？
-    pub uri: &'a [u8],
+    pub uri: &'a AribStr,
 }
 
 /// 不明。
@@ -1077,7 +1074,9 @@ impl<'a> Descriptor<'a> for HyperlinkDescriptor<'a> {
                     node_id,
                 })
             }
-            0x07 => SelectorInfo::LinkStoredContentInfo(LinkStoredContentInfo { uri: selector }),
+            0x07 => SelectorInfo::LinkStoredContentInfo(LinkStoredContentInfo {
+                uri: AribStr::from_bytes(selector),
+            }),
             _ => SelectorInfo::Unknown(LinkUnknown {
                 link_destination_type,
                 selector,
@@ -1259,8 +1258,7 @@ pub struct TsInformationDescriptor<'a> {
     /// リモコンキー識別。
     pub remote_control_key_id: u8,
     /// TS名記述。
-    // TODO: 文字符号
-    pub ts_name: &'a [u8],
+    pub ts_name: &'a AribStr,
     /// 伝送種別を格納する配列。
     pub transmission_types: Vec<TsInformationTransmissionType>,
 }
@@ -1282,6 +1280,7 @@ impl<'a> Descriptor<'a> for TsInformationDescriptor<'a> {
             log::debug!("invalid TsInformationDescriptor::ts_name");
             return None;
         };
+        let ts_name = AribStr::from_bytes(ts_name);
 
         let mut transmission_types = Vec::with_capacity(transmission_type_count as usize);
         for _ in 0..transmission_type_count {
@@ -1580,8 +1579,7 @@ pub struct SeriesDescriptor<'a> {
     /// 番組総数（12ビット）。
     pub last_episode_number: u16,
     /// シリーズ名。
-    // TODO: 文字符号
-    pub series_name: &'a [u8],
+    pub series_name: &'a AribStr,
 }
 
 impl<'a> Descriptor<'a> for SeriesDescriptor<'a> {
@@ -1611,7 +1609,7 @@ impl<'a> Descriptor<'a> for SeriesDescriptor<'a> {
             expire_date_valid_flag.then(|| MjdDate::read(&data[3..=4].try_into().unwrap()));
         let episode_number = data[5..=6].read_be_16() >> 4; // 12bit
         let last_episode_number = data[6..=7].read_be_16() & 0b0000_1111_1111_1111; // 12bit
-        let series_name = &data[8..];
+        let series_name = AribStr::from_bytes(&data[8..]);
 
         Some(SeriesDescriptor {
             series_id,
@@ -1796,8 +1794,7 @@ impl<'a> Descriptor<'a> for SiParameterDescriptor<'a> {
 #[derive(Debug)]
 pub struct BroadcasterNameDescriptor<'a> {
     /// ブロードキャスタ名。
-    // TODO: 文字符号
-    pub broadcaster_name: &'a [u8],
+    pub broadcaster_name: &'a AribStr,
 }
 
 impl<'a> Descriptor<'a> for BroadcasterNameDescriptor<'a> {
@@ -1805,7 +1802,7 @@ impl<'a> Descriptor<'a> for BroadcasterNameDescriptor<'a> {
 
     fn read(data: &'a [u8]) -> Option<BroadcasterNameDescriptor<'a>> {
         Some(BroadcasterNameDescriptor {
-            broadcaster_name: data,
+            broadcaster_name: AribStr::from_bytes(data),
         })
     }
 }
@@ -1829,8 +1826,7 @@ pub struct ComponentGroup<'a> {
     /// トータルビットレート。
     pub total_bit_rate: Option<u8>,
     /// コンポーネントグループ記述。
-    // TODO: 文字符号
-    pub text: &'a [u8],
+    pub text: &'a AribStr,
 }
 
 /// コンポーネントグループ記述子。
@@ -1909,6 +1905,7 @@ impl<'a> Descriptor<'a> for ComponentGroupDescriptor<'a> {
                 log::debug!("invalid ComponentGroup::text");
                 return None
             };
+            let text = AribStr::from_bytes(text);
             data = rem;
 
             groups.push(ComponentGroup {

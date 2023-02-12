@@ -186,7 +186,8 @@ impl<F: FnMut(&LogoData)> LogoDownloadFilter<F> {
                     let Some(name) = module.module_info.get::<dsmcc::desc::NameDescriptor>() else {
                         continue;
                     };
-                    if !name.text.starts_with(b"LOGO-0") && !name.text.starts_with(b"CS_LOGO-0") {
+                    let text = name.text.as_bytes();
+                    if !text.starts_with(b"LOGO-0") && !text.starts_with(b"CS_LOGO-0") {
                         continue;
                     }
 

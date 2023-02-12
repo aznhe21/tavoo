@@ -2,6 +2,7 @@
 
 use std::fmt;
 
+use crate::eight::str::AribStr;
 use crate::lang::LangCode;
 use crate::time::DateTime;
 use crate::utils::{BytesExt, SliceExt};
@@ -99,15 +100,16 @@ impl<'a> std::iter::FusedIterator for DiiDescriptorIter<'a> {}
 #[derive(Debug)]
 pub struct TypeDescriptor<'a> {
     /// メディア型。
-    // TODO: 文字符号
-    pub text: &'a [u8],
+    pub text: &'a AribStr,
 }
 
 impl<'a> DiiDescriptor<'a> for TypeDescriptor<'a> {
     const TAG: u8 = 0x01;
 
     fn read(data: &'a [u8]) -> Option<TypeDescriptor<'a>> {
-        Some(TypeDescriptor { text: data })
+        Some(TypeDescriptor {
+            text: AribStr::from_bytes(data),
+        })
     }
 }
 
@@ -115,15 +117,16 @@ impl<'a> DiiDescriptor<'a> for TypeDescriptor<'a> {
 #[derive(Debug)]
 pub struct NameDescriptor<'a> {
     /// モジュールとして伝送するファイルのファイル名。
-    // TODO: 文字符号
-    pub text: &'a [u8],
+    pub text: &'a AribStr,
 }
 
 impl<'a> DiiDescriptor<'a> for NameDescriptor<'a> {
     const TAG: u8 = 0x02;
 
     fn read(data: &'a [u8]) -> Option<NameDescriptor<'a>> {
-        Some(NameDescriptor { text: data })
+        Some(NameDescriptor {
+            text: AribStr::from_bytes(data),
+        })
     }
 }
 
@@ -133,8 +136,7 @@ pub struct InfoDescriptor<'a> {
     /// 言語コード。
     pub lang_code: LangCode,
     /// モジュールとして伝送するファイルに関する文字列情報。
-    // TODO: 文字符号
-    pub text: &'a [u8],
+    pub text: &'a AribStr,
 }
 
 impl<'a> DiiDescriptor<'a> for InfoDescriptor<'a> {
@@ -146,6 +148,7 @@ impl<'a> DiiDescriptor<'a> for InfoDescriptor<'a> {
             return None;
         };
         let lang_code = LangCode(lang_code.try_into().unwrap());
+        let text = AribStr::from_bytes(text);
 
         Some(InfoDescriptor { lang_code, text })
     }
@@ -446,8 +449,7 @@ pub struct StoreRootDescriptor<'a> {
     /// `store_root_path`で指定されるディレクトリの内容を消去するか否か。
     pub update_type: bool,
     /// 当該カルーセルに含まれるモジュール群が蓄積される最上位のディレクトリ。
-    // TODO: 文字符号
-    pub store_root_path: &'a [u8],
+    pub store_root_path: &'a AribStr,
 }
 
 impl<'a> DiiDescriptor<'a> for StoreRootDescriptor<'a> {
@@ -460,7 +462,7 @@ impl<'a> DiiDescriptor<'a> for StoreRootDescriptor<'a> {
         }
 
         let update_type = data[0] & 0b10000000 != 0;
-        let store_root_path = &data[1..];
+        let store_root_path = AribStr::from_bytes(&data[1..]);
 
         Some(StoreRootDescriptor {
             update_type,
@@ -473,8 +475,7 @@ impl<'a> DiiDescriptor<'a> for StoreRootDescriptor<'a> {
 #[derive(Debug)]
 pub struct SubdirectoryDescriptor<'a> {
     /// 当該カルーセルに含まれるモジュールが蓄積されるサブディレクトリ。
-    // TODO: 文字符号
-    pub subdirectory_path: &'a [u8],
+    pub subdirectory_path: &'a AribStr,
 }
 
 impl<'a> DiiDescriptor<'a> for SubdirectoryDescriptor<'a> {
@@ -482,7 +483,7 @@ impl<'a> DiiDescriptor<'a> for SubdirectoryDescriptor<'a> {
 
     fn read(data: &'a [u8]) -> Option<SubdirectoryDescriptor<'a>> {
         Some(SubdirectoryDescriptor {
-            subdirectory_path: data,
+            subdirectory_path: AribStr::from_bytes(data),
         })
     }
 }
@@ -493,8 +494,7 @@ pub struct TitleDescriptor<'a> {
     /// 言語コード。
     pub lang_code: LangCode,
     /// コンテンツ全体またはモジュールに関して視聴者に提示する名前。
-    // TODO: 文字符号
-    pub text: &'a [u8],
+    pub text: &'a AribStr,
 }
 
 impl<'a> DiiDescriptor<'a> for TitleDescriptor<'a> {
@@ -506,6 +506,7 @@ impl<'a> DiiDescriptor<'a> for TitleDescriptor<'a> {
             return None;
         };
         let lang_code = LangCode(lang_code.try_into().unwrap());
+        let text = AribStr::from_bytes(text);
 
         Some(TitleDescriptor { lang_code, text })
     }

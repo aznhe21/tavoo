@@ -1,5 +1,6 @@
 //! ARIB STD-B25で規定される記述子の定義。
 
+use crate::eight::str::AribStr;
 use crate::utils::{BytesExt, SliceExt};
 
 use super::base::Descriptor;
@@ -52,8 +53,7 @@ pub struct CaContractInfoDescriptor<'a> {
     /// 契約確認情報。
     pub contract_verification_info: &'a [u8],
     /// 料金名称。
-    // TODO: 文字符号？
-    pub fee_name: &'a [u8],
+    pub fee_name: &'a AribStr,
 }
 
 impl<'a> Descriptor<'a> for CaContractInfoDescriptor<'a> {
@@ -91,6 +91,7 @@ impl<'a> Descriptor<'a> for CaContractInfoDescriptor<'a> {
             log::debug!("invalid CaContractInfoDescriptor::fee_name");
             return None;
         };
+        let fee_name = AribStr::from_bytes(fee_name);
 
         Some(CaContractInfoDescriptor {
             ca_system_id,

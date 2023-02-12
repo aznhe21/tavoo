@@ -1,5 +1,6 @@
 //! ARIB STD-B21で規定されるデータモジュール。
 
+use crate::eight::str::AribStr;
 use crate::utils::{BytesExt, SliceExt};
 
 /// コード情報。
@@ -8,11 +9,9 @@ pub struct CodeInfo<'a> {
     /// コード。
     pub table_code: u8,
     /// 大項目名記述。
-    // TODO: 文字符号
-    pub level_1_name: &'a [u8],
+    pub level_1_name: &'a AribStr,
     /// 中項目名記述。
-    // TODO: 文字符号
-    pub level_2_name: &'a [u8],
+    pub level_2_name: &'a AribStr,
 }
 
 /// ジャンルコード表、番組特性コード表。
@@ -42,6 +41,7 @@ impl<'a> CommonTable<'a> {
                 log::debug!("invalid CommonTable::level_1_name");
                 return None;
             };
+            let level_1_name = AribStr::from_bytes(level_1_name);
 
             let [level_2_name_length, ref rem @ ..] = *rem else {
                 log::debug!("invalid CommonTable::level_2_name_length");
@@ -52,6 +52,7 @@ impl<'a> CommonTable<'a> {
                 log::debug!("invalid CommonTable::level_2_name");
                 return None;
             };
+            let level_2_name = AribStr::from_bytes(level_2_name);
             data = rem;
 
             codes.push(CodeInfo {
@@ -66,10 +67,10 @@ impl<'a> CommonTable<'a> {
 }
 
 /// 予約語表。
+#[derive(Debug)]
 pub struct KeywordTable<'a> {
     /// 予約語名記述。
-    // TODO: 文字符号
-    pub names: Vec<&'a [u8]>,
+    pub names: Vec<&'a AribStr>,
 }
 
 impl<'a> KeywordTable<'a> {
@@ -92,6 +93,7 @@ impl<'a> KeywordTable<'a> {
                 log::debug!("invalid KeywordTable::name");
                 return None;
             };
+            let name = AribStr::from_bytes(name);
             data = rem;
 
             names.push(name);
