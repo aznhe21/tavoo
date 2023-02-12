@@ -101,6 +101,13 @@ pub trait BytesExt {
     ///
     /// 長さが3未満の場合、このメソッドはパニックする。
     fn read_bcd_second(&self) -> u32;
+
+    /// `data`からBCDの時間（ミリ秒単位）を読み込む。
+    ///
+    /// # パニック
+    ///
+    /// 長さが5未満の場合、このメソッドはパニックする。
+    fn read_bcd_milli(&self) -> u32;
 }
 
 impl BytesExt for [u8] {
@@ -145,6 +152,14 @@ impl BytesExt for [u8] {
         (read_bcd_digit(self[0]) as u32) * 3600
             + (read_bcd_digit(self[1]) as u32) * 60
             + (read_bcd_digit(self[2]) as u32)
+    }
+
+    #[inline]
+    fn read_bcd_milli(&self) -> u32 {
+        // 0～999999999
+        self.read_bcd_second() * 1000
+            + (read_bcd_digit(self[3]) as u32) * 100
+            + (read_bcd_digit(self[4]) as u32) / 10
     }
 }
 

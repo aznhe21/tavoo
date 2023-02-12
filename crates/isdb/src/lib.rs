@@ -2,6 +2,7 @@
 
 #![deny(missing_docs)]
 
+pub mod caption;
 pub mod crc32;
 pub mod data_module;
 pub mod demux;
