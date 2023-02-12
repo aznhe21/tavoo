@@ -396,9 +396,6 @@ pub enum AribChar {
     /// NUL、空白。
     Null,
 
-    /// BEL、ベル。
-    Bell,
-
     /// APB、動作位置後退。
     ActivePositionBackward,
 
@@ -426,9 +423,6 @@ pub enum AribChar {
 
     /// CS、画面消去。
     ClearScreen,
-
-    /// CAN、キャンセル。
-    Cancel,
 
     /// RS、データヘッダ識別符号。
     RecordSeparator,
@@ -582,11 +576,6 @@ pub enum AribChar {
     ///
     /// 内包する値は横方向のドット数と縦方向のドット数である。
     CharacterCompositionDotDesignation(u32, u32),
-
-    /// CSIのPLD、部分行下げ。
-    PartiallyLineDown,
-    /// CSIのPLU、部分行上げ。
-    PartiallyLineUp,
 
     /// CSIのSHS、字間隔指定。
     ///

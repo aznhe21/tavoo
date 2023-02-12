@@ -750,10 +750,16 @@ impl<'a> Decoder<'a> {
             }
 
             // PLD
-            (0x5B, &[]) => ReadResult::Char(AribChar::PartiallyLineDown),
+            (0x5B, &[]) => {
+                log::trace!("deprecated PLD");
+                ReadResult::Continue
+            }
 
             // PLU
-            (0x5C, &[]) => ReadResult::Char(AribChar::PartiallyLineDown),
+            (0x5C, &[]) => {
+                log::trace!("deprecated PLU");
+                ReadResult::Continue
+            }
 
             // SHS
             (0x58, &[p1]) => ReadResult::Char(AribChar::SetHorizontalSpacing(p1)),
@@ -968,7 +974,7 @@ impl<'a> Decoder<'a> {
                 0x20 => break Some(AribChar::Space),
 
                 // BEL
-                0x07 => break Some(AribChar::Bell),
+                0x07 => log::trace!("deprecated BEL"),
 
                 // APB
                 0x08 => break Some(AribChar::ActivePositionBackward),
@@ -995,7 +1001,7 @@ impl<'a> Decoder<'a> {
                 }
 
                 // CAN
-                0x18 => break Some(AribChar::Cancel),
+                0x18 => log::trace!("deprecated CAN"),
 
                 // APS
                 0x1C => {
