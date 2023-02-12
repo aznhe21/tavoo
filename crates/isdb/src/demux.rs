@@ -46,10 +46,10 @@ pub trait Filter {
     }
 
     /// PSIセクションを分離した際呼ばれる。
-    fn on_psi_section(&mut self, pid: Pid, psi: &PsiSection);
+    fn on_psi_section(&mut self, packet: &Packet, psi: &PsiSection);
 
     /// PESパケットを分離した際に呼ばれる。
-    fn on_pes_packet(&mut self, pid: Pid, pes: &PesPacket);
+    fn on_pes_packet(&mut self, packet: &Packet, pes: &PesPacket);
 }
 
 /// TSパケットを分離する。
@@ -123,7 +123,7 @@ impl<T: Filter> Demuxer<T> {
             PidData::Pes(pes) => {
                 pes.write(
                     &mut self.filter,
-                    pid,
+                    packet,
                     payload,
                     packet.unit_start_indicator(),
                 );
@@ -136,14 +136,14 @@ impl<T: Filter> Demuxer<T> {
                     };
 
                     if !prev.is_empty() && cc_ok {
-                        psi.write(&mut self.filter, pid, prev, false);
+                        psi.write(&mut self.filter, packet, prev, false);
                     }
                     if !next.is_empty() {
-                        psi.write(&mut self.filter, pid, next, true);
+                        psi.write(&mut self.filter, packet, next, true);
                     }
                 } else {
                     if cc_ok {
-                        psi.write(&mut self.filter, pid, payload, false);
+                        psi.write(&mut self.filter, packet, payload, false);
                     }
                 }
             }
@@ -201,7 +201,13 @@ struct PesPacketData {
 }
 
 impl PesPacketData {
-    pub fn write<T: Filter>(&mut self, filter: &mut T, pid: Pid, data: &[u8], is_start: bool) {
+    pub fn write<T: Filter>(
+        &mut self,
+        filter: &mut T,
+        packet: &Packet,
+        data: &[u8],
+        is_start: bool,
+    ) {
         match (is_start, self.finished) {
             (false, true) => return,
             (false, false) => {}
@@ -219,15 +225,15 @@ impl PesPacketData {
         match PesPacket::parse(&**self.buffer) {
             Err(PesError::InsufficientLength) => return,
             Err(PesError::InvalidStartCode) => {
-                log::debug!("pes packet invalid start code: {:?}", pid);
+                log::debug!("pes packet invalid start code: {:?}", packet.pid());
             }
             Err(PesError::Corrupted) => {
-                log::debug!("pes packet corrupted: {:?}", pid);
+                log::debug!("pes packet corrupted: {:?}", packet.pid());
             }
             Err(PesError::Crc16) => {
-                log::debug!("pes packet crc16 error: {:?}", pid);
+                log::debug!("pes packet crc16 error: {:?}", packet.pid());
             }
-            Ok(pes) => filter.on_pes_packet(pid, &pes),
+            Ok(pes) => filter.on_pes_packet(packet, &pes),
         };
         self.finished = true;
     }
@@ -238,7 +244,13 @@ struct PsiSectionData {
 }
 
 impl PsiSectionData {
-    pub fn write<T: Filter>(&mut self, filter: &mut T, pid: Pid, data: &[u8], is_start: bool) {
+    pub fn write<T: Filter>(
+        &mut self,
+        filter: &mut T,
+        packet: &Packet,
+        data: &[u8],
+        is_start: bool,
+    ) {
         if is_start {
             self.buffer.clear();
         }
@@ -253,15 +265,15 @@ impl PsiSectionData {
             let psi_len = match PsiSection::parse(buf) {
                 Err(PsiError::InsufficientLength | PsiError::EndOfPsi) => break,
                 Err(PsiError::Corrupted(psi_len)) => {
-                    log::debug!("psi section corrupted: {pid:?}");
+                    log::debug!("psi section corrupted: {:?}", packet.pid());
                     psi_len
                 }
                 Err(PsiError::Crc32(psi_len)) => {
-                    log::debug!("psi section crc32 error: {pid:?}");
+                    log::debug!("psi section crc32 error: {:?}", packet.pid());
                     psi_len
                 }
                 Ok(psi) => {
-                    filter.on_psi_section(pid, &psi);
+                    filter.on_psi_section(packet, &psi);
                     psi.total_len()
                 }
             };

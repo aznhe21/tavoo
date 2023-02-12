@@ -271,7 +271,7 @@ impl<F: FnMut(&LogoData)> LogoDownloadFilter<F> {
 }
 
 impl<F: FnMut(&LogoData)> demux::Filter for LogoDownloadFilter<F> {
-    fn on_pes_packet(&mut self, _: Pid, _: &PesPacket) {}
+    fn on_pes_packet(&mut self, _: &Packet, _: &PesPacket) {}
 
     fn on_packet(&mut self, packet: &Packet) -> Option<demux::PacketType> {
         let pid = packet.pid();
@@ -282,8 +282,8 @@ impl<F: FnMut(&LogoData)> demux::Filter for LogoDownloadFilter<F> {
         is_psi.then_some(demux::PacketType::Psi)
     }
 
-    fn on_psi_section(&mut self, pid: Pid, psi: &PsiSection) {
-        match pid {
+    fn on_psi_section(&mut self, packet: &Packet, psi: &PsiSection) {
+        match packet.pid() {
             Pid::PAT => self.on_pat(psi),
             Pid::NIT => self.on_nit(psi),
             Pid::CDT => self.on_cdt(psi),

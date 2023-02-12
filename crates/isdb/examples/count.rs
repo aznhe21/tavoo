@@ -20,8 +20,8 @@ struct Counter {
 struct Filter<'a>(&'a mut Counter);
 
 impl<'a> isdb::demux::Filter for Filter<'a> {
-    fn on_pes_packet(&mut self, _: Pid, _: &isdb::pes::PesPacket) {}
-    fn on_psi_section(&mut self, _: Pid, _: &isdb::psi::PsiSection) {}
+    fn on_pes_packet(&mut self, _: &isdb::Packet, _: &isdb::pes::PesPacket) {}
+    fn on_psi_section(&mut self, _: &isdb::Packet, _: &isdb::psi::PsiSection) {}
 
     fn on_transport_error(&mut self) {
         self.0.input += 1;
