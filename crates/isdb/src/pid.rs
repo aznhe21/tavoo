@@ -2,6 +2,7 @@
 
 use std::fmt;
 use std::ops;
+use std::ops::RangeInclusive;
 
 use crate::utils::BytesExt;
 
@@ -61,6 +62,9 @@ impl Pid {
     pub const CDT: Pid = Pid::new(0x0029);
     /// ヌルパケット（Null packet）。
     pub const NULL: Pid = Pid::new(0x1FFF);
+
+    /// ワンセグにおけるPMTのPID範囲。
+    pub const ONESEG_PMT_PID: RangeInclusive<Pid> = Pid::new(0x1FC8)..=Pid::new(0x1FCF);
 
     /// `Pid`を生成する。
     ///
