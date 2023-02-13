@@ -114,12 +114,12 @@ impl<'a> SdtCommon<'a> {
             log::debug!("invalid SdtCommon");
             return None;
         }
-        let Some(syntax_section) = psi.syntax.as_ref() else {
-            log::debug!("invalid SdtCommon::syntax_section");
+        let Some(syntax) = psi.syntax.as_ref() else {
+            log::debug!("invalid SdtCommon::syntax");
             return None;
         };
 
-        let transport_stream_id = syntax_section.table_id_extension;
+        let transport_stream_id = syntax.table_id_extension;
         let original_network_id = data[0..=1].read_be_16();
 
         let mut data = &data[3..];
@@ -214,8 +214,8 @@ impl<'a> Bat<'a> {
             log::debug!("invalid Bat::table_id");
             return None;
         }
-        let Some(syntax_section) = psi.syntax.as_ref() else {
-            log::debug!("invalid Bat::syntax_section");
+        let Some(syntax) = psi.syntax.as_ref() else {
+            log::debug!("invalid Bat::syntax");
             return None;
         };
 
@@ -225,7 +225,7 @@ impl<'a> Bat<'a> {
             return None;
         }
 
-        let bouquet_id = syntax_section.table_id_extension;
+        let bouquet_id = syntax.table_id_extension;
         let Some((bouquet_descriptors, data)) = DescriptorBlock::read(&data[0..]) else {
             log::debug!("invalid Bat::descriptors");
             return None;
@@ -308,8 +308,8 @@ pub struct EitCommon<'a> {
 impl<'a> EitCommon<'a> {
     /// `psi`から`EitCommon`を読み取る。
     pub fn read(psi: &PsiSection<'a>) -> Option<EitCommon<'a>> {
-        let Some(syntax_section) = psi.syntax.as_ref() else {
-            log::debug!("invalid EitCommon::syntax_section");
+        let Some(syntax) = psi.syntax.as_ref() else {
+            log::debug!("invalid EitCommon::syntax");
             return None;
         };
 
@@ -319,7 +319,7 @@ impl<'a> EitCommon<'a> {
             return None;
         }
 
-        let service_id = syntax_section.table_id_extension;
+        let service_id = syntax.table_id_extension;
         let transport_stream_id = data[0..=1].read_be_16();
         let original_network_id = data[2..=3].read_be_16();
         let segment_last_section_number = data[4];
@@ -579,8 +579,8 @@ impl<'a> Pcat<'a> {
             return None;
         }
 
-        let Some(syntax_section) = psi.syntax.as_ref() else {
-            log::debug!("invalid Pcat::syntax_section");
+        let Some(syntax) = psi.syntax.as_ref() else {
+            log::debug!("invalid Pcat::syntax");
             return None;
         };
 
@@ -590,7 +590,7 @@ impl<'a> Pcat<'a> {
             return None;
         }
 
-        let service_id = syntax_section.table_id_extension;
+        let service_id = syntax.table_id_extension;
         let transport_stream_id = data[0..=1].read_be_16();
         let original_network_id = data[2..=3].read_be_16();
         let content_id = data[4..=7].read_be_32();
@@ -684,8 +684,8 @@ impl<'a> Bit<'a> {
             log::debug!("invalid Bit::table_id");
             return None;
         }
-        let Some(syntax_section) = psi.syntax.as_ref() else {
-            log::debug!("invalid Bit::syntax_section");
+        let Some(syntax) = psi.syntax.as_ref() else {
+            log::debug!("invalid Bit::syntax");
             return None;
         };
 
@@ -695,7 +695,7 @@ impl<'a> Bit<'a> {
             return None;
         }
 
-        let original_network_id = syntax_section.table_id_extension;
+        let original_network_id = syntax.table_id_extension;
         let broadcast_view_propriety = data[0] & 0b00010000 != 0;
         let Some((first_descriptors, mut data)) = DescriptorBlock::read(&data[0..]) else {
             log::debug!("invalid Bit::first_descriptors");
@@ -788,14 +788,14 @@ pub struct NbitCommon<'a> {
 impl<'a> NbitCommon<'a> {
     /// `Nbit`を読み取る。
     pub fn read(psi: &PsiSection<'a>) -> Option<NbitCommon<'a>> {
-        let Some(syntax_section) = psi.syntax.as_ref() else {
-            log::debug!("invalid NbitCommon::syntax_section");
+        let Some(syntax) = psi.syntax.as_ref() else {
+            log::debug!("invalid NbitCommon::syntax");
             return None;
         };
 
         let mut data = psi.data;
 
-        let original_network_id = syntax_section.table_id_extension;
+        let original_network_id = syntax.table_id_extension;
 
         let mut informations = Vec::new();
         while !data.is_empty() {
@@ -909,8 +909,8 @@ impl<'a> Ldt<'a> {
             log::debug!("invalid Ldt::table_id");
             return None;
         }
-        let Some(syntax_section) = psi.syntax.as_ref() else {
-            log::debug!("invalid Ldt::syntax_section");
+        let Some(syntax) = psi.syntax.as_ref() else {
+            log::debug!("invalid Ldt::syntax");
             return None;
         };
 
@@ -920,7 +920,7 @@ impl<'a> Ldt<'a> {
             return None;
         }
 
-        let original_service_id = syntax_section.table_id_extension;
+        let original_service_id = syntax.table_id_extension;
         let transport_stream_id = data[0..=1].read_be_16();
         let original_network_id = data[2..=3].read_be_16();
         let mut data = &data[4..];
@@ -988,8 +988,8 @@ impl<'a> Lit<'a> {
             log::debug!("invalid Lit::table_id");
             return None;
         }
-        let Some(syntax_section) = psi.syntax.as_ref() else {
-            log::debug!("invalid Lit::syntax_section");
+        let Some(syntax) = psi.syntax.as_ref() else {
+            log::debug!("invalid Lit::syntax");
             return None;
         };
 
@@ -999,7 +999,7 @@ impl<'a> Lit<'a> {
             return None;
         }
 
-        let event_id = syntax_section.table_id_extension;
+        let event_id = syntax.table_id_extension;
         let service_id = data[0..=1].read_be_16();
         let transport_stream_id = data[2..=3].read_be_16();
         let original_network_id = data[4..=5].read_be_16();
@@ -1099,8 +1099,8 @@ impl<'a> Ert<'a> {
             log::debug!("invalid Ert::table_id");
             return None;
         }
-        let Some(syntax_section) = psi.syntax.as_ref() else {
-            log::debug!("invalid Ert::syntax_section");
+        let Some(syntax) = psi.syntax.as_ref() else {
+            log::debug!("invalid Ert::syntax");
             return None;
         };
 
@@ -1110,7 +1110,7 @@ impl<'a> Ert<'a> {
             return None;
         }
 
-        let event_relation_id = syntax_section.table_id_extension;
+        let event_relation_id = syntax.table_id_extension;
         let information_provider_id = data[0..=1].read_be_16();
         let relation_type = match (data[2] & 0b11110000) >> 4 {
             0x1 => ErtRelationType::ContentsDescription,
@@ -1179,14 +1179,14 @@ impl<'a> Itt<'a> {
             log::debug!("invalid Itt::table_id");
             return None;
         }
-        let Some(syntax_section) = psi.syntax.as_ref() else {
-            log::debug!("invalid Itt::syntax_section");
+        let Some(syntax) = psi.syntax.as_ref() else {
+            log::debug!("invalid Itt::syntax");
             return None;
         };
 
         let data = psi.data;
 
-        let event_id = syntax_section.table_id_extension;
+        let event_id = syntax.table_id_extension;
         let Some((descriptors, _)) = DescriptorBlock::read(&data[0..]) else {
             log::debug!("invalid Itt::descriptors");
             return None;

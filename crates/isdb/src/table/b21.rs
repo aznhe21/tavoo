@@ -68,7 +68,7 @@ impl<'a> Sit<'a> {
             return None;
         }
         if psi.syntax.is_none() {
-            log::debug!("invalid Sit::syntax_section");
+            log::debug!("invalid Sit::syntax");
             return None;
         };
 
@@ -171,8 +171,8 @@ impl<'a> Sdtt<'a> {
             log::debug!("invalid Sdtt::table_id");
             return None;
         }
-        let Some(syntax_section) = psi.syntax.as_ref() else {
-            log::debug!("invalid Sdtt::syntax_section");
+        let Some(syntax) = psi.syntax.as_ref() else {
+            log::debug!("invalid Sdtt::syntax");
             return None;
         };
 
@@ -182,8 +182,8 @@ impl<'a> Sdtt<'a> {
             return None;
         }
 
-        let maker_id = ((syntax_section.table_id_extension & 0b1111_1111_0000_0000) >> 8) as u8;
-        let model_id = (syntax_section.table_id_extension & 0b0000_0000_1111_1111) as u8;
+        let maker_id = ((syntax.table_id_extension & 0b1111_1111_0000_0000) >> 8) as u8;
+        let model_id = (syntax.table_id_extension & 0b0000_0000_1111_1111) as u8;
         let transport_stream_id = data[0..=1].read_be_16();
         let original_network_id = data[2..=3].read_be_16();
         let service_id = data[4..=5].read_be_16();
@@ -304,8 +304,8 @@ impl<'a> Cdt<'a> {
             log::debug!("invalid Cdt::table_id");
             return None;
         }
-        let Some(syntax_section) = psi.syntax.as_ref() else {
-            log::debug!("invalid Cdt::syntax_section");
+        let Some(syntax) = psi.syntax.as_ref() else {
+            log::debug!("invalid Cdt::syntax");
             return None;
         };
 
@@ -315,7 +315,7 @@ impl<'a> Cdt<'a> {
             return None;
         }
 
-        let download_data_id = syntax_section.table_id_extension;
+        let download_data_id = syntax.table_id_extension;
         let original_network_id = data[0..=1].read_be_16();
         let data_type = CdtDataType(data[2]);
         let Some((descriptors, data)) = DescriptorBlock::read(&data[3..]) else {

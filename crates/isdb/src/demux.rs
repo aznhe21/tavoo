@@ -272,9 +272,9 @@ impl PsiSectionData {
                     log::debug!("psi section crc32 error: {:?}", packet.pid());
                     psi_len
                 }
-                Ok(psi) => {
+                Ok((psi, psi_len)) => {
                     filter.on_psi_section(packet, &psi);
-                    psi.total_len()
+                    psi_len
                 }
             };
 

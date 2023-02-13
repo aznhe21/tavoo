@@ -50,12 +50,12 @@ impl Pat {
             log::debug!("invalid Pat::table_id");
             return None;
         }
-        let Some(syntax_section) = psi.syntax.as_ref() else {
-            log::debug!("invalid Pat::syntax_section");
+        let Some(syntax) = psi.syntax.as_ref() else {
+            log::debug!("invalid Pat::syntax");
             return None;
         };
 
-        let transport_stream_id = syntax_section.table_id_extension;
+        let transport_stream_id = syntax.table_id_extension;
 
         let mut network_pid = Pid::default();
         let mut pmts = Vec::new();
@@ -142,8 +142,8 @@ impl<'a> Pmt<'a> {
             log::debug!("invalid Pmt::table_id");
             return None;
         }
-        let Some(syntax_section) = psi.syntax.as_ref() else {
-            log::debug!("invalid Pmt::syntax_section");
+        let Some(syntax) = psi.syntax.as_ref() else {
+            log::debug!("invalid Pmt::syntax");
             return None;
         };
 
@@ -153,7 +153,7 @@ impl<'a> Pmt<'a> {
             return None;
         }
 
-        let program_number = syntax_section.table_id_extension;
+        let program_number = syntax.table_id_extension;
         let pcr_pid = Pid::read(&data[0..=1]);
         let Some((descriptors, mut data)) = DescriptorBlock::read(&data[2..]) else {
             log::debug!("invalid Pmt::descriptors");
@@ -212,8 +212,8 @@ impl<'a> Nit<'a> {
             log::debug!("invalid Nit::table_id");
             return None;
         }
-        let Some(syntax_section) = psi.syntax.as_ref() else {
-            log::debug!("invalid Nit::syntax_section");
+        let Some(syntax) = psi.syntax.as_ref() else {
+            log::debug!("invalid Nit::syntax");
             return None;
         };
 
@@ -223,7 +223,7 @@ impl<'a> Nit<'a> {
             return None;
         }
 
-        let network_id = syntax_section.table_id_extension;
+        let network_id = syntax.table_id_extension;
         let Some((network_descriptors, data)) = DescriptorBlock::read(&data[0..]) else {
             log::debug!("invalid Nit::descriptors");
             return None;

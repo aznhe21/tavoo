@@ -35,14 +35,8 @@ pub enum PsiError {
 pub struct PsiSection<'a> {
     /// テーブル識別。
     pub table_id: u8,
-    /// セクションシンタクス指示。
-    pub section_syntax_indicator: bool,
-    /// セクション長（12ビット）。
-    pub section_length: u16,
-
     /// セクションシンタクス。
     pub syntax: Option<PsiSectionSyntax>,
-
     /// PSIのデータ。
     pub data: &'a [u8],
     /// CRC。
@@ -50,8 +44,8 @@ pub struct PsiSection<'a> {
 }
 
 impl<'a> PsiSection<'a> {
-    /// PSIセクションをパースして[`PsiSection`]として返す。
-    pub fn parse(buf: &'a [u8]) -> Result<PsiSection<'a>, PsiError> {
+    /// PSIセクションをパースし、[`PsiSection`]とセクション長を返す。
+    pub fn parse(buf: &'a [u8]) -> Result<(PsiSection<'a>, usize), PsiError> {
         if buf.len() < 3 {
             return Err(PsiError::InsufficientLength);
         }
@@ -100,22 +94,15 @@ impl<'a> PsiSection<'a> {
 
         let crc32 = psi[psi.len() - 4..].read_be_32();
 
-        Ok(PsiSection {
-            table_id,
-            section_syntax_indicator,
-            section_length,
-
-            syntax,
-
-            data,
-            crc32,
-        })
-    }
-
-    /// このセクション全体の長さを返す。
-    #[inline]
-    pub fn total_len(&self) -> usize {
-        3 + self.section_length as usize
+        Ok((
+            PsiSection {
+                table_id,
+                syntax,
+                data,
+                crc32,
+            },
+            psi.len(),
+        ))
     }
 }
 
