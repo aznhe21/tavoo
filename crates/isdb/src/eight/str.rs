@@ -217,6 +217,12 @@ impl AribString {
     pub fn clear(&mut self) {
         self.0.clear();
     }
+
+    /// `AribString`に指定された8単位符号を追記する。
+    #[inline]
+    pub fn push_str(&mut self, string: &AribStr) {
+        self.0.extend_from_slice(string.as_bytes());
+    }
 }
 
 impl Default for AribString {
@@ -238,6 +244,27 @@ impl ops::Deref for AribString {
 impl fmt::Debug for AribString {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Debug::fmt(&**self, f)
+    }
+}
+
+impl AsRef<AribStr> for AribString {
+    #[inline]
+    fn as_ref(&self) -> &AribStr {
+        &**self
+    }
+}
+
+impl AsRef<[u8]> for AribString {
+    #[inline]
+    fn as_ref(&self) -> &[u8] {
+        self.as_bytes()
+    }
+}
+
+impl ops::AddAssign<&AribStr> for AribString {
+    #[inline]
+    fn add_assign(&mut self, rhs: &AribStr) {
+        self.push_str(rhs);
     }
 }
 
