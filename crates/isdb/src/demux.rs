@@ -52,6 +52,38 @@ pub trait Filter {
     fn on_pes_packet(&mut self, packet: &Packet, pes: &PesPacket);
 }
 
+impl<T: Filter + ?Sized> Filter for &mut T {
+    #[inline]
+    fn on_transport_error(&mut self) {
+        (**self).on_transport_error()
+    }
+
+    #[inline]
+    fn on_format_error(&mut self) {
+        (**self).on_format_error()
+    }
+
+    #[inline]
+    fn on_discontinued(&mut self, pid: Pid) {
+        (**self).on_discontinued(pid)
+    }
+
+    #[inline]
+    fn on_packet(&mut self, packet: &Packet) -> Option<PacketType> {
+        (**self).on_packet(packet)
+    }
+
+    #[inline]
+    fn on_psi_section(&mut self, packet: &Packet, psi: &PsiSection) {
+        (**self).on_psi_section(packet, psi)
+    }
+
+    #[inline]
+    fn on_pes_packet(&mut self, packet: &Packet, pes: &PesPacket) {
+        (**self).on_pes_packet(packet, pes)
+    }
+}
+
 /// TSパケットを分離する。
 pub struct Demuxer<T> {
     filter: T,
