@@ -62,13 +62,15 @@ impl Service {
     }
 }
 
-struct Filter<'a> {
-    services: &'a mut Vec<Service>,
+struct Filter {
+    services: Vec<Service>,
 }
 
-impl<'a> Filter<'a> {
-    pub fn new(services: &'a mut Vec<Service>) -> Filter<'a> {
-        Filter { services }
+impl Filter {
+    pub const fn new() -> Filter {
+        Filter {
+            services: Vec::new(),
+        }
     }
 
     fn find_service(&mut self, service_id: u16) -> Option<&mut Service> {
@@ -78,7 +80,7 @@ impl<'a> Filter<'a> {
     }
 }
 
-impl<'a> isdb::demux::Filter for Filter<'a> {
+impl isdb::demux::Filter for Filter {
     fn on_pes_packet(&mut self, _: &isdb::Packet, _: &isdb::pes::PesPacket) {}
 
     fn on_packet(&mut self, packet: &isdb::Packet) -> Option<isdb::demux::PacketType> {
@@ -171,13 +173,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let f = File::open(&*args.path)?;
     let f = BufReader::with_capacity(188 * 1024, f);
 
-    let mut services = Vec::new();
-    let mut demuxer = isdb::demux::Demuxer::new(Filter::new(&mut services));
-
+    let mut demuxer = isdb::demux::Demuxer::new(Filter::new());
     for packet in isdb::Packet::iter(f) {
         demuxer.handle(&packet?);
     }
 
+    let services = demuxer.into_filter().services;
     for svc in services {
         // サービスIDとサービス名
         print!(

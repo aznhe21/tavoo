@@ -66,6 +66,24 @@ impl<T> Demuxer<T> {
             table: PidTable::from_fn(|_| PidState::default()),
         }
     }
+
+    /// 内包するフィルターを参照で返す。
+    #[inline]
+    pub fn get_filter(&mut self) -> &T {
+        &self.filter
+    }
+
+    /// 内包するフィルターを可変参照で返す。
+    #[inline]
+    pub fn get_filter_mut(&mut self) -> &mut T {
+        &mut self.filter
+    }
+
+    /// `Demuxer`を消費して内包するフィルターを返す。
+    #[inline]
+    pub fn into_filter(self) -> T {
+        self.filter
+    }
 }
 
 impl<T: Filter> Demuxer<T> {
