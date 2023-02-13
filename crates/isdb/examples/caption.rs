@@ -171,7 +171,11 @@ impl isdb::demux::Filter for Filter {
                 let Some(date) = tot.jst_time.date.to_date() else {
                     return;
                 };
-                let Some(date) = chrono::NaiveDate::from_ymd_opt(date.year, date.month as u32, date.day as u32) else {
+                let Some(date) = chrono::NaiveDate::from_ymd_opt(
+                    date.year,
+                    date.month as u32,
+                    date.day as u32
+                ) else {
                     return;
                 };
                 let Some(time) = chrono::NaiveTime::from_hms_opt(
@@ -198,10 +202,10 @@ impl isdb::demux::Filter for Filter {
         let Some(caption_es) = self.caption_es.get(&packet.pid()) else {
             return;
         };
-        let Some(ipes) = isdb::pes::IndependentPes::read(pes.data) else {
+        let Some(pes) = isdb::pes::IndependentPes::read(pes.data) else {
             return;
         };
-        let Some(data_group) = isdb::caption::DataGroup::read(ipes.data().pes_data) else {
+        let Some(data_group) = isdb::caption::DataGroup::read(pes.data().pes_data) else {
             return;
         };
 
