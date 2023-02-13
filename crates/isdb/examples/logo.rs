@@ -166,7 +166,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for packet in isdb::Packet::iter(f) {
         let packet = packet?;
-        demuxer.handle(&packet);
+        demuxer.feed(&packet);
     }
 
     if saved_count == 0 {

@@ -88,7 +88,7 @@ impl<T> Demuxer<T> {
 
 impl<T: Filter> Demuxer<T> {
     /// [`Packet`]を処理してパケットを分離する。
-    pub fn handle(&mut self, packet: &Packet) {
+    pub fn feed(&mut self, packet: &Packet) {
         if packet.error_indicator() {
             self.filter.on_transport_error();
             return;

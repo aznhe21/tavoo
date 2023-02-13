@@ -175,7 +175,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut demuxer = isdb::demux::Demuxer::new(Filter::new());
     for packet in isdb::Packet::iter(f) {
-        demuxer.handle(&packet?);
+        demuxer.feed(&packet?);
     }
 
     let services = demuxer.into_filter().services;
