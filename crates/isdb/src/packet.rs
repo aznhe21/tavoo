@@ -206,12 +206,6 @@ impl Packet {
             self.0.get(4..)
         }
     }
-
-    /// `payload`がPESかどうかを返す。
-    #[inline]
-    pub fn payload_is_pes(payload: &[u8]) -> bool {
-        payload.starts_with(&[0x00, 0x00, 0x01])
-    }
 }
 
 impl fmt::Debug for Packet {
@@ -296,9 +290,6 @@ pub struct AdaptationField<'a> {
 
     /// transport private data
     pub private_data: Option<&'a [u8]>,
-
-    /// adaptation extension
-    pub extension: Option<AdaptationExtension>,
 }
 
 impl<'a> AdaptationField<'a> {
@@ -352,63 +343,8 @@ impl<'a> AdaptationField<'a> {
         let private_data = if private_data_flag && af.len() >= 1 && af.len() >= 1 + af[0] as usize {
             let len = af[0] as usize;
             let v = &af[1..1 + len];
-            af = &af[1 + len..];
-            Some(v)
-        } else {
-            None
-        };
-        let valid_extension =
-            extension_flag && af.len() >= 2 && af[0] >= 1 && af.len() >= 1 + af[0] as usize;
-        let extension = if valid_extension {
-            let len = af[0] as usize;
-            let ltw_flag = af[1] & 0b10000000 != 0;
-            let piecewise_rate_flag = af[1] & 0b01000000 != 0;
-            let seamless_splice_flag = af[1] & 0b00100000 != 0;
-
-            let mut v = &af[2..1 + len];
-            let ltw = if ltw_flag && v.len() >= 2 {
-                let ltw_valid_flag = v[0] & 0b10000000 != 0;
-                let ltw_offset = v[0..=1].read_be_16() & 0b0111_1111_1111_1111;
-                v = &v[2..];
-
-                Some(LegalTimeWindow {
-                    ltw_valid_flag,
-                    ltw_offset,
-                })
-            } else {
-                None
-            };
-            let piecewise = if piecewise_rate_flag && v.len() >= 3 {
-                let piecewise_rate =
-                    ((v[0] & 0b00111111) as u32) << 16 | (v[1..=2].read_be_16() as u32);
-                v = &v[3..];
-
-                Some(Piecewise { piecewise_rate })
-            } else {
-                None
-            };
-            let seamless_splice = if seamless_splice_flag && v.len() >= 5 {
-                let splice_type = (v[0] & 0b11110000) >> 4;
-                let dts_next_access_unit = (((v[0] & 0b00001110) as u64) << 29)
-                    | (((v[1] & 0b11111111) as u64) << 22)
-                    | (((v[2] & 0b11111110) as u64) << 14)
-                    | (((v[3] & 0b11111111) as u64) << 7)
-                    | (((v[4] & 0b11111110) as u64) >> 1);
-
-                Some(SeamlessSplice {
-                    splice_type,
-                    dts_next_access_unit,
-                })
-            } else {
-                None
-            };
-
             // af = &af[1 + len..];
-            Some(AdaptationExtension {
-                ltw,
-                piecewise,
-                seamless_splice,
-            })
+            Some(v)
         } else {
             None
         };
@@ -421,49 +357,8 @@ impl<'a> AdaptationField<'a> {
             pcr_original,
             splice_countdown,
             private_data,
-            extension,
         })
     }
-}
-
-/// adaptation extension
-#[derive(Debug, Clone)]
-pub struct AdaptationExtension {
-    /// legal time window
-    pub ltw: Option<LegalTimeWindow>,
-
-    /// piecewise rate
-    pub piecewise: Option<Piecewise>,
-
-    /// seamless splice
-    pub seamless_splice: Option<SeamlessSplice>,
-}
-
-/// legal time window
-#[derive(Debug, Clone)]
-pub struct LegalTimeWindow {
-    /// LTW valid flag
-    pub ltw_valid_flag: bool,
-
-    /// LTW offset
-    pub ltw_offset: u16,
-}
-
-/// piecewise
-#[derive(Debug, Clone)]
-pub struct Piecewise {
-    /// piecewise rate
-    pub piecewise_rate: u32,
-}
-
-/// seamless splice
-#[derive(Debug, Clone)]
-pub struct SeamlessSplice {
-    /// splice type
-    pub splice_type: u8,
-
-    /// DTS next access unit
-    pub dts_next_access_unit: u64,
 }
 
 /// TSパケットを順次読み込むイテレーター。
@@ -645,7 +540,6 @@ FF FF FF FF FF FF FF FF FF FF FF FF
         assert_matches!(PACKET_1.adaptation_field(), None);
 
         assert_eq!(PACKET_1.payload(), Some(&PACKET_1.0[4..]));
-        assert!(!Packet::payload_is_pes(PACKET_1.payload().unwrap()));
 
         //
 
@@ -670,12 +564,10 @@ FF FF FF FF FF FF FF FF FF FF FF FF
                 pcr_original: None,
                 splice_countdown: None,
                 private_data: None,
-                extension: None
             })
         );
 
         assert_eq!(PACKET_2.payload(), Some(&PACKET_2.0[68..]));
-        assert!(!Packet::payload_is_pes(PACKET_2.payload().unwrap()));
 
         //
 
@@ -703,7 +595,6 @@ FF FF FF FF FF FF FF FF FF FF FF FF
                 pcr_original: None,
                 splice_countdown: None,
                 private_data: None,
-                extension: None
             })
         );
 
