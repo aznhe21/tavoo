@@ -258,7 +258,7 @@ impl isdb::demux::Filter for Filter {
 
     fn on_custom_packet(&mut self, ctx: &mut isdb::demux::Context<Tag>, _: bool) {
         let Some(af) = ctx.packet().adaptation_field() else { return };
-        let Some(pcr) = af.pcr else { return };
+        let Some(pcr) = af.pcr() else { return };
 
         self.last_pcr = Some(chrono::Duration::nanoseconds(pcr.to_nanos() as i64));
     }

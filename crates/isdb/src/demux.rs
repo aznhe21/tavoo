@@ -230,7 +230,7 @@ impl<T: Filter> Demuxer<T> {
         };
         let is_discontinuity = packet
             .adaptation_field()
-            .map_or(false, |af| af.discontinuity_indicator);
+            .map_or(false, |af| af.discontinuity_indicator());
         let cc_ok = pid == Pid::NULL
             || is_discontinuity
             || cc >= 0x10

@@ -186,9 +186,7 @@ impl Packet {
     /// アダプテーションフィールドを返す。
     #[inline]
     pub fn adaptation_field(&self) -> Option<AdaptationField> {
-        self.adaptation_field_length()
-            .and_then(|length| self.0.get(4..4 + 1 + length as usize))
-            .and_then(AdaptationField::parse)
+        AdaptationField::new(self)
     }
 
     /// パケットがペイロードを含むかどうかを返す。
@@ -236,6 +234,13 @@ pub struct Pcr {
 }
 
 impl Pcr {
+    fn read(data: &[u8; 6]) -> Pcr {
+        let base =
+            ((data[0..=3].read_be_32() as u64) << 1) | (((data[4] & 0b10000000) >> 7) as u64);
+        let extension = data[4..=5].read_be_16() & 0b0000_0001_1111_1111;
+        Pcr { base, extension }
+    }
+
     /// 90kHzの`base`と27MHzの`extension`から`Pcr`を生成する。
     #[inline]
     pub fn new(base: u64, extension: u16) -> Pcr {
@@ -270,96 +275,161 @@ impl Pcr {
 }
 
 /// TSパケット内のアダプテーションフィールド。
-#[derive(Debug, Clone)]
-pub struct AdaptationField<'a> {
-    /// 不連続性インジケーターを返す。
-    pub discontinuity_indicator: bool,
-
-    /// ランダムアクセスインジケーター。
-    pub random_access_indicator: bool,
-
-    /// エレメンタリーストリーム優先度インジケーター。
-    pub es_priority_indicator: bool,
-
-    /// PCR。
-    pub pcr: Option<Pcr>,
-
-    /// オリジナルPCR。
-    pub pcr_original: Option<Pcr>,
-
-    /// スプライスカウントダウン。
-    pub splice_countdown: Option<u8>,
-
-    /// プライベートデータ。
-    pub private_data: Option<&'a [u8]>,
-}
+#[derive(Debug)]
+pub struct AdaptationField<'a>(&'a [u8]);
 
 impl<'a> AdaptationField<'a> {
-    fn read_pcr(data: &[u8; 6]) -> Pcr {
-        let base =
-            ((data[0..=3].read_be_32() as u64) << 1) | (((data[4] & 0b10000000) >> 7) as u64);
-        let extension = data[4..=5].read_be_16() & 0b0000_0001_1111_1111;
-        Pcr { base, extension }
+    #[inline]
+    fn new(packet: &'a Packet) -> Option<AdaptationField<'a>> {
+        packet
+            .adaptation_field_length()
+            .filter(|&length| length >= 1)
+            .and_then(|length| packet.0.get(5..5 + length as usize))
+            .map(AdaptationField)
     }
 
-    /// TSパケットのアダプテーションフィールドをパースして[`AdaptationField`]として返す。
-    ///
-    /// `af`の長さが不足している場合は`None`を返す。
-    pub fn parse(mut af: &[u8]) -> Option<AdaptationField> {
-        if af.len() < 2 {
-            return None;
+    /// 不連続性インジケーターを返す。
+    #[inline]
+    pub fn discontinuity_indicator(&self) -> bool {
+        // Safety: 生成時に確認済み
+        unsafe { crate::utils::assume!(self.0.len() >= 1) }
+
+        self.0[0] & 0b10000000 != 0
+    }
+
+    /// ランダムアクセスインジケーターを返す。
+    #[inline]
+    pub fn random_access_indicator(&self) -> bool {
+        // Safety: 生成時に確認済み
+        unsafe { crate::utils::assume!(self.0.len() >= 1) }
+
+        self.0[0] & 0b01000000 != 0
+    }
+
+    /// エレメンタリーストリーム優先度インジケーターを返す。
+    #[inline]
+    pub fn es_priority_indicator(&self) -> bool {
+        // Safety: 生成時に確認済み
+        unsafe { crate::utils::assume!(self.0.len() >= 1) }
+
+        self.0[0] & 0b00100000 != 0
+    }
+
+    /// PCRフラグを返す。
+    #[inline]
+    pub fn pcr_flag(&self) -> bool {
+        // Safety: 生成時に確認済み
+        unsafe { crate::utils::assume!(self.0.len() >= 1) }
+
+        self.0[0] & 0b00010000 != 0
+    }
+
+    /// オリジナルPCRフラグを返す。
+    #[inline]
+    pub fn original_pcr_flag(&self) -> bool {
+        // Safety: 生成時に確認済み
+        unsafe { crate::utils::assume!(self.0.len() >= 1) }
+
+        self.0[0] & 0b00001000 != 0
+    }
+
+    /// 編集点フラグを返す。
+    #[inline]
+    pub fn splicing_point_flag(&self) -> bool {
+        // Safety: 生成時に確認済み
+        unsafe { crate::utils::assume!(self.0.len() >= 1) }
+
+        self.0[0] & 0b00000100 != 0
+    }
+
+    /// プライベートデータフラグを返す。
+    #[inline]
+    pub fn private_data_flag(&self) -> bool {
+        // Safety: 生成時に確認済み
+        unsafe { crate::utils::assume!(self.0.len() >= 1) }
+
+        self.0[0] & 0b00000010 != 0
+    }
+
+    /// 拡張フラグを返す。
+    #[inline]
+    pub fn extension_flag(&self) -> bool {
+        // Safety: 生成時に確認済み
+        unsafe { crate::utils::assume!(self.0.len() >= 1) }
+
+        self.0[0] & 0b00000001 != 0
+    }
+
+    fn pcr_offset(&self) -> Option<usize> {
+        if !self.pcr_flag() {
+            None
+        } else {
+            Some(1)
         }
+    }
 
-        // af[0]はadaptation_field_length
-        let discontinuity_indicator = (af[1] & 0b10000000) != 0;
-        let random_access_indicator = (af[1] & 0b01000000) != 0;
-        let es_priority_indicator = (af[1] & 0b00100000) != 0;
-        let pcr_flag = (af[1] & 0b00010000) != 0;
-        let original_pcr_flag = (af[1] & 0b00001000) != 0;
-        let splicing_point_flag = (af[1] & 0b00000100) != 0;
-        let private_data_flag = (af[1] & 0b00000010) != 0;
-        let extension_flag = (af[1] & 0b00000001) != 0;
+    fn opcr_offset(&self) -> Option<usize> {
+        if !self.original_pcr_flag() {
+            None
+        } else if self.pcr_flag() {
+            Some(1 + 6)
+        } else {
+            Some(1)
+        }
+    }
 
-        af = &af[2..];
-        let pcr = if pcr_flag && af.len() >= 6 {
-            let v = AdaptationField::read_pcr(&af[..6].try_into().unwrap());
-            af = &af[6..];
-            Some(v)
-        } else {
+    fn splice_countdown_offset(&self) -> Option<usize> {
+        if !self.splicing_point_flag() {
             None
-        };
-        let pcr_original = if original_pcr_flag && af.len() >= 6 {
-            let v = AdaptationField::read_pcr(&af[..6].try_into().unwrap());
-            af = &af[6..];
-            Some(v)
+        } else if self.pcr_flag() && self.original_pcr_flag() {
+            Some(1 + 6 + 6)
+        } else if self.pcr_flag() || self.original_pcr_flag() {
+            Some(1 + 6)
         } else {
-            None
-        };
-        let splice_countdown = if splicing_point_flag && af.len() >= 1 {
-            let v = af[0];
-            af = &af[1..];
-            Some(v)
-        } else {
-            None
-        };
-        let private_data = if private_data_flag && af.len() >= 1 && af.len() >= 1 + af[0] as usize {
-            let len = af[0] as usize;
-            let v = &af[1..1 + len];
-            // af = &af[1 + len..];
-            Some(v)
-        } else {
-            None
-        };
+            Some(1)
+        }
+    }
 
-        Some(AdaptationField {
-            discontinuity_indicator,
-            random_access_indicator,
-            es_priority_indicator,
-            pcr,
-            pcr_original,
-            splice_countdown,
-            private_data,
-        })
+    fn private_data_offset(&self) -> Option<usize> {
+        if !self.private_data_flag() {
+            None
+        } else {
+            Some(
+                1 + if self.pcr_flag() { 6 } else { 0 }
+                    + if self.original_pcr_flag() { 6 } else { 0 }
+                    + if self.splicing_point_flag() { 1 } else { 0 },
+            )
+        }
+    }
+
+    /// PCRを返す。
+    pub fn pcr(&self) -> Option<Pcr> {
+        self.pcr_offset()
+            .and_then(|offset| self.0.get(offset..offset + 6))
+            .map(|slice| slice.try_into().unwrap())
+            .map(Pcr::read)
+    }
+
+    /// オリジナルPCRを返す。
+    pub fn original_pcr(&self) -> Option<Pcr> {
+        self.opcr_offset()
+            .and_then(|offset| self.0.get(offset..offset + 6))
+            .map(|slice| slice.try_into().unwrap())
+            .map(Pcr::read)
+    }
+
+    /// スプライスカウントダウンを返す。
+    pub fn splice_countdown(&self) -> Option<u8> {
+        self.splice_countdown_offset()
+            .and_then(|offset| self.0.get(offset))
+            .copied()
+    }
+
+    /// プライベートデータを返す。
+    pub fn private_data(&self) -> Option<&[u8]> {
+        let offset = self.private_data_offset()?;
+        let len = *self.0.get(offset)?;
+        self.0.get(offset + len as usize..)
     }
 }
 
@@ -556,18 +626,14 @@ FF FF FF FF FF FF FF FF FF FF FF FF
         assert_eq!(PACKET_2.continuity_counter(), 7);
 
         assert_eq!(PACKET_2.adaptation_field_length(), Some(63));
-        assert_matches!(
-            PACKET_2.adaptation_field(),
-            Some(AdaptationField {
-                discontinuity_indicator: false,
-                random_access_indicator: false,
-                es_priority_indicator: false,
-                pcr: None,
-                pcr_original: None,
-                splice_countdown: None,
-                private_data: None,
-            })
-        );
+        assert!(PACKET_2.adaptation_field().is_some());
+        let af = PACKET_2.adaptation_field().unwrap();
+        assert!(!af.discontinuity_indicator());
+        assert!(!af.random_access_indicator());
+        assert!(!af.es_priority_indicator());
+        assert!(af.pcr().is_none());
+        assert!(af.original_pcr().is_none());
+        assert!(af.private_data().is_none());
 
         assert_eq!(PACKET_2.payload(), Some(&PACKET_2.0[68..]));
 
@@ -584,21 +650,20 @@ FF FF FF FF FF FF FF FF FF FF FF FF
         assert_eq!(PACKET_3.continuity_counter(), 0);
 
         assert_eq!(PACKET_3.adaptation_field_length(), Some(183));
-        assert_matches!(
-            PACKET_3.adaptation_field(),
-            Some(AdaptationField {
-                discontinuity_indicator: false,
-                random_access_indicator: false,
-                es_priority_indicator: false,
-                pcr: Some(Pcr {
-                    base: 7052388613,
-                    extension: 249
-                }),
-                pcr_original: None,
-                splice_countdown: None,
-                private_data: None,
+        assert!(PACKET_3.adaptation_field().is_some());
+        let af = PACKET_3.adaptation_field().unwrap();
+        assert!(!af.discontinuity_indicator());
+        assert!(!af.random_access_indicator());
+        assert!(!af.es_priority_indicator());
+        assert_eq!(
+            af.pcr(),
+            Some(Pcr {
+                base: 7052388613,
+                extension: 249
             })
         );
+        assert!(af.original_pcr().is_none());
+        assert!(af.private_data().is_none());
 
         assert_eq!(PACKET_3.payload(), None);
     }
