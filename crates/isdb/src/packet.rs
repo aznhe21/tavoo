@@ -8,10 +8,11 @@ use crate::pid::Pid;
 use crate::utils::BytesExt;
 
 const SYNC_BYTE: u8 = 0x47;
+const PACKET_SIZE: usize = 188;
 
 /// MPEG2-TSのパケット。
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub struct Packet(pub [u8; 188]);
+pub struct Packet(pub [u8; PACKET_SIZE]);
 
 impl Packet {
     /// `r`からTSパケットを順次読み込むイテレーターを生成する。
@@ -24,34 +25,49 @@ impl Packet {
     /// `r`からTSパケットを読み込む。
     ///
     /// 原則として188バイトずつ読み込むが、パケットとして正しくなさそうな部分は読み飛ばす。
+    // LibISDBのTSPacketParserFilter::SyncPacketと同じ動作をする。
     pub fn read<R: Read>(r: R) -> io::Result<Option<Packet>> {
         fn read_inner<R: Read>(mut r: R) -> io::Result<Packet> {
-            let mut out_of_sync = 0;
-            for b in r.by_ref().bytes() {
-                if b? == SYNC_BYTE {
-                    break;
-                }
-                out_of_sync += 1;
-            }
-
-            let mut packet = Packet([0; 188]);
-            packet.0[0] = SYNC_BYTE;
-
-            let mut read = 1;
-            loop {
-                r.read_exact(&mut packet.0[read..])?;
-
-                if out_of_sync > 16 && !packet.is_normal() {
-                    // 同期バイトが他にもある場合、そこから再同期する
-                    if let Some(pos) = memchr::memchr(SYNC_BYTE, &packet.0[1..]) {
-                        let pos = pos + 1;
-                        packet.0.copy_within(pos.., 0);
-                        read = packet.0.len() - pos;
-                        continue;
-                    }
-                }
+            let mut packet = Packet([0; PACKET_SIZE]);
+            r.read_exact(&mut packet.0)?;
+            if packet.0[0] == SYNC_BYTE {
                 return Ok(packet);
             }
+
+            let mut may_resync = false;
+            // 同期バイト待ち
+            let pos = loop {
+                if let Some(pos) = memchr::memchr(SYNC_BYTE, &packet.0) {
+                    // Safety: memchrの戻り値が入力の長さを超えることはない
+                    unsafe { crate::utils::assume!(pos < PACKET_SIZE) }
+
+                    // 同期バイト発見
+                    break pos;
+                }
+
+                r.read_exact(&mut packet.0)?;
+                may_resync = true;
+            };
+
+            packet.0.copy_within(pos.., 0);
+            r.read_exact(&mut packet.0[PACKET_SIZE - pos..])?;
+
+            if may_resync || pos > 16 {
+                while !packet.is_normal() {
+                    let Some(pos) = memchr::memchr(SYNC_BYTE, &packet.0[1..]) else {
+                        break;
+                    };
+                    // 同期バイトが他にもある場合、そこから再同期する
+
+                    let pos = pos + 1;
+                    // Safety: memchrの戻り値が入力の長さを超えることはない
+                    unsafe { crate::utils::assume!((1..PACKET_SIZE).contains(&pos)) }
+
+                    packet.0.copy_within(pos.., 0);
+                    r.read_exact(&mut packet.0[PACKET_SIZE - pos..])?;
+                }
+            }
+            Ok(packet)
         }
 
         match read_inner(r) {
