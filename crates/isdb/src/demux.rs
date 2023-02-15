@@ -223,20 +223,7 @@ impl<T: Filter> Demuxer<T> {
         };
         let tag = state.tag;
 
-        let cc = if packet.has_payload() {
-            packet.continuity_counter()
-        } else {
-            0x10
-        };
-        let is_discontinuity = packet
-            .adaptation_field()
-            .map_or(false, |af| af.discontinuity_indicator());
-        let cc_ok = pid == Pid::NULL
-            || is_discontinuity
-            || cc >= 0x10
-            || state.last_cc >= 0x10
-            || (state.last_cc + 1) & 0x0F == cc;
-        state.last_cc = cc;
+        let cc_ok = packet.validate_cc(&mut state.last_cc);
 
         // 所有権を切り離すためにパケット処理中はTempを設定
         let mut store = std::mem::replace(&mut state.store, PacketStore::Temp);

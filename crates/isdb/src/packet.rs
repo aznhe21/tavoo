@@ -206,6 +206,29 @@ impl Packet {
             self.0.get(4..)
         }
     }
+
+    /// 前回の連続性指標である`last_cc`を元にパケット順の正当性を確認する。
+    ///
+    /// `last_cc`の初期値は`0x10`以上とする。
+    pub fn validate_cc(&self, last_cc: &mut u8) -> bool {
+        let pid = self.pid();
+        let cc = if self.has_payload() {
+            self.continuity_counter()
+        } else {
+            0x10
+        };
+        let is_discontinuity = self
+            .adaptation_field()
+            .map_or(false, |af| af.discontinuity_indicator());
+        let cc_ok = pid == Pid::NULL
+            || is_discontinuity
+            || cc >= 0x10
+            || *last_cc >= 0x10
+            || (*last_cc + 1) & 0x0F == cc;
+        *last_cc = cc;
+
+        cc_ok
+    }
 }
 
 impl fmt::Debug for Packet {
