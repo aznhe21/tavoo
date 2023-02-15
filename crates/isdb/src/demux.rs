@@ -20,18 +20,6 @@ pub enum PacketType {
 
 /// [`Demuxer`]に登録するフィルター。
 pub trait Filter {
-    /// パケットにエラーがあった際に呼ばれる。
-    ///
-    /// パケットにエラーがあった場合パケットに関する処理は一切行われない。
-    /// つまりフィルターの他のメソッドが呼ばれることもない。
-    fn on_transport_error(&mut self) {}
-
-    /// パケットが不正であった際に呼ばれる。
-    ///
-    /// パケットが不正の場合パケットに関する処理は一切行われない。
-    /// つまりフィルターの他のメソッドが呼ばれることもない。
-    fn on_format_error(&mut self) {}
-
     /// パケットを処理する前に呼ばれ、パケットをPSIとPESのどちらで分離するかを返す。。
     ///
     /// `None`を返した場合は分離処理をしない。
@@ -39,11 +27,6 @@ pub trait Filter {
     ///
     /// `packet.is_normal()`が偽のときはパケットが不正であるため、`None`を返すことが推奨される。
     fn on_packet(&mut self, packet: &Packet) -> Option<PacketType>;
-
-    /// パケットが連続していなかった（ドロップしていた）際に呼ばれる。
-    fn on_discontinued(&mut self, pid: Pid) {
-        let _ = pid;
-    }
 
     /// PSIセクションを分離した際呼ばれる。
     fn on_psi_section(&mut self, packet: &Packet, psi: &PsiSection);
@@ -53,21 +36,6 @@ pub trait Filter {
 }
 
 impl<T: Filter + ?Sized> Filter for &mut T {
-    #[inline]
-    fn on_transport_error(&mut self) {
-        (**self).on_transport_error()
-    }
-
-    #[inline]
-    fn on_format_error(&mut self) {
-        (**self).on_format_error()
-    }
-
-    #[inline]
-    fn on_discontinued(&mut self, pid: Pid) {
-        (**self).on_discontinued(pid)
-    }
-
     #[inline]
     fn on_packet(&mut self, packet: &Packet) -> Option<PacketType> {
         (**self).on_packet(packet)
@@ -121,12 +89,7 @@ impl<T> Demuxer<T> {
 impl<T: Filter> Demuxer<T> {
     /// [`Packet`]を処理してパケットを分離する。
     pub fn feed(&mut self, packet: &Packet) {
-        if packet.error_indicator() {
-            self.filter.on_transport_error();
-            return;
-        }
         if !packet.is_normal() {
-            self.filter.on_format_error();
             return;
         }
 
@@ -151,9 +114,6 @@ impl<T: Filter> Demuxer<T> {
             || state.last_cc >= 0x10
             || (state.last_cc + 1) & 0x0F == cc;
         state.last_cc = cc;
-        if !cc_ok {
-            self.filter.on_discontinued(pid);
-        }
 
         let Some(payload) = packet.payload().filter(|p| !p.is_empty()) else {
             return;

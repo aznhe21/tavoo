@@ -1,8 +1,6 @@
 use std::fs::File;
 use std::io::BufReader;
 
-use isdb::Pid;
-
 #[derive(Default)]
 struct Count {
     input: u64,
@@ -32,32 +30,18 @@ impl isdb::demux::Filter for Counter {
     fn on_pes_packet(&mut self, _: &isdb::Packet, _: &isdb::pes::PesPacket) {}
     fn on_psi_section(&mut self, _: &isdb::Packet, _: &isdb::psi::PsiSection) {}
 
-    fn on_transport_error(&mut self) {
-        self.input += 1;
-        self.transport_error += 1;
-    }
-
-    fn on_format_error(&mut self) {
-        self.input += 1;
-        self.format_error += 1;
-    }
-
     fn on_packet(&mut self, packet: &isdb::Packet) -> Option<isdb::demux::PacketType> {
-        self.input += 1;
-
         let mut count = &mut self.counts[packet.pid()];
         count.input += 1;
         if packet.is_scrambled() {
             count.scrambled += 1;
         }
 
-        // PESの方が処理が軽い
+        // FIXME: PESだろうがPSIだろうが無駄な処理が入ってしまう
         Some(isdb::demux::PacketType::Pes)
     }
 
-    fn on_discontinued(&mut self, pid: Pid) {
-        self.counts[pid].continuity_error += 1;
-    }
+    // FIXME: ドロップ数を数える
 }
 
 const HELP: &str = "\
@@ -89,7 +73,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut demuxer = isdb::demux::Demuxer::new(Counter::new());
     for packet in isdb::Packet::iter(f) {
-        demuxer.feed(&packet?);
+        let packet = packet?;
+
+        demuxer.get_filter_mut().input += 1;
+        if packet.error_indicator() {
+            demuxer.get_filter_mut().transport_error += 1;
+            continue;
+        }
+        if !packet.is_normal() {
+            demuxer.get_filter_mut().format_error += 1;
+            continue;
+        }
+        demuxer.feed(&packet);
     }
 
     let counter = demuxer.into_filter();
