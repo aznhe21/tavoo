@@ -111,37 +111,37 @@ impl Packet {
         true
     }
 
-    /// sync byteを返す。
+    /// 同期バイトを返す。
     #[inline]
     pub fn sync_byte(&self) -> u8 {
         self.0[0]
     }
 
-    /// transport error indicatorを返す。
+    /// トランスポートエラーインジケーターを返す。
     #[inline]
     pub fn error_indicator(&self) -> bool {
         self.0[1] & 0b10000000 != 0
     }
 
-    /// payload unit start indicatorを返す。
+    /// ペイロードユニット開始インジケーターを返す。
     #[inline]
     pub fn unit_start_indicator(&self) -> bool {
         self.0[1] & 0b01000000 != 0
     }
 
-    /// transport priorityを返す。
+    /// トランスポート優先度を返す。
     #[inline]
     pub fn priority(&self) -> bool {
         self.0[1] & 0b00100000 != 0
     }
 
-    /// PID（13ビット）を返す。
+    /// PIDを返す。
     #[inline]
     pub fn pid(&self) -> Pid {
         Pid::read(&self.0[1..])
     }
 
-    /// transport scrambling control（2ビット）を返す。
+    /// トランスポートスクランブル制御（2ビット）を返す。
     #[inline]
     pub fn scrambling_control(&self) -> u8 {
         (self.0[3] & 0b11000000) >> 6
@@ -153,19 +153,19 @@ impl Packet {
         self.scrambling_control() & 0b10 != 0
     }
 
-    /// adaptation field control（2ビット）を返す。
+    /// アダプテーションフィールド制御（2ビット）を返す。
     #[inline]
     pub fn adaptation_field_control(&self) -> u8 {
         (self.0[3] & 0b00110000) >> 4
     }
 
-    /// continuity counter（4ビット）を返す。
+    /// 連続性指標（4ビット）を返す。
     #[inline]
     pub fn continuity_counter(&self) -> u8 {
         self.0[3] & 0b00001111
     }
 
-    /// パケットがAdaptation Fieldを含むかどうかを返す。
+    /// パケットがアダプテーションフィールドを含むかどうかを返す。
     #[inline]
     pub fn has_adaptation_field(&self) -> bool {
         self.adaptation_field_control() & 0b10 != 0
@@ -176,13 +176,15 @@ impl Packet {
         self.0[4]
     }
 
-    /// adaptation fieldがある場合、adaptation_field_lengthを返す。
+    /// アダプテーションフィールドがある場合、adaptation_field_lengthを返す。
+    #[inline]
     pub fn adaptation_field_length(&self) -> Option<u8> {
         self.has_adaptation_field()
             .then(|| self.adaptation_field_length_raw())
     }
 
-    /// adaptation fieldを返す。
+    /// アダプテーションフィールドを返す。
+    #[inline]
     pub fn adaptation_field(&self) -> Option<AdaptationField> {
         self.adaptation_field_length()
             .and_then(|length| self.0.get(4..4 + 1 + length as usize))
@@ -223,7 +225,7 @@ impl fmt::Debug for Packet {
     }
 }
 
-/// Program Clock Reference
+/// プログラムクロックリファレンス（PCR）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Pcr {
     /// PCRにおける90kHzの部分。
@@ -267,28 +269,28 @@ impl Pcr {
     }
 }
 
-/// TSパケットのadaptation field。
+/// TSパケット内のアダプテーションフィールド。
 #[derive(Debug, Clone)]
 pub struct AdaptationField<'a> {
-    /// discontinuity indicator
+    /// 不連続性インジケーターを返す。
     pub discontinuity_indicator: bool,
 
-    /// random access indicator
+    /// ランダムアクセスインジケーター。
     pub random_access_indicator: bool,
 
-    /// elementary stream priority indicator
+    /// エレメンタリーストリーム優先度インジケーター。
     pub es_priority_indicator: bool,
 
-    /// program clock reference
+    /// PCR。
     pub pcr: Option<Pcr>,
 
-    /// original program clock reference
+    /// オリジナルPCR。
     pub pcr_original: Option<Pcr>,
 
-    /// splice countdown
+    /// スプライスカウントダウン。
     pub splice_countdown: Option<u8>,
 
-    /// transport private data
+    /// プライベートデータ。
     pub private_data: Option<&'a [u8]>,
 }
 
@@ -300,7 +302,7 @@ impl<'a> AdaptationField<'a> {
         Pcr { base, extension }
     }
 
-    /// TSパケットのadaptation fieldをパースして[`AdaptationField`]として返す。
+    /// TSパケットのアダプテーションフィールドをパースして[`AdaptationField`]として返す。
     ///
     /// `af`の長さが不足している場合は`None`を返す。
     pub fn parse(mut af: &[u8]) -> Option<AdaptationField> {
