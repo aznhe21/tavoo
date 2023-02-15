@@ -45,19 +45,27 @@ impl Filter {
     }
 }
 
-impl isdb::demux::Filter for Filter {
-    fn on_pes_packet(&mut self, _: &isdb::Packet, _: &isdb::pes::PesPacket) {}
+#[derive(Debug, Clone, Copy)]
+enum Tag {
+    Sdt,
+    Eit,
+}
 
-    fn on_packet(&mut self, packet: &isdb::Packet) -> Option<isdb::demux::PacketType> {
-        match packet.pid() {
-            Pid::SDT | Pid::H_EIT => Some(isdb::demux::PacketType::Psi),
-            _ => None,
-        }
+impl isdb::demux::Filter for Filter {
+    type Tag = Tag;
+
+    fn on_pes_packet(&mut self, _: &mut isdb::demux::Context<Tag>, _: &isdb::pes::PesPacket) {}
+
+    fn on_setup(&mut self) -> isdb::demux::Table<Tag> {
+        let mut table = isdb::demux::Table::new();
+        table.set_as_psi(Pid::SDT, Tag::Sdt);
+        table.set_as_psi(Pid::H_EIT, Tag::Eit);
+        table
     }
 
-    fn on_psi_section(&mut self, packet: &isdb::Packet, psi: &isdb::psi::PsiSection) {
-        match packet.pid() {
-            Pid::SDT => {
+    fn on_psi_section(&mut self, ctx: &mut isdb::demux::Context<Tag>, psi: &isdb::psi::PsiSection) {
+        match ctx.tag() {
+            Tag::Sdt => {
                 let sdt = match isdb::table::Sdt::read(psi) {
                     Some(isdb::table::Sdt::Actual(sdt)) => sdt,
                     Some(isdb::table::Sdt::Other(sdt)) => sdt,
@@ -93,7 +101,7 @@ impl isdb::demux::Filter for Filter {
                     }
                 }
             }
-            Pid::H_EIT => {
+            Tag::Eit => {
                 let eit = match isdb::table::Eit::read(psi) {
                     Some(isdb::table::Eit::ActualSchedule(eit)) => eit,
                     Some(isdb::table::Eit::OtherSchedule(eit)) => eit,
@@ -177,7 +185,6 @@ impl isdb::demux::Filter for Filter {
                     }
                 }
             }
-            _ => {}
         }
     }
 }

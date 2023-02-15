@@ -8,63 +8,189 @@ use crate::pid::{Pid, PidTable};
 use crate::psi::{PsiError, PsiSection};
 use crate::utils::SliceExt;
 
-/// パケット種別。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PacketType {
-    /// パケットがPESであることを表す。
-    Pes,
+/// 各PIDにおける処理方法を設定するテーブル。
+///
+/// 型パラメータ`T`には`Filter::Tag`を指定する。
+#[derive(Clone)]
+pub struct Table<T>(PidTable<Option<PacketState<T>>>);
 
-    /// パケットがPSIであることを表す。
-    Psi,
+impl<T: Copy> Table<T> {
+    /// 何も設定されていない空のテーブルを生成する。
+    #[inline]
+    pub fn new() -> Table<T> {
+        Table(PidTable::from_fn(|_| None))
+    }
+
+    /// `pid`のパケットに処理が設定されているかどうかを返す。
+    #[inline]
+    pub fn is_set(&self, pid: Pid) -> bool {
+        self.0[pid].is_some()
+    }
+
+    /// `pid`のパケットをPSIとして分離するよう設定されているかどうかを返す。
+    #[inline]
+    pub fn is_psi(&self, pid: Pid) -> bool {
+        matches!(
+            self.0[pid],
+            Some(PacketState {
+                store: PacketStore::Psi(_),
+                ..
+            })
+        )
+    }
+
+    /// `pid`のパケットをPESとして分離するよう設定されているかどうかを返す。
+    #[inline]
+    pub fn is_pes(&self, pid: Pid) -> bool {
+        matches!(
+            self.0[pid],
+            Some(PacketState {
+                store: PacketStore::Pes(_),
+                ..
+            })
+        )
+    }
+
+    /// `pid`のパケットをユーザー独自に処理するよう設定されているかどうかを返す。
+    #[inline]
+    pub fn is_custom(&self, pid: Pid) -> bool {
+        matches!(
+            self.0[pid],
+            Some(PacketState {
+                store: PacketStore::Custom,
+                ..
+            })
+        )
+    }
+
+    /// `pid`のパケットに設定されたタグを返す。
+    #[inline]
+    pub fn get_tag(&self, pid: Pid) -> Option<T> {
+        self.0[pid].as_ref().map(|s| s.tag)
+    }
+
+    /// `pid`のパケットをPSIとして分離するよう設定する。
+    ///
+    /// `tag`により、PMTなど動的に変わるPIDの代わりに定数でパケット種別を区別することができる。
+    #[inline]
+    pub fn set_as_psi(&mut self, pid: Pid, tag: T) {
+        self.0[pid] = Some(PacketState::new(PacketStore::psi(), tag));
+    }
+
+    /// `pid`のパケットをPESとして分離するよう設定する。
+    ///
+    /// `tag`により、PMTなど動的に変わるPIDの代わりに定数でパケット種別を区別することができる。
+    #[inline]
+    pub fn set_as_pes(&mut self, pid: Pid, tag: T) {
+        self.0[pid] = Some(PacketState::new(PacketStore::pes(), tag));
+    }
+
+    /// `pid`のパケットをユーザー独自に処理するよう設定する。
+    ///
+    /// `tag`により、PMTなど動的に変わるPIDの代わりに定数でパケット種別を区別することができる。
+    #[inline]
+    pub fn set_as_custom(&mut self, pid: Pid, tag: T) {
+        self.0[pid] = Some(PacketState::new(PacketStore::custom(), tag));
+    }
+
+    /// `pid`のパケットで何も処理しないよう設定を解除する。
+    #[inline]
+    pub fn unset(&mut self, pid: Pid) {
+        self.0[pid] = None;
+    }
 }
 
-/// [`Demuxer`]に登録するフィルター。
-pub trait Filter {
-    /// パケットを処理する前に呼ばれ、パケットをPSIとPESのどちらで分離するかを返す。。
-    ///
-    /// `None`を返した場合は分離処理をしない。
-    /// その場合には`on_discontinued`・`on_psi_section`・`on_pes_packet`は呼ばれなくなる。
-    ///
-    /// `packet.is_normal()`が偽のときはパケットが不正であるため、`None`を返すことが推奨される。
-    fn on_packet(&mut self, packet: &Packet) -> Option<PacketType>;
+impl<T: Copy> Default for Table<T> {
+    #[inline]
+    fn default() -> Table<T> {
+        Table::new()
+    }
+}
 
-    /// PSIセクションを分離した際呼ばれる。
-    fn on_psi_section(&mut self, packet: &Packet, psi: &PsiSection);
+/// パケットの分離における状況。
+pub struct Context<'a, T> {
+    packet: &'a Packet,
+    tag: T,
+    table: &'a mut Table<T>,
+}
+
+impl<'a, T: Copy> Context<'a, T> {
+    /// 分離対象のパケットを返す。
+    #[inline]
+    pub fn packet(&self) -> &Packet {
+        self.packet
+    }
+
+    /// 現在のPIDに設定されたタグを返す。
+    #[inline]
+    pub fn tag(&self) -> T {
+        self.tag
+    }
+
+    /// 各PIDにおける処理方法を設定するテーブルを返す。
+    #[inline]
+    pub fn table(&mut self) -> &mut Table<T> {
+        self.table
+    }
+}
+
+/// [`Demuxer`]に渡すフィルターで、パケットを処理するために各メソッドが呼ばれる。
+pub trait Filter {
+    /// パケットの種類を識別するためのタグに使う型。
+    type Tag: Copy;
+
+    /// フィルター初期化時に呼ばれ、各PIDにおける処理方法を設定するテーブルを返す。
+    fn on_setup(&mut self) -> Table<Self::Tag>;
+
+    /// PSIセクションを分離した際に呼ばれる。
+    fn on_psi_section(&mut self, ctx: &mut Context<Self::Tag>, psi: &PsiSection);
 
     /// PESパケットを分離した際に呼ばれる。
-    fn on_pes_packet(&mut self, packet: &Packet, pes: &PesPacket);
+    fn on_pes_packet(&mut self, ctx: &mut Context<Self::Tag>, pes: &PesPacket);
+
+    /// 独自に処理するよう設定されたパケットを処理する際に呼ばれる。
+    ///
+    /// `cc_ok`は連続性指標が正常であるかどうかを示す。
+    fn on_custom_packet(&mut self, ctx: &mut Context<Self::Tag>, cc_ok: bool) {
+        let _ = (ctx, cc_ok);
+    }
 }
 
 impl<T: Filter + ?Sized> Filter for &mut T {
+    type Tag = T::Tag;
+
     #[inline]
-    fn on_packet(&mut self, packet: &Packet) -> Option<PacketType> {
-        (**self).on_packet(packet)
+    fn on_setup(&mut self) -> Table<Self::Tag> {
+        (**self).on_setup()
     }
 
     #[inline]
-    fn on_psi_section(&mut self, packet: &Packet, psi: &PsiSection) {
-        (**self).on_psi_section(packet, psi)
+    fn on_psi_section(&mut self, ctx: &mut Context<Self::Tag>, psi: &PsiSection) {
+        (**self).on_psi_section(ctx, psi)
     }
 
     #[inline]
-    fn on_pes_packet(&mut self, packet: &Packet, pes: &PesPacket) {
-        (**self).on_pes_packet(packet, pes)
+    fn on_pes_packet(&mut self, ctx: &mut Context<Self::Tag>, pes: &PesPacket) {
+        (**self).on_pes_packet(ctx, pes)
+    }
+
+    #[inline]
+    fn on_custom_packet(&mut self, ctx: &mut Context<Self::Tag>, cc_ok: bool) {
+        (**self).on_custom_packet(ctx, cc_ok);
     }
 }
 
 /// TSパケットを分離する。
-pub struct Demuxer<T> {
+pub struct Demuxer<T: Filter> {
     filter: T,
-    table: PidTable<PidState>,
+    table: Table<T::Tag>,
 }
 
-impl<T> Demuxer<T> {
+impl<T: Filter> Demuxer<T> {
     /// `Demuxer`を生成する。
-    pub fn new(filter: T) -> Demuxer<T> {
-        Demuxer {
-            filter,
-            table: PidTable::from_fn(|_| PidState::default()),
-        }
+    pub fn new(mut filter: T) -> Demuxer<T> {
+        let table = filter.on_setup();
+        Demuxer { filter, table }
     }
 
     /// 内包するフィルターを参照で返す。
@@ -84,21 +210,18 @@ impl<T> Demuxer<T> {
     pub fn into_filter(self) -> T {
         self.filter
     }
-}
 
-impl<T: Filter> Demuxer<T> {
     /// [`Packet`]を処理してパケットを分離する。
     pub fn feed(&mut self, packet: &Packet) {
         if !packet.is_normal() {
             return;
         }
 
-        let Some(pt) = self.filter.on_packet(packet) else {
+        let pid = packet.pid();
+        let Some(state) = self.table.0[pid].as_mut() else {
             return;
         };
-
-        let pid = packet.pid();
-        let state = &mut self.table[pid];
+        let tag = state.tag;
 
         let cc = if packet.has_payload() {
             packet.continuity_counter()
@@ -115,106 +238,136 @@ impl<T: Filter> Demuxer<T> {
             || (state.last_cc + 1) & 0x0F == cc;
         state.last_cc = cc;
 
-        let Some(payload) = packet.payload().filter(|p| !p.is_empty()) else {
-            return;
+        // 所有権を切り離すためにパケット処理中はTempを設定
+        let mut store = std::mem::replace(&mut state.store, PacketStore::Temp);
+        drop(state);
+
+        let mut ctx = Context {
+            packet,
+            tag,
+            table: &mut self.table,
         };
+        match &mut store {
+            PacketStore::Pes(pes) => match packet.payload() {
+                Some(payload) if !payload.is_empty() => {
+                    pes.write(
+                        &mut self.filter,
+                        &mut ctx,
+                        payload,
+                        packet.unit_start_indicator(),
+                    );
+                }
+                _ => {}
+            },
+            PacketStore::Psi(psi) => match packet.payload() {
+                Some(payload) if !payload.is_empty() => {
+                    if packet.unit_start_indicator() {
+                        let len = payload[0] as usize;
+                        let Some((prev, next)) = payload[1..].split_at_checked(len) else {
+                            return;
+                        };
 
-        let data = match &mut state.data {
-            // パケット種別同一
-            Some(data) if data.packet_type() == pt => data,
-
-            // パケット種別が変わった
-            data => data.insert(match pt {
-                PacketType::Pes => PidData::pes(),
-                PacketType::Psi => PidData::psi(),
-            }),
-        };
-        match data {
-            PidData::Pes(pes) => {
-                pes.write(
-                    &mut self.filter,
-                    packet,
-                    payload,
-                    packet.unit_start_indicator(),
-                );
-            }
-            PidData::Psi(psi) => {
-                if packet.unit_start_indicator() {
-                    let len = payload[0] as usize;
-                    let Some((prev, next)) = payload[1..].split_at_checked(len) else {
-                        return;
-                    };
-
-                    if !prev.is_empty() && cc_ok {
-                        psi.write(&mut self.filter, packet, prev, false);
-                    }
-                    if !next.is_empty() {
-                        psi.write(&mut self.filter, packet, next, true);
-                    }
-                } else {
-                    if cc_ok {
-                        psi.write(&mut self.filter, packet, payload, false);
+                        if !prev.is_empty() && cc_ok {
+                            psi.write(&mut self.filter, &mut ctx, prev, false);
+                        }
+                        if !next.is_empty() {
+                            psi.write(&mut self.filter, &mut ctx, next, true);
+                        }
+                    } else {
+                        if cc_ok {
+                            psi.write(&mut self.filter, &mut ctx, payload, false);
+                        }
                     }
                 }
-            }
+                _ => {}
+            },
+            PacketStore::Custom => self.filter.on_custom_packet(&mut ctx, cc_ok),
+            PacketStore::Temp => unreachable!(),
+        }
+
+        // フィルター内でテーブルの設定がされていなければ値を戻す
+        if let Some(
+            state @ PacketState {
+                store: PacketStore::Temp,
+                ..
+            },
+        ) = &mut self.table.0[pid]
+        {
+            state.store = store;
         }
     }
 }
 
-struct PidState {
+#[derive(Clone)]
+struct PacketState<T> {
     last_cc: u8,
-    data: Option<PidData>,
+    tag: T,
+    store: PacketStore,
 }
 
-impl Default for PidState {
-    fn default() -> Self {
-        PidState {
+impl<T> PacketState<T> {
+    #[inline]
+    pub fn new(store: PacketStore, tag: T) -> PacketState<T> {
+        PacketState {
             last_cc: 0x10,
-            data: None,
+            tag,
+            store,
         }
     }
 }
 
-enum PidData {
-    Pes(PesPacketData),
-    Psi(PsiSectionData),
+#[derive(Clone)]
+enum PacketStore {
+    /// PESパケット用。
+    Pes(PartialPesPacket),
+    /// PSIセクション用。
+    Psi(PartialPsiSection),
+    /// ユーザーが独自に処理する用。
+    Custom,
+    /// パケット処理中に設定しておく一時的な値。
+    Temp,
 }
 
-impl PidData {
+impl PacketStore {
     #[inline]
-    pub fn pes() -> PidData {
-        PidData::Pes(PesPacketData {
+    pub fn pes() -> PacketStore {
+        PacketStore::Pes(PartialPesPacket {
             buffer: Box::new(ArrayVec::new()),
             finished: false,
         })
     }
 
     #[inline]
-    pub fn psi() -> PidData {
-        PidData::Psi(PsiSectionData {
+    pub fn psi() -> PacketStore {
+        PacketStore::Psi(PartialPsiSection {
             buffer: Box::new(ArrayVec::new()),
         })
     }
 
     #[inline]
-    pub fn packet_type(&self) -> PacketType {
-        match self {
-            PidData::Pes(_) => PacketType::Pes,
-            PidData::Psi(_) => PacketType::Psi,
-        }
+    pub fn custom() -> PacketStore {
+        PacketStore::Custom
     }
 }
 
-struct PesPacketData {
+#[derive(Clone)]
+struct PartialPesPacket {
+    // バッファサイズはLibISDBから
     buffer: Box<ArrayVec<u8, 0x10005>>,
     finished: bool,
 }
 
-impl PesPacketData {
+#[derive(Clone)]
+struct PartialPsiSection {
+    // バッファサイズはLibISDBから
+    buffer: Box<ArrayVec<u8, { 3 + 4093 }>>,
+}
+
+impl PartialPesPacket {
     pub fn write<T: Filter>(
         &mut self,
         filter: &mut T,
-        packet: &Packet,
+        ctx: &mut Context<T::Tag>,
         data: &[u8],
         is_start: bool,
     ) {
@@ -235,29 +388,25 @@ impl PesPacketData {
         match PesPacket::parse(&**self.buffer) {
             Err(PesError::InsufficientLength) => return,
             Err(PesError::InvalidStartCode) => {
-                log::debug!("pes packet invalid start code: {:?}", packet.pid());
+                log::debug!("pes packet invalid start code: {:?}", ctx.packet.pid());
             }
             Err(PesError::Corrupted) => {
-                log::debug!("pes packet corrupted: {:?}", packet.pid());
+                log::debug!("pes packet corrupted: {:?}", ctx.packet.pid());
             }
             Err(PesError::Crc16) => {
-                log::debug!("pes packet crc16 error: {:?}", packet.pid());
+                log::debug!("pes packet crc16 error: {:?}", ctx.packet.pid());
             }
-            Ok(pes) => filter.on_pes_packet(packet, &pes),
+            Ok(pes) => filter.on_pes_packet(ctx, &pes),
         };
         self.finished = true;
     }
 }
 
-struct PsiSectionData {
-    buffer: Box<ArrayVec<u8, 4096>>,
-}
-
-impl PsiSectionData {
+impl PartialPsiSection {
     pub fn write<T: Filter>(
         &mut self,
         filter: &mut T,
-        packet: &Packet,
+        ctx: &mut Context<T::Tag>,
         data: &[u8],
         is_start: bool,
     ) {
@@ -275,15 +424,15 @@ impl PsiSectionData {
             let psi_len = match PsiSection::parse(buf) {
                 Err(PsiError::InsufficientLength | PsiError::EndOfPsi) => break,
                 Err(PsiError::Corrupted(psi_len)) => {
-                    log::debug!("psi section corrupted: {:?}", packet.pid());
+                    log::debug!("psi section corrupted: {:?}", ctx.packet.pid());
                     psi_len
                 }
                 Err(PsiError::Crc32(psi_len)) => {
-                    log::debug!("psi section crc32 error: {:?}", packet.pid());
+                    log::debug!("psi section crc32 error: {:?}", ctx.packet.pid());
                     psi_len
                 }
                 Ok((psi, psi_len)) => {
-                    filter.on_psi_section(packet, &psi);
+                    filter.on_psi_section(ctx, &psi);
                     psi_len
                 }
             };

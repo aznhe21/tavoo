@@ -2,7 +2,6 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
 
-use fxhash::FxHashMap;
 use isdb::Pid;
 
 #[derive(Debug)]
@@ -46,16 +45,12 @@ ARGS:
     }
 }
 
-struct CaptionEs {
-    is_oneseg: bool,
-}
-
 struct Filter {
     manual_service_id: Option<u16>,
 
     current_service_id: Option<u16>,
     pmt_pid: Pid,
-    caption_es: FxHashMap<Pid, CaptionEs>,
+    caption_pids: Vec<Pid>,
 
     pcr_pid: Pid,
     last_pcr: Option<chrono::Duration>,
@@ -70,7 +65,7 @@ impl Filter {
 
             current_service_id: None,
             pmt_pid: Pid::NULL,
-            caption_es: FxHashMap::default(),
+            caption_pids: Vec::new(),
 
             pcr_pid: Pid::NULL,
             last_pcr: None,
@@ -89,31 +84,37 @@ impl Filter {
     }
 }
 
-impl isdb::demux::Filter for Filter {
-    fn on_packet(&mut self, packet: &isdb::Packet) -> Option<isdb::demux::PacketType> {
-        if packet.pid() == self.pcr_pid {
-            if let Some(pcr) = packet.adaptation_field().and_then(|af| af.pcr) {
-                self.last_pcr = Some(chrono::Duration::nanoseconds(pcr.to_nanos() as i64));
-            }
-        }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Tag {
+    Pat,
+    Pmt,
+    Tot,
+    Pcr,
+    Caption,
+    CaptionOneseg,
+}
 
-        match packet.pid() {
-            Pid::PAT | Pid::TOT => Some(isdb::demux::PacketType::Psi),
-            pid if self.pmt_pid == pid => Some(isdb::demux::PacketType::Psi),
-            pid if self.caption_es.contains_key(&pid) => Some(isdb::demux::PacketType::Pes),
-            _ => None,
-        }
+impl isdb::demux::Filter for Filter {
+    type Tag = Tag;
+
+    fn on_setup(&mut self) -> isdb::demux::Table<Tag> {
+        let mut table = isdb::demux::Table::new();
+        table.set_as_psi(Pid::PAT, Tag::Pat);
+        table.set_as_psi(Pid::TOT, Tag::Tot);
+        table
     }
 
-    fn on_psi_section(&mut self, packet: &isdb::Packet, psi: &isdb::psi::PsiSection) {
-        match packet.pid() {
-            Pid::PAT => {
+    fn on_psi_section(&mut self, ctx: &mut isdb::demux::Context<Tag>, psi: &isdb::psi::PsiSection) {
+        match ctx.tag() {
+            Tag::Pat => {
                 let Some(pat) = isdb::table::Pat::read(psi) else {
                     return;
                 };
 
+                ctx.table().unset(self.pmt_pid);
                 self.pmt_pid = Pid::NULL;
                 self.current_service_id = None;
+
                 let program = match self.manual_service_id {
                     // サービスIDが指定されていない場合は最初のサービスが対象
                     None => pat.pmts.first(),
@@ -127,10 +128,11 @@ impl isdb::demux::Filter for Filter {
                 let Some(program) = program else { return };
 
                 self.pmt_pid = program.program_map_pid;
+                ctx.table().set_as_psi(self.pmt_pid, Tag::Pmt);
                 self.current_service_id = Some(program.program_number.get());
             }
 
-            pid if self.pmt_pid == pid => {
+            Tag::Pmt => {
                 let Some(service_id) = self.current_service_id else {
                     return;
                 };
@@ -141,8 +143,14 @@ impl isdb::demux::Filter for Filter {
                     return;
                 }
 
-                self.pcr_pid = pmt.pcr_pid;
-                self.caption_es.clear();
+                if self.pcr_pid != pmt.pcr_pid {
+                    ctx.table().unset(self.pcr_pid);
+                    self.pcr_pid = pmt.pcr_pid;
+                    ctx.table().set_as_custom(pmt.pcr_pid, Tag::Pcr);
+                }
+                for pid in self.caption_pids.drain(..) {
+                    ctx.table().unset(pid);
+                }
 
                 for stream in &*pmt.streams {
                     if stream.stream_type != isdb::desc::StreamType::CAPTION {
@@ -154,16 +162,17 @@ impl isdb::demux::Filter for Filter {
                     //     .get::<isdb::desc::StreamIdDescriptor>()
                     //     .map(|desc| desc.component_tag);
 
-                    self.caption_es.insert(
-                        stream.elementary_pid,
-                        CaptionEs {
-                            is_oneseg: Pid::ONESEG_PMT_PID.contains(&pid),
-                        },
-                    );
+                    self.caption_pids.push(stream.elementary_pid);
+                    let tag = if Pid::ONESEG_PMT_PID.contains(&ctx.packet().pid()) {
+                        Tag::CaptionOneseg
+                    } else {
+                        Tag::Caption
+                    };
+                    ctx.table().set_as_pes(stream.elementary_pid, tag);
                 }
             }
 
-            Pid::TOT => {
+            Tag::Tot => {
                 let Some(tot) = isdb::table::Tot::read(psi) else {
                     return;
                 };
@@ -190,16 +199,16 @@ impl isdb::demux::Filter for Filter {
                 self.current_time = Some(dt);
                 self.base_pcr = self.last_pcr;
             }
-
-            _ => {}
+            Tag::Pcr | Tag::Caption | Tag::CaptionOneseg => unreachable!(),
         }
     }
 
-    fn on_pes_packet(&mut self, packet: &isdb::Packet, pes: &isdb::pes::PesPacket) {
+    fn on_pes_packet(&mut self, ctx: &mut isdb::demux::Context<Tag>, pes: &isdb::pes::PesPacket) {
+        if !matches!(ctx.tag(), Tag::Caption | Tag::CaptionOneseg) {
+            unreachable!();
+        }
+
         let Some(current) = self.current() else {
-            return;
-        };
-        let Some(caption_es) = self.caption_es.get(&packet.pid()) else {
             return;
         };
         let Some(pes) = isdb::pes::IndependentPes::read(pes.data) else {
@@ -224,7 +233,7 @@ impl isdb::demux::Filter for Filter {
             caption.data_units
         };
 
-        let decode_opts = if caption_es.is_oneseg {
+        let decode_opts = if ctx.tag() == Tag::CaptionOneseg {
             isdb::eight::decode::Options::ONESEG_CAPTION
         } else {
             isdb::eight::decode::Options::CAPTION
@@ -245,6 +254,13 @@ impl isdb::demux::Filter for Filter {
                 println!("{} - {}", current.format("%F %T%.3f"), caption);
             }
         }
+    }
+
+    fn on_custom_packet(&mut self, ctx: &mut isdb::demux::Context<Tag>, _: bool) {
+        let Some(af) = ctx.packet().adaptation_field() else { return };
+        let Some(pcr) = af.pcr else { return };
+
+        self.last_pcr = Some(chrono::Duration::nanoseconds(pcr.to_nanos() as i64));
     }
 }
 

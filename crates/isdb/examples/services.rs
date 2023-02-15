@@ -62,6 +62,13 @@ impl Service {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+enum Tag {
+    Pat,
+    Sdt,
+    Eit,
+}
+
 struct Filter {
     services: Vec<Service>,
 }
@@ -81,20 +88,23 @@ impl Filter {
 }
 
 impl isdb::demux::Filter for Filter {
-    fn on_pes_packet(&mut self, _: &isdb::Packet, _: &isdb::pes::PesPacket) {}
+    type Tag = Tag;
 
-    fn on_packet(&mut self, packet: &isdb::Packet) -> Option<isdb::demux::PacketType> {
-        match packet.pid() {
-            Pid::PAT | Pid::SDT | Pid::H_EIT | Pid::M_EIT | Pid::L_EIT => {
-                Some(isdb::demux::PacketType::Psi)
-            }
-            _ => None,
-        }
+    fn on_pes_packet(&mut self, _: &mut isdb::demux::Context<Tag>, _: &isdb::pes::PesPacket) {}
+
+    fn on_setup(&mut self) -> isdb::demux::Table<Tag> {
+        let mut table = isdb::demux::Table::new();
+        table.set_as_psi(Pid::PAT, Tag::Pat);
+        table.set_as_psi(Pid::SDT, Tag::Sdt);
+        table.set_as_psi(Pid::H_EIT, Tag::Eit);
+        table.set_as_psi(Pid::M_EIT, Tag::Eit);
+        table.set_as_psi(Pid::L_EIT, Tag::Eit);
+        table
     }
 
-    fn on_psi_section(&mut self, packet: &isdb::Packet, psi: &isdb::psi::PsiSection) {
-        match packet.pid() {
-            Pid::PAT => {
+    fn on_psi_section(&mut self, ctx: &mut isdb::demux::Context<Tag>, psi: &isdb::psi::PsiSection) {
+        match ctx.tag() {
+            Tag::Pat => {
                 let Some(pat) = isdb::table::Pat::read(psi) else {
                     return;
                 };
@@ -113,7 +123,7 @@ impl isdb::demux::Filter for Filter {
                 }
             }
 
-            Pid::SDT => {
+            Tag::Sdt => {
                 let sdt = match isdb::table::Sdt::read(psi) {
                     Some(isdb::table::Sdt::Actual(sdt)) => sdt,
                     _ => return,
@@ -136,7 +146,7 @@ impl isdb::demux::Filter for Filter {
                 }
             }
 
-            Pid::H_EIT | Pid::M_EIT | Pid::L_EIT => {
+            Tag::Eit => {
                 let eit = match isdb::table::Eit::read(psi) {
                     Some(isdb::table::Eit::ActualPf(eit)) => eit,
                     _ => return,
@@ -159,8 +169,6 @@ impl isdb::demux::Filter for Filter {
                     name: sed.event_name.to_owned(),
                 });
             }
-
-            _ => {}
         }
     }
 }

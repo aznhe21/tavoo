@@ -6,7 +6,6 @@ use crate::data_module;
 use crate::demux;
 use crate::desc::{self, ServiceType, StreamType};
 use crate::dsmcc;
-use crate::packet::Packet;
 use crate::pes::PesPacket;
 use crate::pid::Pid;
 use crate::psi::PsiSection;
@@ -36,7 +35,6 @@ pub struct LogoData<'a> {
 
 /// ロゴを取得するためのフィルター。
 pub struct LogoDownloadFilter<F> {
-    pmt_pids: FxHashSet<Pid>,
     es_pids: FxHashSet<Pid>,
 
     services: FxHashMap<u16, Service>,
@@ -47,9 +45,24 @@ pub struct LogoDownloadFilter<F> {
 }
 
 struct Service {
+    pmt_pid: Pid,
     service_type: ServiceType,
     streams: Vec<Pid>,
 }
+
+mod sealed {
+    // モジュール直下に定義するとE0446で怒られるので封印
+    #[derive(Debug, Clone, Copy)]
+    pub enum Tag {
+        Pat,
+        Nit,
+        Cdt,
+        Pmt,
+        Es,
+    }
+}
+
+type Tag = sealed::Tag;
 
 impl<F: FnMut(&LogoData)> LogoDownloadFilter<F> {
     /// `LogoDownloadFilter`を生成する。
@@ -57,7 +70,6 @@ impl<F: FnMut(&LogoData)> LogoDownloadFilter<F> {
     /// ロゴを取得する度`f`が呼ばれる。
     pub fn new(f: F) -> LogoDownloadFilter<F> {
         LogoDownloadFilter {
-            pmt_pids: FxHashSet::default(),
             es_pids: FxHashSet::default(),
 
             services: FxHashMap::default(),
@@ -68,26 +80,29 @@ impl<F: FnMut(&LogoData)> LogoDownloadFilter<F> {
         }
     }
 
-    fn on_pat(&mut self, psi: &PsiSection) {
+    fn on_pat(&mut self, ctx: &mut demux::Context<Tag>, psi: &PsiSection) {
         let Some(pat) = table::Pat::read(psi) else {
             return;
         };
 
-        self.pmt_pids.clear();
-        self.services.clear();
+        for (_, service) in self.services.drain() {
+            ctx.table().unset(service.pmt_pid);
+        }
+
         for program in &*pat.pmts {
-            self.pmt_pids.insert(program.program_map_pid);
             self.services.insert(
                 program.program_number.get(),
                 Service {
+                    pmt_pid: program.program_map_pid,
                     service_type: ServiceType::INVALID,
                     streams: Vec::new(),
                 },
             );
+            ctx.table().set_as_psi(program.program_map_pid, Tag::Pmt);
         }
     }
 
-    fn on_nit(&mut self, psi: &PsiSection) {
+    fn on_nit(&mut self, ctx: &mut demux::Context<Tag>, psi: &PsiSection) {
         let Some(nit) = table::Nit::read(psi) else {
             return;
         };
@@ -106,10 +121,12 @@ impl<F: FnMut(&LogoData)> LogoDownloadFilter<F> {
                     if new_svc.service_type == ServiceType::ENGINEERING {
                         for &pid in &*service.streams {
                             self.es_pids.insert(pid);
+                            ctx.table().set_as_psi(pid, Tag::Es);
                         }
                     } else if service.service_type == ServiceType::ENGINEERING {
-                        for pid in &*service.streams {
-                            self.es_pids.remove(pid);
+                        for &pid in &*service.streams {
+                            self.es_pids.remove(&pid);
+                            ctx.table().unset(pid);
                         }
                     }
 
@@ -119,7 +136,7 @@ impl<F: FnMut(&LogoData)> LogoDownloadFilter<F> {
         }
     }
 
-    fn on_cdt(&mut self, psi: &PsiSection) {
+    fn on_cdt(&mut self, _: &mut demux::Context<Tag>, psi: &PsiSection) {
         let Some(cdt) = table::Cdt::read(psi) else {
             return;
         };
@@ -144,7 +161,7 @@ impl<F: FnMut(&LogoData)> LogoDownloadFilter<F> {
         }
     }
 
-    fn on_pmt(&mut self, _pid: Pid, psi: &PsiSection) {
+    fn on_pmt(&mut self, ctx: &mut demux::Context<Tag>, psi: &PsiSection) {
         let Some(pmt) = table::Pmt::read(psi) else {
             return;
         };
@@ -154,8 +171,9 @@ impl<F: FnMut(&LogoData)> LogoDownloadFilter<F> {
             return;
         };
         if service.service_type == ServiceType::ENGINEERING {
-            for pid in &*service.streams {
-                self.es_pids.remove(pid);
+            for &pid in &*service.streams {
+                self.es_pids.remove(&pid);
+                ctx.table().unset(pid);
             }
         }
 
@@ -175,11 +193,12 @@ impl<F: FnMut(&LogoData)> LogoDownloadFilter<F> {
             service.streams.push(stream.elementary_pid);
             if service.service_type == ServiceType::ENGINEERING {
                 self.es_pids.insert(stream.elementary_pid);
+                ctx.table().set_as_psi(stream.elementary_pid, Tag::Es);
             }
         }
     }
 
-    fn on_es(&mut self, _pid: Pid, psi: &PsiSection) {
+    fn on_es(&mut self, _: &mut demux::Context<Tag>, psi: &PsiSection) {
         match dsmcc::table::DsmccSection::read(psi) {
             Some(dsmcc::table::DsmccSection::Dii(dii)) => {
                 for module in &*dii.modules {
@@ -271,25 +290,25 @@ impl<F: FnMut(&LogoData)> LogoDownloadFilter<F> {
 }
 
 impl<F: FnMut(&LogoData)> demux::Filter for LogoDownloadFilter<F> {
-    fn on_pes_packet(&mut self, _: &Packet, _: &PesPacket) {}
+    type Tag = Tag;
 
-    fn on_packet(&mut self, packet: &Packet) -> Option<demux::PacketType> {
-        let pid = packet.pid();
+    fn on_pes_packet(&mut self, _: &mut demux::Context<Tag>, _: &PesPacket) {}
 
-        let is_psi = matches!(pid, Pid::PAT | Pid::NIT | Pid::CDT)
-            || self.pmt_pids.contains(&pid)
-            || self.es_pids.contains(&pid);
-        is_psi.then_some(demux::PacketType::Psi)
+    fn on_setup(&mut self) -> demux::Table<Tag> {
+        let mut table = demux::Table::new();
+        table.set_as_psi(Pid::PAT, Tag::Pat);
+        table.set_as_psi(Pid::NIT, Tag::Nit);
+        table.set_as_psi(Pid::CDT, Tag::Cdt);
+        table
     }
 
-    fn on_psi_section(&mut self, packet: &Packet, psi: &PsiSection) {
-        match packet.pid() {
-            Pid::PAT => self.on_pat(psi),
-            Pid::NIT => self.on_nit(psi),
-            Pid::CDT => self.on_cdt(psi),
-            pid if self.pmt_pids.contains(&pid) => self.on_pmt(pid, psi),
-            pid if self.es_pids.contains(&pid) => self.on_es(pid, psi),
-            _ => {}
+    fn on_psi_section(&mut self, ctx: &mut demux::Context<Tag>, psi: &PsiSection) {
+        match ctx.tag() {
+            Tag::Pat => self.on_pat(ctx, psi),
+            Tag::Nit => self.on_nit(ctx, psi),
+            Tag::Cdt => self.on_cdt(ctx, psi),
+            Tag::Pmt => self.on_pmt(ctx, psi),
+            Tag::Es => self.on_es(ctx, psi),
         }
     }
 }

@@ -27,21 +27,29 @@ impl Counter {
 }
 
 impl isdb::demux::Filter for Counter {
-    fn on_pes_packet(&mut self, _: &isdb::Packet, _: &isdb::pes::PesPacket) {}
-    fn on_psi_section(&mut self, _: &isdb::Packet, _: &isdb::psi::PsiSection) {}
+    type Tag = ();
 
-    fn on_packet(&mut self, packet: &isdb::Packet) -> Option<isdb::demux::PacketType> {
-        let mut count = &mut self.counts[packet.pid()];
-        count.input += 1;
-        if packet.is_scrambled() {
-            count.scrambled += 1;
+    fn on_pes_packet(&mut self, _: &mut isdb::demux::Context<()>, _: &isdb::pes::PesPacket) {}
+    fn on_psi_section(&mut self, _: &mut isdb::demux::Context<()>, _: &isdb::psi::PsiSection) {}
+
+    fn on_setup(&mut self) -> isdb::demux::Table<()> {
+        let mut table = isdb::demux::Table::new();
+        for pid in 0..=isdb::Pid::MAX {
+            table.set_as_custom(isdb::Pid::new(pid), ());
         }
-
-        // FIXME: PESだろうがPSIだろうが無駄な処理が入ってしまう
-        Some(isdb::demux::PacketType::Pes)
+        table
     }
 
-    // FIXME: ドロップ数を数える
+    fn on_custom_packet(&mut self, ctx: &mut isdb::demux::Context<()>, cc_ok: bool) {
+        let mut count = &mut self.counts[ctx.packet().pid()];
+        count.input += 1;
+        if !cc_ok {
+            count.continuity_error += 1;
+        }
+        if ctx.packet().is_scrambled() {
+            count.scrambled += 1;
+        }
+    }
 }
 
 const HELP: &str = "\
