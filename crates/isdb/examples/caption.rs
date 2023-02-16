@@ -199,13 +199,16 @@ impl isdb::demux::Filter for Filter {
                 self.current_time = Some(dt);
                 self.base_pcr = self.last_pcr;
             }
-            Tag::Pcr | Tag::Caption | Tag::CaptionOneseg => unreachable!(),
+            Tag::Pcr | Tag::Caption | Tag::CaptionOneseg => {
+                log::error!("来るはずのないタグ：{:?}", ctx.tag());
+            }
         }
     }
 
     fn on_pes_packet(&mut self, ctx: &mut isdb::demux::Context<Tag>, pes: &isdb::pes::PesPacket) {
         if !matches!(ctx.tag(), Tag::Caption | Tag::CaptionOneseg) {
-            unreachable!();
+            log::error!("来るはずのないタグ：{:?}", ctx.tag());
+            return;
         }
 
         let Some(current) = self.current() else {
