@@ -226,7 +226,7 @@ impl<'a> Logo<'a> {
 
 /// CDTで配信されるロゴのデータモジュール。
 ///
-/// [`Cdt::data_module`][`crate::table::Cdt::data_module`]を読み取ることが出来る。
+/// [`Cdt::data_module`][`crate::psi::table::Cdt::data_module`]を読み取ることが出来る。
 #[derive(Debug)]
 pub struct CdtLogo<'a> {
     /// ロゴタイプ。

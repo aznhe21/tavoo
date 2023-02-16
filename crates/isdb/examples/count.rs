@@ -23,7 +23,7 @@ struct Service {
     pmt_pids: FxHashSet<Pid>,
     pcr_pids: FxHashSet<Pid>,
     ecm_pids: FxHashSet<Pid>,
-    stream_types: FxHashMap<Pid, isdb::desc::StreamType>,
+    stream_types: FxHashMap<Pid, isdb::psi::desc::StreamType>,
 }
 
 struct Filter {
@@ -80,7 +80,7 @@ impl isdb::demux::Filter for Filter {
     fn on_psi_section(&mut self, ctx: &mut isdb::demux::Context<Tag>, psi: &isdb::psi::PsiSection) {
         match ctx.tag() {
             Tag::Pat => {
-                let Some(pat) = isdb::table::Pat::read(psi) else {
+                let Some(pat) = isdb::psi::table::Pat::read(psi) else {
                     return;
                 };
 
@@ -100,7 +100,7 @@ impl isdb::demux::Filter for Filter {
                 }
             }
             Tag::Pmt => {
-                let Some(pmt) = isdb::table::Pmt::read(psi) else {
+                let Some(pmt) = isdb::psi::table::Pmt::read(psi) else {
                     return;
                 };
                 let Some(service) = self.services.get_mut(&pmt.program_number) else {
@@ -117,19 +117,19 @@ impl isdb::demux::Filter for Filter {
 
                 for cad in pmt
                     .descriptors
-                    .get_all::<isdb::desc::ConditionalAccessDescriptor>()
+                    .get_all::<isdb::psi::desc::ConditionalAccessDescriptor>()
                 {
                     service.ecm_pids.insert(cad.ca_pid);
                 }
             }
             Tag::Cat => {
-                let Some(cat) = isdb::table::Cat::read(psi) else {
+                let Some(cat) = isdb::psi::table::Cat::read(psi) else {
                     return;
                 };
 
                 for cad in cat
                     .descriptors
-                    .get_all::<isdb::desc::ConditionalAccessDescriptor>()
+                    .get_all::<isdb::psi::desc::ConditionalAccessDescriptor>()
                 {
                     self.emm_pids.insert(cad.ca_pid);
                 }
@@ -157,8 +157,8 @@ fn pid_description(pid: Pid) -> Option<&'static str> {
     }
 }
 
-fn stream_type_description(stream_type: isdb::desc::StreamType) -> Option<&'static str> {
-    use isdb::desc::StreamType;
+fn stream_type_description(stream_type: isdb::psi::desc::StreamType) -> Option<&'static str> {
+    use isdb::psi::desc::StreamType;
     match stream_type {
         StreamType::MPEG1_VIDEO => Some("MPEG-1 Video"),
         StreamType::MPEG2_VIDEO => Some("MPEG-2 Video"),
@@ -331,8 +331,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     pid_texts.push(service_id);
 
                     match *stream_type {
-                        isdb::desc::StreamType::CAPTION => pid_texts.push("Caption".to_string()),
-                        isdb::desc::StreamType::DATA_CARROUSEL => {
+                        isdb::psi::desc::StreamType::CAPTION => {
+                            pid_texts.push("Caption".to_string())
+                        }
+                        isdb::psi::desc::StreamType::DATA_CARROUSEL => {
                             pid_texts.push("Data".to_string())
                         }
                         _ => {

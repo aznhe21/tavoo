@@ -4,12 +4,12 @@ use fxhash::{FxHashMap, FxHashSet};
 
 use crate::data_module;
 use crate::demux;
-use crate::desc::{self, ServiceType, StreamType};
 use crate::dsmcc;
 use crate::pes::PesPacket;
 use crate::pid::Pid;
+use crate::psi::desc::{self, ServiceType, StreamType};
+use crate::psi::table;
 use crate::psi::PsiSection;
-use crate::table;
 
 /// 取得したロゴ。
 #[derive(Debug)]

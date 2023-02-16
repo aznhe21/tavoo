@@ -1,4 +1,4 @@
-//! MPEG2-TSのCRC32を計算するモジュール。
+//! MPEG2-TSのCRCを計算するモジュール。
 
 const TABLE: [u32; 256] = [
     0x00000000, 0x04C11DB7, 0x09823B6E, 0x0D4326D9, 0x130476DC, 0x17C56B6B, 0x1A864DB2, 0x1E475005,
@@ -39,7 +39,7 @@ const TABLE: [u32; 256] = [
 pub const INIT: u32 = 0xFFFFFFFF;
 
 /// MPEG2-TSのCRC32を計算し正しさを確認する。
-pub fn digest(init: u32, data: &[u8]) -> u32 {
+pub fn digest32(init: u32, data: &[u8]) -> u32 {
     // TODO: unroll
     data.iter().fold(init, |crc, &v| {
         (crc << 8) ^ TABLE[((crc >> 24) ^ v as u32) as usize]
@@ -48,8 +48,8 @@ pub fn digest(init: u32, data: &[u8]) -> u32 {
 
 /// MPEG2-TSのCRC32を計算し正しさを確認する。
 #[inline]
-pub fn calc(data: &[u8]) -> bool {
-    digest(INIT, data) == 0
+pub fn calc32(data: &[u8]) -> bool {
+    digest32(INIT, data) == 0
 }
 
 #[cfg(test)]
@@ -58,18 +58,18 @@ mod tests {
 
     #[test]
     fn test_crc32() {
-        assert_eq!(digest(INIT, &[]), INIT);
+        assert_eq!(digest32(INIT, &[]), INIT);
 
         assert_eq!(
-            digest(INIT, b"The quick brown fox jumps over the lazy dog"),
+            digest32(INIT, b"The quick brown fox jumps over the lazy dog"),
             0xBA62119E,
         );
 
-        assert_eq!(digest(INIT, b"The quick brown fox "), 0xF7E3F54F);
-        assert_eq!(digest(0xF7E3F54F, b"jumps over the lazy dog"), 0xBA62119E);
+        assert_eq!(digest32(INIT, b"The quick brown fox "), 0xF7E3F54F);
+        assert_eq!(digest32(0xF7E3F54F, b"jumps over the lazy dog"), 0xBA62119E);
 
-        assert!(calc(&[0xFF, 0xFF, 0xFF, 0xFF]));
-        assert!(calc(
+        assert!(calc32(&[0xFF, 0xFF, 0xFF, 0xFF]));
+        assert!(calc32(
             b"The quick brown fox jumps over the lazy dog\xBA\x62\x11\x9E"
         ));
     }

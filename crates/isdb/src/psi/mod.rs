@@ -1,5 +1,8 @@
 //! PSI用のモジュール。
 
+pub mod desc;
+pub mod table;
+
 use thiserror::Error;
 
 use crate::utils::BytesExt;
@@ -61,7 +64,7 @@ impl<'a> PsiSection<'a> {
             return Err(PsiError::InsufficientLength);
         };
 
-        if !crate::crc32::calc(psi) {
+        if !crate::crc::calc32(psi) {
             return Err(PsiError::Crc32(psi.len()));
         }
 

@@ -107,7 +107,7 @@ impl isdb::demux::Filter for Filter {
     fn on_psi_section(&mut self, ctx: &mut isdb::demux::Context<Tag>, psi: &isdb::psi::PsiSection) {
         match ctx.tag() {
             Tag::Pat => {
-                let Some(pat) = isdb::table::Pat::read(psi) else {
+                let Some(pat) = isdb::psi::table::Pat::read(psi) else {
                     return;
                 };
 
@@ -136,7 +136,7 @@ impl isdb::demux::Filter for Filter {
                 let Some(service_id) = self.current_service_id else {
                     return;
                 };
-                let Some(pmt) = isdb::table::Pmt::read(psi) else {
+                let Some(pmt) = isdb::psi::table::Pmt::read(psi) else {
                     return;
                 };
                 if pmt.program_number != service_id {
@@ -153,7 +153,7 @@ impl isdb::demux::Filter for Filter {
                 }
 
                 for stream in &*pmt.streams {
-                    if stream.stream_type != isdb::desc::StreamType::CAPTION {
+                    if stream.stream_type != isdb::psi::desc::StreamType::CAPTION {
                         continue;
                     }
 
@@ -173,7 +173,7 @@ impl isdb::demux::Filter for Filter {
             }
 
             Tag::Tot => {
-                let Some(tot) = isdb::table::Tot::read(psi) else {
+                let Some(tot) = isdb::psi::table::Tot::read(psi) else {
                     return;
                 };
 
@@ -217,19 +217,19 @@ impl isdb::demux::Filter for Filter {
         let Some(pes) = isdb::pes::IndependentPes::read(pes.data) else {
             return;
         };
-        let Some(data_group) = isdb::caption::DataGroup::read(pes.data().pes_data) else {
+        let Some(data_group) = isdb::pes::caption::DataGroup::read(pes.data().pes_data) else {
             return;
         };
 
         let data_units = if matches!(data_group.data_group_id, 0x00 | 0x20) {
-            use isdb::caption::CaptionManagementData;
+            use isdb::pes::caption::CaptionManagementData;
             let Some(management) = CaptionManagementData::read(data_group.data_group_data) else {
                 return;
             };
 
             management.data_units
         } else {
-            let Some(caption) = isdb::caption::CaptionData::read(data_group.data_group_data) else {
+            let Some(caption) = isdb::pes::caption::CaptionData::read(data_group.data_group_data) else {
                 return;
             };
 
@@ -243,7 +243,7 @@ impl isdb::demux::Filter for Filter {
         };
 
         for unit in data_units {
-            let isdb::caption::DataUnit::StatementBody(caption) = unit else {
+            let isdb::pes::caption::DataUnit::StatementBody(caption) = unit else {
                 continue;
             };
 

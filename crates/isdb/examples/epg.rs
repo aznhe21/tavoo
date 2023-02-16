@@ -66,9 +66,9 @@ impl isdb::demux::Filter for Filter {
     fn on_psi_section(&mut self, ctx: &mut isdb::demux::Context<Tag>, psi: &isdb::psi::PsiSection) {
         match ctx.tag() {
             Tag::Sdt => {
-                let sdt = match isdb::table::Sdt::read(psi) {
-                    Some(isdb::table::Sdt::Actual(sdt)) => sdt,
-                    Some(isdb::table::Sdt::Other(sdt)) => sdt,
+                let sdt = match isdb::psi::table::Sdt::read(psi) {
+                    Some(isdb::psi::table::Sdt::Actual(sdt)) => sdt,
+                    Some(isdb::psi::table::Sdt::Other(sdt)) => sdt,
                     None => {
                         log::warn!("invalid SDT");
                         return;
@@ -80,7 +80,7 @@ impl isdb::demux::Filter for Filter {
                     .entry(sdt.original_network_id)
                     .or_insert_with(Default::default);
                 for service in &*sdt.services {
-                    let Some(svc) = service.descriptors.get::<isdb::desc::ServiceDescriptor>()
+                    let Some(svc) = service.descriptors.get::<isdb::psi::desc::ServiceDescriptor>()
                     else {
                         continue;
                     };
@@ -102,9 +102,9 @@ impl isdb::demux::Filter for Filter {
                 }
             }
             Tag::Eit => {
-                let eit = match isdb::table::Eit::read(psi) {
-                    Some(isdb::table::Eit::ActualSchedule(eit)) => eit,
-                    Some(isdb::table::Eit::OtherSchedule(eit)) => eit,
+                let eit = match isdb::psi::table::Eit::read(psi) {
+                    Some(isdb::psi::table::Eit::ActualSchedule(eit)) => eit,
+                    Some(isdb::psi::table::Eit::OtherSchedule(eit)) => eit,
                     Some(_) => return,
                     None => {
                         log::warn!("invalid EIT");
@@ -150,8 +150,9 @@ impl isdb::demux::Filter for Filter {
                         extended: Vec::new(),
                     });
 
-                    if let Some(short_event) =
-                        ev.descriptors.get::<isdb::desc::ShortEventDescriptor>()
+                    if let Some(short_event) = ev
+                        .descriptors
+                        .get::<isdb::psi::desc::ShortEventDescriptor>()
                     {
                         event.name = short_event.event_name.to_string(Default::default());
                         event.short = short_event.text.to_string(Default::default());
@@ -160,7 +161,7 @@ impl isdb::demux::Filter for Filter {
                     let mut items = Vec::new();
                     for item in ev
                         .descriptors
-                        .get_all::<isdb::desc::ExtendedEventDescriptor>()
+                        .get_all::<isdb::psi::desc::ExtendedEventDescriptor>()
                         .flat_map(|extended_event| extended_event.items.into_iter())
                     {
                         match (item.item_description.is_empty(), items.last_mut()) {

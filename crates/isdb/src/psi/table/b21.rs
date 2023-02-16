@@ -1,6 +1,6 @@
 //! ARIB STD-B21で規定されるテーブルの定義。
 
-use crate::desc::DescriptorBlock;
+use crate::psi::desc::DescriptorBlock;
 use crate::psi::PsiSection;
 use crate::time::DateTime;
 use crate::utils::{BytesExt, SliceExt};

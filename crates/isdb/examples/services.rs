@@ -105,7 +105,7 @@ impl isdb::demux::Filter for Filter {
     fn on_psi_section(&mut self, ctx: &mut isdb::demux::Context<Tag>, psi: &isdb::psi::PsiSection) {
         match ctx.tag() {
             Tag::Pat => {
-                let Some(pat) = isdb::table::Pat::read(psi) else {
+                let Some(pat) = isdb::psi::table::Pat::read(psi) else {
                     return;
                 };
 
@@ -124,8 +124,8 @@ impl isdb::demux::Filter for Filter {
             }
 
             Tag::Sdt => {
-                let sdt = match isdb::table::Sdt::read(psi) {
-                    Some(isdb::table::Sdt::Actual(sdt)) => sdt,
+                let sdt = match isdb::psi::table::Sdt::read(psi) {
+                    Some(isdb::psi::table::Sdt::Actual(sdt)) => sdt,
                     _ => return,
                 };
 
@@ -133,7 +133,7 @@ impl isdb::demux::Filter for Filter {
                     let Some(service) = self.find_service(svc.service_id) else {
                         continue;
                     };
-                    let Some(sd) = svc.descriptors.get::<isdb::desc::ServiceDescriptor>() else {
+                    let Some(sd) = svc.descriptors.get::<isdb::psi::desc::ServiceDescriptor>() else {
                         continue;
                     };
 
@@ -147,8 +147,8 @@ impl isdb::demux::Filter for Filter {
             }
 
             Tag::Eit => {
-                let eit = match isdb::table::Eit::read(psi) {
-                    Some(isdb::table::Eit::ActualPf(eit)) => eit,
+                let eit = match isdb::psi::table::Eit::read(psi) {
+                    Some(isdb::psi::table::Eit::ActualPf(eit)) => eit,
                     _ => return,
                 };
                 let Some(service) = self.find_service(eit.service_id) else {
@@ -160,7 +160,7 @@ impl isdb::demux::Filter for Filter {
                 if service.has_event(event.event_id) {
                     return;
                 }
-                let Some(sed) = event.descriptors.get::<isdb::desc::ShortEventDescriptor>() else {
+                let Some(sed) = event.descriptors.get::<isdb::psi::desc::ShortEventDescriptor>() else {
                     return;
                 };
 

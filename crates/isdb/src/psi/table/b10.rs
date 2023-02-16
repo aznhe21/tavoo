@@ -2,7 +2,7 @@
 
 use std::ops::RangeInclusive;
 
-use crate::desc::DescriptorBlock;
+use crate::psi::desc::DescriptorBlock;
 use crate::psi::PsiSection;
 use crate::time::DateTime;
 use crate::utils::{BytesExt, SliceExt};

@@ -2,8 +2,8 @@
 
 use std::num::NonZeroU16;
 
-use crate::desc::{DescriptorBlock, StreamType};
 use crate::pid::Pid;
+use crate::psi::desc::{DescriptorBlock, StreamType};
 use crate::psi::PsiSection;
 use crate::utils::BytesExt;
 

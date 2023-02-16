@@ -1,5 +1,7 @@
 //! PES用のモジュール。
 
+pub mod caption;
+
 use thiserror::Error;
 
 use crate::utils::{BytesExt, SliceExt};

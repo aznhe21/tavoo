@@ -2,11 +2,9 @@
 
 #![deny(missing_docs)]
 
-pub mod caption;
-pub mod crc32;
+pub mod crc;
 pub mod data_module;
 pub mod demux;
-pub mod desc;
 pub mod dsmcc;
 pub mod eight;
 pub mod filters;
@@ -15,7 +13,6 @@ pub mod packet;
 pub mod pes;
 pub mod pid;
 pub mod psi;
-pub mod table;
 pub mod time;
 mod utils;
 

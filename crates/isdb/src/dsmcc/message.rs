@@ -1,6 +1,6 @@
 //! DIIメッセージおよびDDBメッセージ。
 
-use crate::desc::CompatibilityDescriptor;
+use crate::psi::desc::CompatibilityDescriptor;
 use crate::utils::{BytesExt, SliceExt};
 
 use super::desc::DiiDescriptorBlock;
