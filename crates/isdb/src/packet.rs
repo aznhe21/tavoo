@@ -16,6 +16,23 @@ pub struct Packet(pub [u8; PACKET_SIZE]);
 
 impl Packet {
     /// `r`からTSパケットを順次読み込むイテレーターを生成する。
+    ///
+    /// # サンプル
+    ///
+    /// ```
+    /// # fn main() -> std::io::Result<()> {
+    /// # let file = &mut (&[] as &[u8]);
+    /// for packet in isdb::Packet::iter(file) {
+    ///     let packet = packet?;
+    ///
+    ///     // 同期バイトは常に正しい
+    ///     assert_eq!(packet.sync_byte(), 0x47);
+    ///     // ただしパケットとして正しいかは不明
+    ///     println!("パケットが正常か：{}", packet.is_normal());
+    /// }
+    /// # Ok(())
+    /// # }
+    /// ```
     #[inline]
     #[must_use]
     pub fn iter<R: Read>(r: R) -> PacketIter<R> {
@@ -78,6 +95,9 @@ impl Packet {
     }
 
     /// パケットが正常かどうかを返す。
+    ///
+    /// 同期バイトやトランスポートエラーインジケーターによるエラー検知に加え、
+    /// 予約されたPIDなどパケットとしてあり得ない状態であることも判断材料である。
     pub fn is_normal(&self) -> bool {
         if self.sync_byte() != SYNC_BYTE {
             // 同期バイト不正
@@ -456,7 +476,7 @@ impl<'a> AdaptationField<'a> {
     }
 }
 
-/// TSパケットを順次読み込むイテレーター。
+/// [`Packet::iter`]から返される。TSパケットを順次読み込むイテレーター。
 #[derive(Debug)]
 pub struct PacketIter<R> {
     r: R,

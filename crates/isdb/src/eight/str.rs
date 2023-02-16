@@ -63,7 +63,7 @@ impl AribStr {
     /// 文字に変換できない文字符号は[`U+FFFD REPLACEMENT
     /// CHARACTER`][`char::REPLACEMENT_CHARACTER`]に変換される。
     ///
-    /// 動作としては`self.display_with(opts).to_string()`と同じだが、こちらの方がより効率的な可能性がある。
+    /// 動作としては`self.display(opts).to_string()`と同じだが、こちらの方がより効率的な可能性がある。
     pub fn to_string(&self, opts: decode::Options) -> String {
         let mut decoder = Decoder::new(self.as_bytes(), opts);
         let Some(mut c) = decoder.next_graphic() else {

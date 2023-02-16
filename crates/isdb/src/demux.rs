@@ -1,4 +1,6 @@
 //! MPEG2-TSのパケットを分離するためのモジュール。
+//!
+//! 分離には[`Demuxer`]を使用し、PIDごとの処理方法は[`Table`]を使用する。
 
 use arrayvec::ArrayVec;
 
@@ -193,6 +195,118 @@ impl<T: Filter + ?Sized> Filter for &mut T {
 }
 
 /// TSパケットを分離する。
+///
+/// [`Filter`]を実装した型を渡して`Demuxer`を生成し、
+/// 受信したパケットを順次`Demuxer::feed`に渡すことでPSIやPESといった塊単位でパケットを分離する。
+///
+/// # フィルターのタグ
+///
+/// `Filter`の関連型である`Tag`にはパケットを分離した際に呼ばれるメソッドに渡すタグの型を指定する。
+/// タグを活用することで、PMTなど動的に変化するPIDであっても、処理時には静的な値を使って分岐することができ、
+/// 高速化や可読性の向上が望める。
+///
+/// # フィルターのメソッド
+///
+/// `Filter`に実装するメソッドは以下の通りである。
+///
+/// - `on_setup`：初期化時に一度だけ呼ばれ、PIDごとに処理する内容を設定した[`Table`]を返す。
+///   `Table`ではPIDごとにPSIかPES、あるいは独自に処理するかを指定すると共に、
+///   そのPIDのパケットが分離された際に渡されるタグも指定する。
+/// - `on_discontinued`：パケットのドロップが検知された際に呼ばれる。
+///   このメソッドの実装は任意であるが、実装することでドロップ数を計測することができる。
+/// - `on_psi_section`：[`Table`]でPSIと指定されたPIDのパケットを分離した際に呼ばれる。
+///   PATやPMTなど、TSにおけるメタデータのようなものがPSIとして送られるため、このメソッドは頻繁に呼び出される。
+///   またメソッドに渡される[`Context`]を通して`Table`を取得することで、
+///   PSI処理中にPIDの処理内容を設定・設定解除することもできる。
+/// - `on_pes_packet`：[`Table`]でPESと指定されたPIDのパケットを分離した際に呼ばれる。
+///   動画や音声のデータ、さらには字幕データなどがPESとして送られる。
+///   このメソッドにも[`Context`]が渡される。
+/// - `on_custom_packet`：[`Table`]で独自に処理すると指定されたPIDのパケットで呼ばれる。
+///   この場合、パケットは分離されることなくそのままメソッドに渡される。
+///   このメソッドにも他のメソッドと同じ[`Context`]に加え、`cc_ok`という引数も渡される。
+///   これはパケットがドロップしていないかどうかを示す真偽値で、パケットが不連続の場合には
+///   処理を行わないといったことが可能である。
+///   このメソッドの実装は任意である。
+///
+/// # サンプル
+///
+/// ```
+/// use isdb::demux::Demuxer;
+///
+/// struct Filter;
+///
+/// // タグには`Copy`の実装が必須
+/// #[derive(Clone, Copy)]
+/// enum Tag {
+///     Pat,
+///     Pmt,
+/// }
+///
+/// impl isdb::demux::Filter for Filter {
+///     type Tag = Tag;
+///
+///     // 初期化時に一度だけ呼ばれる
+///     fn on_setup(&mut self) -> isdb::demux::Table<Tag> {
+///         let mut table = isdb::demux::Table::new();
+///         // PATのPIDをPSIとして処理すると設定する。タグにはPATであることを示す値を指定する
+///         table.set_as_psi(isdb::pid::Pid::PAT, Tag::Pat);
+///         table
+///     }
+///
+///     // PSIセクションを分離した際に呼ばれる
+///     fn on_psi_section(
+///         &mut self,
+///         ctx: &mut isdb::demux::Context<Tag>,
+///         psi: &isdb::psi::PsiSection,
+///     ) {
+///         // タグは`ctx.tag()`で取得する
+///         // enumで定義したタグを使用しているため網羅的マッチができる
+///         match ctx.tag() {
+///             Tag::Pat => {
+///                 // PATのパケットに対する処理をする
+///                 let Some(pat) = isdb::psi::table::Pat::read(psi) else {
+///                     return;
+///                 };
+///
+///                 // ここでPMTのPIDが手に入るため、PMTとして処理するよう`Table`に設定する
+///                 // 本来はこれまでPMTとして処理していたPIDの設定を解除する必要があるが、
+///                 // ここでは割愛する
+///                 for program in pat.pmts {
+///                     // PIDは動的だがタグは静的な値である`Tag::Pmt`を設定できる
+///                     ctx.table().set_as_psi(program.program_map_pid, Tag::Pmt);
+///                 }
+///             }
+///             // PMTのPIDは動的だが静的な値である`Tag::Pmt`でマッチができる
+///             Tag::Pmt => {
+///                 // PATで取得したPMTのPIDに対する処理をする
+///                 let Some(pmt) = isdb::psi::table::Pmt::read(psi) else {
+///                     return;
+///                 };
+///
+///                 // ...
+///             }
+///         }
+///     }
+///
+///     // 今回はPESを処理しないため何も実装しない
+///     fn on_pes_packet(
+///         &mut self,
+///         _: &mut isdb::demux::Context<Tag>,
+///         _: &isdb::pes::PesPacket,
+///     ) {}
+/// }
+///
+/// # fn main() -> std::io::Result<()> {
+/// // フィルターを引数に`Demuxer`を生成する
+/// let mut demuxer = Demuxer::new(Filter);
+/// // パケットを`Demuxer::feed`に与え続けることで処理・分離を行う
+/// # let file = &mut (&[] as &[u8]);
+/// for packet in isdb::Packet::iter(file) {
+///     demuxer.feed(&packet?);
+/// }
+/// # Ok(())
+/// # }
+/// ```
 pub struct Demuxer<T: Filter> {
     filter: T,
     cc: PidTable<u8>,
