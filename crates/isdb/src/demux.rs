@@ -142,6 +142,13 @@ pub trait Filter {
     /// フィルター初期化時に呼ばれ、各PIDにおける処理方法を設定するテーブルを返す。
     fn on_setup(&mut self) -> Table<Self::Tag>;
 
+    /// パケットが連続していなかった（ドロップしていた）際に呼ばれる。
+    ///
+    /// このメソッドは処理方法の設定されていないPIDにおいても呼ばれるため`Context`は渡されない。
+    fn on_discontinued(&mut self, packet: &Packet) {
+        let _ = packet;
+    }
+
     /// PSIセクションを分離した際に呼ばれる。
     fn on_psi_section(&mut self, ctx: &mut Context<Self::Tag>, psi: &PsiSection);
 
@@ -165,6 +172,11 @@ impl<T: Filter + ?Sized> Filter for &mut T {
     }
 
     #[inline]
+    fn on_discontinued(&mut self, packet: &Packet) {
+        (**self).on_discontinued(packet)
+    }
+
+    #[inline]
     fn on_psi_section(&mut self, ctx: &mut Context<Self::Tag>, psi: &PsiSection) {
         (**self).on_psi_section(ctx, psi)
     }
@@ -183,6 +195,7 @@ impl<T: Filter + ?Sized> Filter for &mut T {
 /// TSパケットを分離する。
 pub struct Demuxer<T: Filter> {
     filter: T,
+    cc: PidTable<u8>,
     table: Table<T::Tag>,
 }
 
@@ -190,7 +203,11 @@ impl<T: Filter> Demuxer<T> {
     /// `Demuxer`を生成する。
     pub fn new(mut filter: T) -> Demuxer<T> {
         let table = filter.on_setup();
-        Demuxer { filter, table }
+        Demuxer {
+            filter,
+            cc: PidTable::from_fn(|_| 0x10),
+            table,
+        }
     }
 
     /// 内包するフィルターを参照で返す。
@@ -218,12 +235,15 @@ impl<T: Filter> Demuxer<T> {
         }
 
         let pid = packet.pid();
+        let cc_ok = packet.validate_cc(&mut self.cc[pid]);
+        if !cc_ok {
+            self.filter.on_discontinued(packet);
+        }
+
         let Some(state) = self.table.0[pid].as_mut() else {
             return;
         };
         let tag = state.tag;
-
-        let cc_ok = packet.validate_cc(&mut state.last_cc);
 
         // 所有権を切り離すためにパケット処理中はTempを設定
         let mut store = std::mem::replace(&mut state.store, PacketStore::Temp);
@@ -287,7 +307,6 @@ impl<T: Filter> Demuxer<T> {
 
 #[derive(Clone)]
 struct PacketState<T> {
-    last_cc: u8,
     tag: T,
     store: PacketStore,
 }
@@ -295,11 +314,7 @@ struct PacketState<T> {
 impl<T> PacketState<T> {
     #[inline]
     pub fn new(store: PacketStore, tag: T) -> PacketState<T> {
-        PacketState {
-            last_cc: 0x10,
-            tag,
-            store,
-        }
+        PacketState { tag, store }
     }
 }
 
