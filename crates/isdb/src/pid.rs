@@ -79,7 +79,7 @@ impl Pid {
 
     /// `pid`がPIDとして範囲内であれば`Pid`を生成する。
     #[inline]
-    pub const fn new_checked(pid: u16) -> Option<Pid> {
+    pub const fn try_new(pid: u16) -> Option<Pid> {
         if pid > Pid::MAX {
             None
         } else {
@@ -300,8 +300,8 @@ mod tests {
     fn test_pid() {
         assert_eq!(Pid::new(0x1FFF), Pid::NULL);
         std::panic::catch_unwind(|| Pid::new(0x2000)).unwrap_err();
-        assert_eq!(Pid::new_checked(0x1FFF), Some(Pid::NULL));
-        assert_eq!(Pid::new_checked(0x2000), None);
+        assert_eq!(Pid::try_new(0x1FFF), Some(Pid::NULL));
+        assert_eq!(Pid::try_new(0x2000), None);
 
         std::panic::catch_unwind(|| Pid::read(&[])).unwrap_err();
         std::panic::catch_unwind(|| Pid::read(&[0x00])).unwrap_err();
