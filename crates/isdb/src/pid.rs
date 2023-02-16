@@ -68,7 +68,7 @@ impl Pid {
 
     /// `Pid`を生成する。
     ///
-    /// # Panics
+    /// # パニック
     ///
     /// `pid`の値が範囲外の際はパニックする。
     #[inline]
@@ -85,6 +85,16 @@ impl Pid {
         } else {
             Some(Pid(pid))
         }
+    }
+
+    /// `Pid`を生成する。
+    ///
+    /// # 安全性
+    ///
+    /// `pid`がPIDとして範囲外の場合、動作は未定義である。
+    #[inline]
+    pub const unsafe fn new_unchecked(pid: u16) -> Pid {
+        Pid(pid)
     }
 
     /// `data`からPIDを読み出す。
@@ -154,7 +164,9 @@ impl<V> PidTable<V> {
     /// `f`を呼び出した戻り値から`PidTable`を生成する。
     #[inline]
     pub fn from_fn<F: FnMut(Pid) -> V>(mut f: F) -> PidTable<V> {
-        PidTable(crate::utils::boxed_array(|i| f(Pid::new(i as u16))))
+        // Safety: iはPIDの範囲である
+        let table = unsafe { crate::utils::boxed_array(|i| f(Pid::new_unchecked(i as u16))) };
+        PidTable(table)
     }
 
     /// 内部の配列を返す。
