@@ -228,6 +228,54 @@ impl<T: Filter> Demuxer<T> {
         self.filter
     }
 
+    fn handle_store(&mut self, packet: &Packet, tag: T::Tag, cc_ok: bool, store: &mut PacketStore) {
+        let mut ctx = Context {
+            packet,
+            tag,
+            table: &mut self.table,
+        };
+
+        match store {
+            PacketStore::Pes(pes) => {
+                let Some(payload) = packet.payload().filter(|p| !p.is_empty()) else {
+                    return;
+                };
+
+                pes.write(
+                    &mut self.filter,
+                    &mut ctx,
+                    payload,
+                    packet.unit_start_indicator(),
+                );
+            }
+            PacketStore::Psi(psi) => {
+                let Some(payload) = packet.payload().filter(|p| !p.is_empty()) else {
+                    return;
+                };
+
+                if packet.unit_start_indicator() {
+                    let len = payload[0] as usize;
+                    let Some((prev, next)) = payload[1..].split_at_checked(len) else {
+                        return;
+                    };
+
+                    if !prev.is_empty() && cc_ok {
+                        psi.write(&mut self.filter, &mut ctx, prev, false);
+                    }
+                    if !next.is_empty() {
+                        psi.write(&mut self.filter, &mut ctx, next, true);
+                    }
+                } else {
+                    if cc_ok {
+                        psi.write(&mut self.filter, &mut ctx, payload, false);
+                    }
+                }
+            }
+            PacketStore::Custom => self.filter.on_custom_packet(&mut ctx, cc_ok),
+            PacketStore::Temp => unreachable!(),
+        }
+    }
+
     /// [`Packet`]を処理してパケットを分離する。
     pub fn feed(&mut self, packet: &Packet) {
         if !packet.is_normal() {
@@ -249,48 +297,7 @@ impl<T: Filter> Demuxer<T> {
         let mut store = std::mem::replace(&mut state.store, PacketStore::Temp);
         drop(state);
 
-        let mut ctx = Context {
-            packet,
-            tag,
-            table: &mut self.table,
-        };
-        match &mut store {
-            PacketStore::Pes(pes) => match packet.payload() {
-                Some(payload) if !payload.is_empty() => {
-                    pes.write(
-                        &mut self.filter,
-                        &mut ctx,
-                        payload,
-                        packet.unit_start_indicator(),
-                    );
-                }
-                _ => {}
-            },
-            PacketStore::Psi(psi) => match packet.payload() {
-                Some(payload) if !payload.is_empty() => {
-                    if packet.unit_start_indicator() {
-                        let len = payload[0] as usize;
-                        let Some((prev, next)) = payload[1..].split_at_checked(len) else {
-                            return;
-                        };
-
-                        if !prev.is_empty() && cc_ok {
-                            psi.write(&mut self.filter, &mut ctx, prev, false);
-                        }
-                        if !next.is_empty() {
-                            psi.write(&mut self.filter, &mut ctx, next, true);
-                        }
-                    } else {
-                        if cc_ok {
-                            psi.write(&mut self.filter, &mut ctx, payload, false);
-                        }
-                    }
-                }
-                _ => {}
-            },
-            PacketStore::Custom => self.filter.on_custom_packet(&mut ctx, cc_ok),
-            PacketStore::Temp => unreachable!(),
-        }
+        self.handle_store(packet, tag, cc_ok, &mut store);
 
         // フィルター内でテーブルの設定がされていなければ値を戻す
         if let Some(
