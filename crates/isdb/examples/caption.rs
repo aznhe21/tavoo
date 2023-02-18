@@ -90,8 +90,7 @@ enum Tag {
     Pmt,
     Tot,
     Pcr,
-    Caption,
-    CaptionOneseg,
+    Caption(bool),
 }
 
 impl isdb::demux::Filter for Filter {
@@ -163,12 +162,9 @@ impl isdb::demux::Filter for Filter {
                     //     .map(|desc| desc.component_tag);
 
                     self.caption_pids.push(stream.elementary_pid);
-                    let tag = if Pid::ONESEG_PMT_PID.contains(&ctx.packet().pid()) {
-                        Tag::CaptionOneseg
-                    } else {
-                        Tag::Caption
-                    };
-                    ctx.table().set_as_pes(stream.elementary_pid, tag);
+                    let is_oneseg = Pid::ONESEG_PMT_PID.contains(&ctx.packet().pid());
+                    ctx.table()
+                        .set_as_pes(stream.elementary_pid, Tag::Caption(is_oneseg));
                 }
             }
 
@@ -199,17 +195,17 @@ impl isdb::demux::Filter for Filter {
                 self.current_time = Some(dt);
                 self.base_pcr = self.last_pcr;
             }
-            Tag::Pcr | Tag::Caption | Tag::CaptionOneseg => {
+            Tag::Pcr | Tag::Caption(_) => {
                 log::error!("来るはずのないタグ：{:?}", ctx.tag());
             }
         }
     }
 
     fn on_pes_packet(&mut self, ctx: &mut isdb::demux::Context<Tag>, pes: &isdb::pes::PesPacket) {
-        if !matches!(ctx.tag(), Tag::Caption | Tag::CaptionOneseg) {
+        let Tag::Caption(is_oneseg) = ctx.tag() else {
             log::error!("来るはずのないタグ：{:?}", ctx.tag());
             return;
-        }
+        };
 
         let Some(current) = self.current() else {
             return;
@@ -236,7 +232,7 @@ impl isdb::demux::Filter for Filter {
             caption.data_units
         };
 
-        let decode_opts = if ctx.tag() == Tag::CaptionOneseg {
+        let decode_opts = if is_oneseg {
             isdb::eight::decode::Options::ONESEG_CAPTION
         } else {
             isdb::eight::decode::Options::CAPTION
