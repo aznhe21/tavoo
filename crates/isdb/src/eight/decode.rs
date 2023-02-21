@@ -1138,6 +1138,12 @@ impl<'a> Decoder<'a> {
                 // ESC
                 0x1B => try_rr!(self.read_esc()),
 
+                // SP
+                0x20 => break Some(GraphicChar::Space),
+
+                // APR
+                0x0D => break Some(GraphicChar::ActivePositionReturn),
+
                 // PAPF（パラメータ1つ）
                 0x16 => try_rr!(self.try_skip(1)),
 
