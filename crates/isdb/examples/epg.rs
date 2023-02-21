@@ -255,7 +255,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if i != 0 {
                         println!();
                     }
-                    println!("\t{}", s);
+                    for line in s.split('\n') {
+                        println!("\t{}", line);
+                    }
                 }
                 println!("\t{}", "-".repeat(100));
             }
