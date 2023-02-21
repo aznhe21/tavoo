@@ -3,7 +3,7 @@
 use std::ops::RangeInclusive;
 
 use crate::psi::desc::DescriptorBlock;
-use crate::psi::PsiSection;
+use crate::psi::{PsiSection, PsiTable};
 use crate::time::DateTime;
 use crate::utils::{BytesExt, SliceExt};
 
@@ -179,9 +179,10 @@ impl<'a> Sdt<'a> {
     pub const TABLE_ID_ACTUAL: u8 = 0x42;
     /// 他のTSにおけるSDTのテーブルID。
     pub const TABLE_ID_OTHER: u8 = 0x46;
+}
 
-    /// `psi`から`Sdt`を読み取る。
-    pub fn read(psi: &PsiSection<'a>) -> Option<Sdt<'a>> {
+impl<'a> PsiTable<'a> for Sdt<'a> {
+    fn read(psi: &PsiSection<'a>) -> Option<Self> {
         match psi.table_id {
             Self::TABLE_ID_ACTUAL => Some(Sdt::Actual(SdtCommon::read(psi)?)),
             Self::TABLE_ID_OTHER => Some(Sdt::Other(SdtCommon::read(psi)?)),
@@ -207,9 +208,10 @@ pub struct Bat<'a> {
 impl<'a> Bat<'a> {
     /// BATのテーブルID。
     pub const TABLE_ID: u8 = 0x4A;
+}
 
-    /// `psi`から`Bat`を読み取る。
-    pub fn read(psi: &PsiSection<'a>) -> Option<Bat<'a>> {
+impl<'a> PsiTable<'a> for Bat<'a> {
+    fn read(psi: &PsiSection<'a>) -> Option<Bat<'a>> {
         if psi.table_id != Self::TABLE_ID {
             log::debug!("invalid Bat::table_id");
             return None;
@@ -387,9 +389,10 @@ impl<'a> Eit<'a> {
     pub const TABLE_ID_SCHEDULE_ACTUAL: RangeInclusive<u8> = 0x50..=0x5F;
     /// 他TSにおけるイベント［スケジュール］を格納するEITのテーブルID。
     pub const TABLE_ID_SCHEDULE_OTHER: RangeInclusive<u8> = 0x60..=0x6F;
+}
 
-    /// `psi`から`Eit`を読み取る。
-    pub fn read(psi: &PsiSection<'a>) -> Option<Eit<'a>> {
+impl<'a> PsiTable<'a> for Eit<'a> {
+    fn read(psi: &PsiSection<'a>) -> Option<Eit<'a>> {
         match psi.table_id {
             Self::TABLE_ID_PF_ACTUAL => Some(Eit::ActualPf(EitCommon::read(psi)?)),
             Self::TABLE_ID_PF_OTHER => Some(Eit::OtherPf(EitCommon::read(psi)?)),
@@ -413,9 +416,10 @@ pub struct Tdt {
 impl Tdt {
     /// TDTのテーブルID。
     pub const TABLE_ID: u8 = 0x70;
+}
 
-    /// `psi`から`Tdt`を読み取る。
-    pub fn read(psi: &PsiSection) -> Option<Tdt> {
+impl PsiTable<'_> for Tdt {
+    fn read(psi: &PsiSection) -> Option<Tdt> {
         if psi.table_id != Self::TABLE_ID {
             log::debug!("invalid Tdt::table_id");
             return None;
@@ -458,9 +462,10 @@ pub struct Rst {
 impl Rst {
     /// RSTのテーブルID。
     pub const TABLE_ID: u8 = 0x71;
+}
 
-    /// `psi`から`Rst`を読み取る。
-    pub fn read(psi: &PsiSection) -> Option<Rst> {
+impl PsiTable<'_> for Rst {
+    fn read(psi: &PsiSection) -> Option<Rst> {
         if psi.table_id != Self::TABLE_ID {
             log::debug!("invalid Rst::table_id");
             return None;
@@ -502,9 +507,10 @@ pub struct Tot<'a> {
 impl<'a> Tot<'a> {
     /// TOTのテーブルID。
     pub const TABLE_ID: u8 = 0x73;
+}
 
-    /// `psi`から`Tot`を読み取る。
-    pub fn read(psi: &PsiSection<'a>) -> Option<Tot<'a>> {
+impl<'a> PsiTable<'a> for Tot<'a> {
+    fn read(psi: &PsiSection<'a>) -> Option<Tot<'a>> {
         if psi.table_id != Self::TABLE_ID {
             log::debug!("invalid Tot::table_id");
             return None;
@@ -571,9 +577,10 @@ pub struct Pcat<'a> {
 impl<'a> Pcat<'a> {
     /// PCATのテーブルID。
     pub const TABLE_ID: u8 = 0xC2;
+}
 
-    /// `psi`から`Pcat`を読み取る。
-    pub fn read(psi: &PsiSection<'a>) -> Option<Pcat<'a>> {
+impl<'a> PsiTable<'a> for Pcat<'a> {
+    fn read(psi: &PsiSection<'a>) -> Option<Pcat<'a>> {
         if psi.table_id != Self::TABLE_ID {
             log::debug!("invalid Pcat::table_id");
             return None;
@@ -677,9 +684,10 @@ pub struct Bit<'a> {
 impl<'a> Bit<'a> {
     /// BITのテーブルID。
     pub const TABLE_ID: u8 = 0xC4;
+}
 
-    /// `psi`から`Bit`を読み取る。
-    pub fn read(psi: &PsiSection<'a>) -> Option<Bit<'a>> {
+impl<'a> PsiTable<'a> for Bit<'a> {
+    fn read(psi: &PsiSection<'a>) -> Option<Bit<'a>> {
         if psi.table_id != Self::TABLE_ID {
             log::debug!("invalid Bit::table_id");
             return None;
@@ -863,9 +871,10 @@ impl<'a> Nbit<'a> {
     pub const TABLE_ID_BODY: u8 = 0xC5;
     /// 参照情報のテーブルID。
     pub const TABLE_ID_REF: u8 = 0xC6;
+}
 
-    /// `psi`から`Nbit`を読み取る。
-    pub fn read(psi: &PsiSection<'a>) -> Option<Nbit<'a>> {
+impl<'a> PsiTable<'a> for Nbit<'a> {
+    fn read(psi: &PsiSection<'a>) -> Option<Nbit<'a>> {
         match psi.table_id {
             Self::TABLE_ID_BODY => Some(Nbit::Body(NbitCommon::read(psi)?)),
             Self::TABLE_ID_REF => Some(Nbit::Ref(NbitCommon::read(psi)?)),
@@ -902,9 +911,10 @@ pub struct Ldt<'a> {
 impl<'a> Ldt<'a> {
     /// LDTのテーブルID。
     pub const TABLE_ID: u8 = 0xC7;
+}
 
-    /// `psi`から`Ldt`を読み取る。
-    pub fn read(psi: &PsiSection<'a>) -> Option<Ldt<'a>> {
+impl<'a> PsiTable<'a> for Ldt<'a> {
+    fn read(psi: &PsiSection<'a>) -> Option<Ldt<'a>> {
         if psi.table_id != Self::TABLE_ID {
             log::debug!("invalid Ldt::table_id");
             return None;
@@ -981,9 +991,10 @@ pub struct Lit<'a> {
 impl<'a> Lit<'a> {
     /// LITのテーブルID。
     pub const TABLE_ID: u8 = 0xD0;
+}
 
-    /// `psi`から`Lit`を読み取る。
-    pub fn read(psi: &PsiSection<'a>) -> Option<Lit<'a>> {
+impl<'a> PsiTable<'a> for Lit<'a> {
+    fn read(psi: &PsiSection<'a>) -> Option<Lit<'a>> {
         if psi.table_id != Self::TABLE_ID {
             log::debug!("invalid Lit::table_id");
             return None;
@@ -1092,9 +1103,10 @@ pub struct Ert<'a> {
 impl<'a> Ert<'a> {
     /// ERTのテーブルID。
     pub const TABLE_ID: u8 = 0xD1;
+}
 
-    /// `psi`から`Ert`を読み取る。
-    pub fn read(psi: &PsiSection<'a>) -> Option<Ert<'a>> {
+impl<'a> PsiTable<'a> for Ert<'a> {
+    fn read(psi: &PsiSection<'a>) -> Option<Ert<'a>> {
         if psi.table_id != Self::TABLE_ID {
             log::debug!("invalid Ert::table_id");
             return None;
@@ -1172,9 +1184,10 @@ pub struct Itt<'a> {
 impl<'a> Itt<'a> {
     /// ITTのテーブルID。
     pub const TABLE_ID: u8 = 0xD2;
+}
 
-    /// `psi`から`Itt`を読み取る。
-    pub fn read(psi: &PsiSection<'a>) -> Option<Itt<'a>> {
+impl<'a> PsiTable<'a> for Itt<'a> {
+    fn read(psi: &PsiSection<'a>) -> Option<Itt<'a>> {
         if psi.table_id != Self::TABLE_ID {
             log::debug!("invalid Itt::table_id");
             return None;

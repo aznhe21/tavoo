@@ -8,8 +8,7 @@ use crate::dsmcc;
 use crate::pes::PesPacket;
 use crate::pid::Pid;
 use crate::psi::desc::{self, ServiceType, StreamType};
-use crate::psi::table;
-use crate::psi::PsiSection;
+use crate::psi::{self, PsiSection};
 
 /// 取得したロゴ。
 #[derive(Debug)]
@@ -35,6 +34,7 @@ pub struct LogoData<'a> {
 
 /// ロゴを取得するためのフィルター。
 pub struct LogoDownloadFilter<F> {
+    repo: psi::Repository,
     es_pids: FxHashSet<Pid>,
 
     services: FxHashMap<u16, Service>,
@@ -70,6 +70,7 @@ impl<F: FnMut(&LogoData)> LogoDownloadFilter<F> {
     /// ロゴを取得する度`f`が呼ばれる。
     pub fn new(f: F) -> LogoDownloadFilter<F> {
         LogoDownloadFilter {
+            repo: psi::Repository::new(),
             es_pids: FxHashSet::default(),
 
             services: FxHashMap::default(),
@@ -81,7 +82,7 @@ impl<F: FnMut(&LogoData)> LogoDownloadFilter<F> {
     }
 
     fn on_pat(&mut self, ctx: &mut demux::Context<Tag>, psi: &PsiSection) {
-        let Some(pat) = table::Pat::read(psi) else {
+        let Some(pat) = self.repo.read::<psi::table::Pat>(psi) else {
             return;
         };
 
@@ -103,7 +104,7 @@ impl<F: FnMut(&LogoData)> LogoDownloadFilter<F> {
     }
 
     fn on_nit(&mut self, ctx: &mut demux::Context<Tag>, psi: &PsiSection) {
-        let Some(nit) = table::Nit::read(psi) else {
+        let Some(nit) = self.repo.read::<psi::table::Nit>(psi) else {
             return;
         };
 
@@ -137,10 +138,10 @@ impl<F: FnMut(&LogoData)> LogoDownloadFilter<F> {
     }
 
     fn on_cdt(&mut self, _: &mut demux::Context<Tag>, psi: &PsiSection) {
-        let Some(cdt) = table::Cdt::read(psi) else {
+        let Some(cdt) = self.repo.read::<psi::table::Cdt>(psi) else {
             return;
         };
-        if cdt.data_type != table::CdtDataType::LOGO {
+        if cdt.data_type != psi::table::CdtDataType::LOGO {
             return;
         }
 
@@ -162,7 +163,7 @@ impl<F: FnMut(&LogoData)> LogoDownloadFilter<F> {
     }
 
     fn on_pmt(&mut self, ctx: &mut demux::Context<Tag>, psi: &PsiSection) {
-        let Some(pmt) = table::Pmt::read(psi) else {
+        let Some(pmt) = self.repo.read::<psi::table::Pmt>(psi) else {
             return;
         };
 

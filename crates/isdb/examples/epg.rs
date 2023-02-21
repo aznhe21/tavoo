@@ -33,6 +33,7 @@ struct Network {
 }
 
 struct Filter {
+    repo: isdb::psi::Repository,
     /// キーはネットワーク識別。
     networks: FxHashMap<u16, Network>,
 }
@@ -40,6 +41,7 @@ struct Filter {
 impl Filter {
     pub fn new() -> Filter {
         Filter {
+            repo: isdb::psi::Repository::new(),
             networks: FxHashMap::default(),
         }
     }
@@ -66,11 +68,10 @@ impl isdb::demux::Filter for Filter {
     fn on_psi_section(&mut self, ctx: &mut isdb::demux::Context<Tag>, psi: &isdb::psi::PsiSection) {
         match ctx.tag() {
             Tag::Sdt => {
-                let sdt = match isdb::psi::table::Sdt::read(psi) {
+                let sdt = match self.repo.read::<isdb::psi::table::Sdt>(psi) {
                     Some(isdb::psi::table::Sdt::Actual(sdt)) => sdt,
                     Some(isdb::psi::table::Sdt::Other(sdt)) => sdt,
                     None => {
-                        log::warn!("invalid SDT");
                         return;
                     }
                 };
@@ -102,12 +103,11 @@ impl isdb::demux::Filter for Filter {
                 }
             }
             Tag::Eit => {
-                let eit = match isdb::psi::table::Eit::read(psi) {
+                let eit = match self.repo.read::<isdb::psi::table::Eit>(psi) {
                     Some(isdb::psi::table::Eit::ActualSchedule(eit)) => eit,
                     Some(isdb::psi::table::Eit::OtherSchedule(eit)) => eit,
                     Some(_) => return,
                     None => {
-                        log::warn!("invalid EIT");
                         return;
                     }
                 };

@@ -1,7 +1,7 @@
 //! ARIB STD-B21で規定されるテーブルの定義。
 
 use crate::psi::desc::DescriptorBlock;
-use crate::psi::PsiSection;
+use crate::psi::{PsiSection, PsiTable};
 use crate::time::DateTime;
 use crate::utils::{BytesExt, SliceExt};
 
@@ -17,9 +17,10 @@ pub struct Dit {
 impl Dit {
     /// DITのテーブルID。
     pub const TABLE_ID: u8 = 0x7E;
+}
 
-    /// `psi`から`Dit`を読み取る。
-    pub fn read(psi: &PsiSection) -> Option<Dit> {
+impl PsiTable<'_> for Dit {
+    fn read(psi: &PsiSection) -> Option<Dit> {
         if psi.table_id != Self::TABLE_ID {
             log::debug!("invalid Dit::table_id");
             return None;
@@ -60,9 +61,10 @@ pub struct Sit<'a> {
 impl<'a> Sit<'a> {
     /// SITのテーブルID。
     pub const TABLE_ID: u8 = 0x7F;
+}
 
-    /// `psi`から`Sit`を読み取る。
-    pub fn read(psi: &PsiSection<'a>) -> Option<Sit<'a>> {
+impl<'a> PsiTable<'a> for Sit<'a> {
+    fn read(psi: &PsiSection<'a>) -> Option<Sit<'a>> {
         if psi.table_id != Self::TABLE_ID {
             log::debug!("invalid Sit::table_id");
             return None;
@@ -165,8 +167,15 @@ impl<'a> Sdtt<'a> {
     /// SDTTのテーブルID。
     pub const TABLE_ID: u8 = 0xC3;
 
-    /// `psi`から`Sdtt`を読み取る。
-    pub fn read(psi: &PsiSection<'a>) -> Option<Sdtt<'a>> {
+    /// BS共通データかどうかを返す。
+    #[inline]
+    pub fn is_bs_common(&self) -> bool {
+        self.maker_id == 0xFF && self.model_id == 0xFE
+    }
+}
+
+impl<'a> PsiTable<'a> for Sdtt<'a> {
+    fn read(psi: &PsiSection<'a>) -> Option<Sdtt<'a>> {
         if psi.table_id != Self::TABLE_ID {
             log::debug!("invalid Sdtt::table_id");
             return None;
@@ -262,12 +271,6 @@ impl<'a> Sdtt<'a> {
             contents,
         })
     }
-
-    /// BS共通データかどうかを返す。
-    #[inline]
-    pub fn is_bs_common(&self) -> bool {
-        self.maker_id == 0xFF && self.model_id == 0xFE
-    }
 }
 
 /// [`Cdt`]におけるデータ属性。
@@ -297,9 +300,10 @@ pub struct Cdt<'a> {
 impl<'a> Cdt<'a> {
     /// CDTのテーブルID。
     pub const TABLE_ID: u8 = 0xC8;
+}
 
-    /// `psi`から`Cdt`を読み取る。
-    pub fn read(psi: &PsiSection<'a>) -> Option<Cdt<'a>> {
+impl<'a> PsiTable<'a> for Cdt<'a> {
+    fn read(psi: &PsiSection<'a>) -> Option<Cdt<'a>> {
         if psi.table_id != Self::TABLE_ID {
             log::debug!("invalid Cdt::table_id");
             return None;

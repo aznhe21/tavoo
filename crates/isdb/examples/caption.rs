@@ -48,6 +48,7 @@ ARGS:
 struct Filter {
     manual_service_id: Option<u16>,
 
+    repo: isdb::psi::Repository,
     current_service_id: Option<u16>,
     pmt_pid: Pid,
     caption_pids: Vec<Pid>,
@@ -63,6 +64,7 @@ impl Filter {
         Filter {
             manual_service_id: service_id,
 
+            repo: isdb::psi::Repository::new(),
             current_service_id: None,
             pmt_pid: Pid::NULL,
             caption_pids: Vec::new(),
@@ -106,7 +108,7 @@ impl isdb::demux::Filter for Filter {
     fn on_psi_section(&mut self, ctx: &mut isdb::demux::Context<Tag>, psi: &isdb::psi::PsiSection) {
         match ctx.tag() {
             Tag::Pat => {
-                let Some(pat) = isdb::psi::table::Pat::read(psi) else {
+                let Some(pat) = self.repo.read::<isdb::psi::table::Pat>(psi) else {
                     return;
                 };
 
@@ -135,7 +137,7 @@ impl isdb::demux::Filter for Filter {
                 let Some(service_id) = self.current_service_id else {
                     return;
                 };
-                let Some(pmt) = isdb::psi::table::Pmt::read(psi) else {
+                let Some(pmt) = self.repo.read::<isdb::psi::table::Pmt>(psi) else {
                     return;
                 };
                 if pmt.program_number != service_id {
@@ -169,7 +171,7 @@ impl isdb::demux::Filter for Filter {
             }
 
             Tag::Tot => {
-                let Some(tot) = isdb::psi::table::Tot::read(psi) else {
+                let Some(tot) = self.repo.read::<isdb::psi::table::Tot>(psi) else {
                     return;
                 };
 

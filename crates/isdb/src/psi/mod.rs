@@ -3,6 +3,7 @@
 pub mod desc;
 pub mod table;
 
+use fxhash::FxHashMap;
 use thiserror::Error;
 
 use crate::utils::BytesExt;
@@ -122,4 +123,72 @@ pub struct PsiSectionSyntax {
     pub section_number: u8,
     /// 最終セクション番号。
     pub last_section_number: u8,
+}
+
+/// PSIテーブルを表すトレイト。
+pub trait PsiTable<'a>: Sized {
+    /// PSIテーブルを読み取る。
+    fn read(psi: &PsiSection<'a>) -> Option<Self>;
+}
+
+/// PSIテーブルのバージョン管理。
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Repository {
+    // サブテーブルごとの、セクション番号と対応するバージョン番号の配列。
+    subtable_versions: FxHashMap<(u8, u16), Vec<u8>>,
+}
+
+impl Repository {
+    /// バージョン管理のための`Repository`を生成する。
+    #[inline]
+    pub fn new() -> Repository {
+        Repository::default()
+    }
+
+    /// `psi`から`T`で指定したセクションを読み取る。
+    ///
+    /// サブテーブルのバージョンが更新されている場合や
+    /// （セクションシンタクスがないために）バージョン管理が必要ない場合には
+    /// `T`を使ってサブテーブルを読み込む。
+    /// すなわち、`T`がバージョン管理されるべきかどうかに関わらず、
+    /// サブテーブルの読み込みに`Repository`を使用して構わない。
+    ///
+    /// サブテーブルのバージョンが同一であり更新がない場合は`None`を返す。
+    /// また`psi`から`T`を読み取れない場合やセクションシンタクスが不正な場合にも`None`を返す。
+    pub fn read<'a, T: PsiTable<'a>>(&mut self, psi: &PsiSection<'a>) -> Option<T> {
+        let Some(syntax) = psi.syntax.as_ref() else {
+            return T::read(psi);
+        };
+
+        let len = (syntax.last_section_number + 1) as usize;
+        let idx = syntax.section_number as usize;
+        if idx >= len {
+            return None;
+        }
+
+        let versions = self
+            .subtable_versions
+            .entry((psi.table_id, syntax.table_id_extension))
+            .or_insert_with(Default::default);
+
+        if versions.len() != len {
+            // バージョン番号は5ビットであるため0x20以上は無効値
+            versions.resize(len, 0xFF);
+        }
+
+        // Safety: 冒頭で確認済み
+        unsafe { crate::utils::assume!(idx < versions.len()) }
+        if versions[idx] == syntax.version_number {
+            return None;
+        }
+        versions[idx] = syntax.version_number;
+
+        T::read(psi)
+    }
+
+    /// `Repository`の内容を消去して初期化する。
+    #[inline]
+    pub fn clear(&mut self) {
+        self.subtable_versions.clear();
+    }
 }

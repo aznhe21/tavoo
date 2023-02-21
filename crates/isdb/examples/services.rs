@@ -70,12 +70,14 @@ enum Tag {
 }
 
 struct Filter {
+    repo: isdb::psi::Repository,
     services: Vec<Service>,
 }
 
 impl Filter {
-    pub const fn new() -> Filter {
+    pub fn new() -> Filter {
         Filter {
+            repo: isdb::psi::Repository::new(),
             services: Vec::new(),
         }
     }
@@ -105,7 +107,7 @@ impl isdb::demux::Filter for Filter {
     fn on_psi_section(&mut self, ctx: &mut isdb::demux::Context<Tag>, psi: &isdb::psi::PsiSection) {
         match ctx.tag() {
             Tag::Pat => {
-                let Some(pat) = isdb::psi::table::Pat::read(psi) else {
+                let Some(pat) = self.repo.read::<isdb::psi::table::Pat>(psi) else {
                     return;
                 };
 
@@ -124,7 +126,7 @@ impl isdb::demux::Filter for Filter {
             }
 
             Tag::Sdt => {
-                let sdt = match isdb::psi::table::Sdt::read(psi) {
+                let sdt = match self.repo.read::<isdb::psi::table::Sdt>(psi) {
                     Some(isdb::psi::table::Sdt::Actual(sdt)) => sdt,
                     _ => return,
                 };
@@ -147,7 +149,7 @@ impl isdb::demux::Filter for Filter {
             }
 
             Tag::Eit => {
-                let eit = match isdb::psi::table::Eit::read(psi) {
+                let eit = match self.repo.read::<isdb::psi::table::Eit>(psi) {
                     Some(isdb::psi::table::Eit::ActualPf(eit)) => eit,
                     _ => return,
                 };

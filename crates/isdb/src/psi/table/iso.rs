@@ -4,7 +4,7 @@ use std::num::NonZeroU16;
 
 use crate::pid::Pid;
 use crate::psi::desc::{DescriptorBlock, StreamType};
-use crate::psi::PsiSection;
+use crate::psi::{PsiSection, PsiTable};
 use crate::utils::BytesExt;
 
 /// トランスポートストリームの物理的構成に関する情報。
@@ -43,9 +43,10 @@ pub struct Pat {
 impl Pat {
     /// PATのテーブルID。
     pub const TABLE_ID: u8 = 0x00;
+}
 
-    /// `psi`から`Pat`を読み取る。
-    pub fn read(psi: &PsiSection) -> Option<Pat> {
+impl PsiTable<'_> for Pat {
+    fn read(psi: &PsiSection) -> Option<Pat> {
         if psi.table_id != Self::TABLE_ID {
             log::debug!("invalid Pat::table_id");
             return None;
@@ -93,9 +94,10 @@ pub struct Cat<'a> {
 impl<'a> Cat<'a> {
     /// CATのテーブルID。
     const TABLE_ID: u8 = 0x01;
+}
 
-    /// `psi`から`Cat`を読み取る。
-    pub fn read(psi: &PsiSection<'a>) -> Option<Cat<'a>> {
+impl<'a> PsiTable<'a> for Cat<'a> {
+    fn read(psi: &PsiSection<'a>) -> Option<Cat<'a>> {
         if psi.table_id != Self::TABLE_ID {
             log::debug!("invalid Cat::table_id");
             return None;
@@ -135,9 +137,10 @@ pub struct Pmt<'a> {
 impl<'a> Pmt<'a> {
     /// PMTのテーブルID。
     pub const TABLE_ID: u8 = 0x02;
+}
 
-    /// `psi`から`Pmt`を読み取る。
-    pub fn read(psi: &PsiSection<'a>) -> Option<Pmt<'a>> {
+impl<'a> PsiTable<'a> for Pmt<'a> {
+    fn read(psi: &PsiSection<'a>) -> Option<Pmt<'a>> {
         if psi.table_id != Self::TABLE_ID {
             log::debug!("invalid Pmt::table_id");
             return None;
@@ -205,9 +208,10 @@ pub struct Nit<'a> {
 impl<'a> Nit<'a> {
     /// NITのテーブルID。
     pub const TABLE_ID: u8 = 0x40;
+}
 
-    /// `psi`から`Nit`を読み取る。
-    pub fn read(psi: &PsiSection<'a>) -> Option<Nit<'a>> {
+impl<'a> PsiTable<'a> for Nit<'a> {
+    fn read(psi: &PsiSection<'a>) -> Option<Nit<'a>> {
         if psi.table_id != Self::TABLE_ID {
             log::debug!("invalid Nit::table_id");
             return None;

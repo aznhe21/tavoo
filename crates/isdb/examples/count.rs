@@ -27,6 +27,7 @@ struct Service {
 }
 
 struct Filter {
+    repo: isdb::psi::Repository,
     current_pmt_pids: Vec<Pid>,
 
     services: FxHashMap<u16, Service>,
@@ -38,6 +39,7 @@ struct Filter {
 impl Filter {
     pub fn new() -> Filter {
         Filter {
+            repo: isdb::psi::Repository::new(),
             current_pmt_pids: Vec::new(),
 
             services: FxHashMap::default(),
@@ -80,7 +82,7 @@ impl isdb::demux::Filter for Filter {
     fn on_psi_section(&mut self, ctx: &mut isdb::demux::Context<Tag>, psi: &isdb::psi::PsiSection) {
         match ctx.tag() {
             Tag::Pat => {
-                let Some(pat) = isdb::psi::table::Pat::read(psi) else {
+                let Some(pat) = self.repo.read::<isdb::psi::table::Pat>(psi) else {
                     return;
                 };
 
@@ -100,7 +102,7 @@ impl isdb::demux::Filter for Filter {
                 }
             }
             Tag::Pmt => {
-                let Some(pmt) = isdb::psi::table::Pmt::read(psi) else {
+                let Some(pmt) = self.repo.read::<isdb::psi::table::Pmt>(psi) else {
                     return;
                 };
                 let Some(service) = self.services.get_mut(&pmt.program_number) else {
@@ -123,7 +125,7 @@ impl isdb::demux::Filter for Filter {
                 }
             }
             Tag::Cat => {
-                let Some(cat) = isdb::psi::table::Cat::read(psi) else {
+                let Some(cat) = self.repo.read::<isdb::psi::table::Cat>(psi) else {
                     return;
                 };
 

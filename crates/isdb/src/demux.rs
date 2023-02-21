@@ -258,7 +258,10 @@ impl<T: Filter + ?Sized> Filter for &mut T {
 /// ```
 /// use isdb::demux::Demuxer;
 ///
-/// struct Filter;
+/// #[derive(Default)]
+/// struct Filter {
+///     repo: isdb::psi::Repository,
+/// }
 ///
 /// // タグには`Copy`の実装が必須
 /// #[derive(Clone, Copy)]
@@ -289,7 +292,7 @@ impl<T: Filter + ?Sized> Filter for &mut T {
 ///         match ctx.tag() {
 ///             Tag::Pat => {
 ///                 // PATのパケットに対する処理をする
-///                 let Some(pat) = isdb::psi::table::Pat::read(psi) else {
+///                 let Some(pat) = self.repo.read::<isdb::psi::table::Pat>(psi) else {
 ///                     return;
 ///                 };
 ///
@@ -304,7 +307,7 @@ impl<T: Filter + ?Sized> Filter for &mut T {
 ///             // PMTのPIDは動的だが静的な値である`Tag::Pmt`でマッチができる
 ///             Tag::Pmt => {
 ///                 // PATで取得したPMTのPIDに対する処理をする
-///                 let Some(pmt) = isdb::psi::table::Pmt::read(psi) else {
+///                 let Some(pmt) = self.repo.read::<isdb::psi::table::Pmt>(psi) else {
 ///                     return;
 ///                 };
 ///
@@ -323,7 +326,7 @@ impl<T: Filter + ?Sized> Filter for &mut T {
 ///
 /// # fn main() -> std::io::Result<()> {
 /// // フィルターを引数に`Demuxer`を生成する
-/// let mut demuxer = Demuxer::new(Filter);
+/// let mut demuxer = Demuxer::new(Filter::default());
 /// // パケットを`Demuxer::feed`に与え続けることで処理・分離を行う
 /// # let file = &mut (&[] as &[u8]);
 /// for packet in isdb::Packet::iter(file) {
