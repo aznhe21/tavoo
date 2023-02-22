@@ -141,8 +141,8 @@ pub trait Filter {
     /// パケットの種類を識別するためのタグに使う型。
     type Tag: Copy;
 
-    /// フィルター初期化時に呼ばれ、各PIDにおける処理方法を設定するテーブルを返す。
-    fn on_setup(&mut self) -> Table<Self::Tag>;
+    /// フィルター初期化時に呼ばれ、`table`に対し各PIDにおける処理方法を設定する。
+    fn on_setup(&mut self, table: &mut Table<Self::Tag>);
 
     /// パケットが連続していなかった（ドロップしていた）際に呼ばれる。
     ///
@@ -169,8 +169,8 @@ impl<T: Filter + ?Sized> Filter for &mut T {
     type Tag = T::Tag;
 
     #[inline]
-    fn on_setup(&mut self) -> Table<Self::Tag> {
-        (**self).on_setup()
+    fn on_setup(&mut self, table: &mut Table<Self::Tag>) {
+        (**self).on_setup(table)
     }
 
     #[inline]
@@ -344,12 +344,11 @@ pub struct Demuxer<T: Filter> {
 impl<T: Filter> Demuxer<T> {
     /// `Demuxer`を生成する。
     pub fn new(mut filter: T) -> Demuxer<T> {
-        let table = filter.on_setup();
-        Demuxer {
-            filter,
-            cc: PidTable::from_fn(|_| 0x10),
-            table,
-        }
+        let cc = PidTable::from_fn(|_| 0x10);
+        let mut table = Table::new();
+
+        filter.on_setup(&mut table);
+        Demuxer { filter, cc, table }
     }
 
     /// 内包するフィルターを参照で返す。

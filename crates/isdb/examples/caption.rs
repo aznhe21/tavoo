@@ -98,11 +98,9 @@ enum Tag {
 impl isdb::demux::Filter for Filter {
     type Tag = Tag;
 
-    fn on_setup(&mut self) -> isdb::demux::Table<Tag> {
-        let mut table = isdb::demux::Table::new();
+    fn on_setup(&mut self, table: &mut isdb::demux::Table<Tag>) {
         table.set_as_psi(Pid::PAT, Tag::Pat);
         table.set_as_psi(Pid::TOT, Tag::Tot);
-        table
     }
 
     fn on_psi_section(&mut self, ctx: &mut isdb::demux::Context<Tag>, psi: &isdb::psi::PsiSection) {

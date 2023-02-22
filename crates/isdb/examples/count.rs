@@ -67,11 +67,9 @@ impl isdb::demux::Filter for Filter {
 
     fn on_pes_packet(&mut self, _: &mut isdb::demux::Context<Tag>, _: &isdb::pes::PesPacket) {}
 
-    fn on_setup(&mut self) -> isdb::demux::Table<Tag> {
-        let mut table = isdb::demux::Table::new();
+    fn on_setup(&mut self, table: &mut isdb::demux::Table<Tag>) {
         table.set_as_psi(Pid::PAT, Tag::Pat);
         table.set_as_psi(Pid::CAT, Tag::Cat);
-        table
     }
 
     fn on_discontinued(&mut self, packet: &isdb::Packet) {

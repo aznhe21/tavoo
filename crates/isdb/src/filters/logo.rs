@@ -295,12 +295,10 @@ impl<F: FnMut(&LogoData)> demux::Filter for LogoDownloadFilter<F> {
 
     fn on_pes_packet(&mut self, _: &mut demux::Context<Tag>, _: &PesPacket) {}
 
-    fn on_setup(&mut self) -> demux::Table<Tag> {
-        let mut table = demux::Table::new();
+    fn on_setup(&mut self, table: &mut demux::Table<Tag>) {
         table.set_as_psi(Pid::PAT, Tag::Pat);
         table.set_as_psi(Pid::NIT, Tag::Nit);
         table.set_as_psi(Pid::CDT, Tag::Cdt);
-        table
     }
 
     fn on_psi_section(&mut self, ctx: &mut demux::Context<Tag>, psi: &PsiSection) {

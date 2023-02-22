@@ -94,14 +94,12 @@ impl isdb::demux::Filter for Filter {
 
     fn on_pes_packet(&mut self, _: &mut isdb::demux::Context<Tag>, _: &isdb::pes::PesPacket) {}
 
-    fn on_setup(&mut self) -> isdb::demux::Table<Tag> {
-        let mut table = isdb::demux::Table::new();
+    fn on_setup(&mut self, table: &mut isdb::demux::Table<Tag>) {
         table.set_as_psi(Pid::PAT, Tag::Pat);
         table.set_as_psi(Pid::SDT, Tag::Sdt);
         table.set_as_psi(Pid::H_EIT, Tag::Eit);
         table.set_as_psi(Pid::M_EIT, Tag::Eit);
         table.set_as_psi(Pid::L_EIT, Tag::Eit);
-        table
     }
 
     fn on_psi_section(&mut self, ctx: &mut isdb::demux::Context<Tag>, psi: &isdb::psi::PsiSection) {
