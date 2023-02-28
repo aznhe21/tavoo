@@ -1,5 +1,7 @@
 //! ARIB STD-B10で規定される記述子と関連する型の定義。
 
+use std::fmt;
+
 use crate::eight::str::AribStr;
 use crate::lang::LangCode;
 use crate::pid::Pid;
@@ -10,7 +12,7 @@ use super::base::Descriptor;
 use super::iso::ServiceType;
 
 /// ストリーム形式種別。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct StreamType(pub u8);
 
 impl StreamType {
@@ -96,6 +98,12 @@ impl StreamType {
     /// 定義されているストリーム種別かどうかを返す。
     pub fn is_known(&self) -> bool {
         matches!(self.0, 0x01..=0x1B | 0x24 | 0x80..=0x83 | 0x87)
+    }
+}
+
+impl fmt::Debug for StreamType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "StreamType(0x{:02X})", self.0)
     }
 }
 
