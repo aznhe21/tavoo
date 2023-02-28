@@ -264,17 +264,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for packet in isdb::Packet::iter(&mut f) {
         let packet = packet?;
 
-        demuxer.get_filter_mut().counter.input += 1;
+        demuxer.filter_mut().counter.input += 1;
         if packet.error_indicator() {
-            demuxer.get_filter_mut().counter.transport_error += 1;
+            demuxer.filter_mut().counter.transport_error += 1;
             continue;
         }
         if !packet.is_normal() {
-            demuxer.get_filter_mut().counter.format_error += 1;
+            demuxer.filter_mut().counter.format_error += 1;
             continue;
         }
 
-        let mut count = &mut demuxer.get_filter_mut().counter.counts[packet.pid()];
+        let mut count = &mut demuxer.filter_mut().counter.counts[packet.pid()];
         count.input += 1;
         if packet.is_scrambled() {
             count.scrambled += 1;

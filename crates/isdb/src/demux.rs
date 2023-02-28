@@ -365,13 +365,13 @@ impl<T: Filter> Demuxer<T> {
 
     /// 内包するフィルターを参照で返す。
     #[inline]
-    pub fn get_filter(&self) -> &T {
+    pub fn filter(&self) -> &T {
         &self.filter
     }
 
     /// 内包するフィルターを可変参照で返す。
     #[inline]
-    pub fn get_filter_mut(&mut self) -> &mut T {
+    pub fn filter_mut(&mut self) -> &mut T {
         &mut self.filter
     }
 
