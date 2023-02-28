@@ -68,7 +68,7 @@ pub enum PesError {
     #[error("insufficient length of a PES packet")]
     InsufficientLength,
 
-    /// PESパケットのが不正。
+    /// PESパケットの開始コードが不正。
     #[error("invalid start code")]
     InvalidStartCode,
 
