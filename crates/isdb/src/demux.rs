@@ -367,7 +367,7 @@ impl<T: Filter> Demuxer<T> {
 
     /// 内包するフィルターを参照で返す。
     #[inline]
-    pub fn get_filter(&mut self) -> &T {
+    pub fn get_filter(&self) -> &T {
         &self.filter
     }
 
