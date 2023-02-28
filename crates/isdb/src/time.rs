@@ -1,6 +1,7 @@
 //! ARIB STD-B10で規定される日付時刻。
 
 use std::fmt::{self, Write};
+use std::time::Duration;
 
 use crate::utils::BytesExt;
 
@@ -199,6 +200,39 @@ impl fmt::Debug for DateTime {
         write_hundreds(f, self.minute)?;
         f.write_char(':')?;
         write_hundreds(f, self.second)
+    }
+}
+
+/// PESのPTS・DTSを表すタイムスタンプ。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Timestamp(pub u64);
+
+impl Timestamp {
+    /// `data`から`Timestamp`を読み取る。
+    pub fn read(data: &[u8; 5]) -> Timestamp {
+        let timestamp = ((data[0] & 0b00001110) as u64) << 29
+            | (((data[1..=2].read_be_16() & 0b11111111_11111110) as u64) << 14)
+            | ((data[3..=4].read_be_16() >> 1) as u64);
+        Timestamp(timestamp)
+    }
+
+    /// PTS・DTSを秒に変換する。
+    #[inline]
+    pub fn to_secs(&self) -> u64 {
+        self.0 / 90_000
+    }
+
+    /// PTS・DTSを秒成分を含むナノ秒に変換する。
+    #[inline]
+    pub fn to_nanos(&self) -> u64 {
+        self.0 * 1_000_000 / 90
+    }
+
+    /// PTS・DTSを[`Duration`]に変換する。
+    pub fn to_duration(&self) -> Duration {
+        let secs = self.0 / 90_000;
+        let nanos = (self.0 % 90_000 * 1_000_000 / 90) as u32;
+        Duration::new(secs, nanos)
     }
 }
 
