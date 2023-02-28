@@ -277,12 +277,10 @@ impl<T: Filter + ?Sized> Filter for &mut T {
 /// impl isdb::demux::Filter for Filter {
 ///     type Tag = Tag;
 ///
-///     // 初期化時に一度だけ呼ばれる
-///     fn on_setup(&mut self) -> isdb::demux::Table<Tag> {
-///         let mut table = isdb::demux::Table::new();
+///     // `Demuxer`生成時や再初期化時に呼ばれる
+///     fn on_setup(&mut self, table: &mut isdb::demux::Table<Tag>) {
 ///         // PATのPIDをPSIとして処理すると設定する。タグにはPATであることを示す値を指定する
 ///         table.set_as_psi(isdb::pid::Pid::PAT, Tag::Pat);
-///         table
 ///     }
 ///
 ///     // PSIセクションを分離した際に呼ばれる
