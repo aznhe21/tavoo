@@ -3,7 +3,7 @@
 //! 分離には[`Demuxer`]を使用し、PIDごとの処理方法は[`Table`]を使用する。
 
 use crate::packet::Packet;
-use crate::pes::{PesError, PesPacket};
+use crate::pes::{PesError, PesPacket, PesPacketLength};
 use crate::pid::{Pid, PidTable};
 use crate::psi::{PsiError, PsiSection};
 use crate::utils::SliceExt;
@@ -496,7 +496,8 @@ impl PacketStore {
         PacketStore::Pes(PartialPesPacket {
             // バッファサイズはLibISDBから
             buffer: Vec::with_capacity(0x10005),
-            finished: false,
+            // unit_start_indicatorが真になるまでのパケットは処理しない
+            state: PesState::Completed,
         })
     }
 
@@ -514,10 +515,22 @@ impl PacketStore {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+enum PesState {
+    /// ヘッダ受信中。
+    Header,
+    /// 長さ未規定のペイロード。
+    Unbounded,
+    /// 長さ指定のペイロード。
+    Bounded(u32),
+    /// ペイロード受信済み。
+    Completed,
+}
+
 #[derive(Clone)]
 struct PartialPesPacket {
     buffer: Vec<u8>,
-    finished: bool,
+    state: PesState,
 }
 
 #[derive(Clone)]
@@ -526,29 +539,10 @@ struct PartialPsiSection {
 }
 
 impl PartialPesPacket {
-    pub fn write<T: Filter>(
-        &mut self,
-        filter: &mut T,
-        ctx: &mut Context<T::Tag>,
-        data: &[u8],
-        is_start: bool,
-    ) {
-        match (is_start, self.finished) {
-            (false, true) => return,
-            (false, false) => {}
-            (true, _) => {
-                self.buffer.clear();
-                self.finished = false;
-            }
-        }
-
-        self.buffer.extend_from_slice(data);
-
-        match PesPacket::parse(&**self.buffer) {
-            Err(PesError::InsufficientLength) => return,
-            Err(PesError::InvalidStartCode) => {
-                log::debug!("pes packet invalid start code: {:?}", ctx.packet.pid());
-            }
+    fn parse_complete<T: Filter>(filter: &mut T, ctx: &mut Context<T::Tag>, data: &[u8]) {
+        match PesPacket::parse_complete(data) {
+            // ヘッダは受信済みなのでこれらのエラーが来ることはない
+            Err(PesError::InsufficientLength | PesError::InvalidStartCode) => unreachable!(),
             Err(PesError::Corrupted) => {
                 log::debug!("pes packet corrupted: {:?}", ctx.packet.pid());
             }
@@ -557,7 +551,59 @@ impl PartialPesPacket {
             }
             Ok(pes) => filter.on_pes_packet(ctx, &pes),
         };
-        self.finished = true;
+    }
+
+    pub fn write<T: Filter>(
+        &mut self,
+        filter: &mut T,
+        ctx: &mut Context<T::Tag>,
+        data: &[u8],
+        is_start: bool,
+    ) {
+        if is_start {
+            if matches!(self.state, PesState::Unbounded) {
+                Self::parse_complete(filter, ctx, &*self.buffer);
+            }
+            self.buffer.clear();
+            self.state = PesState::Header;
+        } else if matches!(self.state, PesState::Completed) {
+            return;
+        }
+
+        self.buffer.extend_from_slice(data);
+
+        let length = match self.state {
+            PesState::Completed => unreachable!(),
+
+            PesState::Header => match PesPacket::parse_length(&*self.buffer) {
+                Err(PesError::InsufficientLength) => return,
+                Err(PesError::InvalidStartCode) => {
+                    log::debug!("pes packet invalid start code: {:?}", ctx.packet.pid());
+                    self.state = PesState::Completed;
+                    return;
+                }
+                Err(_) => unreachable!(),
+
+                Ok(PesPacketLength::Unbounded) => {
+                    // 長さ未規定のパケットはunit_start_indicatorが真になるまでパースできない
+                    self.state = PesState::Unbounded;
+                    return;
+                }
+                Ok(PesPacketLength::Bounded(length)) => {
+                    let length = length.get();
+                    self.state = PesState::Bounded(length);
+                    length
+                }
+            },
+            PesState::Bounded(length) => length,
+            PesState::Unbounded => return,
+        };
+
+        let Some(data) = self.buffer.get(..length as usize) else {
+            return;
+        };
+        Self::parse_complete(filter, ctx, data);
+        self.state = PesState::Completed;
     }
 }
 

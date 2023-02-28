@@ -2,6 +2,8 @@
 
 pub mod caption;
 
+use std::num::NonZeroU32;
+
 use thiserror::Error;
 
 use crate::utils::{BytesExt, SliceExt};
@@ -81,6 +83,18 @@ pub enum PesError {
     Crc16,
 }
 
+/// PESのパケット長。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum PesPacketLength {
+    /// 長さ未規定のパケット長。
+    Unbounded,
+
+    /// 長さが規定されているパケット長。
+    ///
+    /// 内包する値はパケットヘッダも含めた、PESパケット全体の長さである。
+    Bounded(NonZeroU32),
+}
+
 /// PESのヘッダ。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PesHeader {
@@ -105,8 +119,8 @@ pub struct PesPacket<'a> {
 }
 
 impl<'a> PesPacket<'a> {
-    /// PESパケットをパースして[`PesPacket`]として返す。
-    pub fn parse(data: &'a [u8]) -> Result<PesPacket<'a>, PesError> {
+    /// PESパケットヘッダの長さ部分をパースし、PESパケット長を返す。
+    pub fn parse_length(data: &'a [u8]) -> Result<PesPacketLength, PesError> {
         if data.len() < 6 {
             return Err(PesError::InsufficientLength);
         }
@@ -115,12 +129,23 @@ impl<'a> PesPacket<'a> {
             return Err(PesError::InvalidStartCode);
         }
         let pes_packet_length = data[4..=5].read_be_16();
-        let Some(data) = data.get(..6 + pes_packet_length as usize) else {
+
+        if let Some(length) = NonZeroU32::new(pes_packet_length as u32) {
+            Ok(PesPacketLength::Bounded(length.checked_add(6).unwrap()))
+        } else {
+            Ok(PesPacketLength::Unbounded)
+        }
+    }
+
+    /// パケット全体を完全に読み込んだ`data`によりPESパケットをパースして[`PesPacket`]として返す。
+    ///
+    /// `data`がパケットとして不完全な場合、エラーは返されず壊れたPESパケットとなる可能性がある。
+    pub fn parse_complete(data: &'a [u8]) -> Result<PesPacket<'a>, PesError> {
+        if data.len() < 6 {
             return Err(PesError::InsufficientLength);
-        };
+        }
 
         let stream_id = StreamId(data[3]);
-
         let (option, mid) = if stream_id.has_additional_header() {
             if data.len() < 9 {
                 return Err(PesError::Corrupted);
@@ -178,6 +203,25 @@ impl<'a> PesPacket<'a> {
             header_data,
             data,
         })
+    }
+
+    /// PESパケットをパースして[`PesPacket`]として返す。
+    pub fn parse(data: &'a [u8]) -> Result<PesPacket<'a>, PesError> {
+        if data.len() < 6 {
+            return Err(PesError::InsufficientLength);
+        }
+        if data[0..=2] != [0x00, 0x00, 0x01] {
+            return Err(PesError::InvalidStartCode);
+        }
+        let pes_packet_length = data[4..=5].read_be_16();
+
+        let data = if pes_packet_length == 0 {
+            data
+        } else {
+            data.get(..6 + pes_packet_length as usize)
+                .ok_or(PesError::InsufficientLength)?
+        };
+        PesPacket::parse_complete(data)
     }
 }
 
