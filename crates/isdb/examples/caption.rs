@@ -162,7 +162,7 @@ impl isdb::demux::Filter for Filter {
                     //     .map(|desc| desc.component_tag);
 
                     self.caption_pids.push(stream.elementary_pid);
-                    let is_oneseg = Pid::ONESEG_PMT_PID.contains(&ctx.packet().pid());
+                    let is_oneseg = ctx.packet().pid().is_oneseg_pmt();
                     ctx.table()
                         .set_as_pes(stream.elementary_pid, Tag::Caption(is_oneseg));
                 }

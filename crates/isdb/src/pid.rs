@@ -2,7 +2,6 @@
 
 use std::fmt;
 use std::ops;
-use std::ops::RangeInclusive;
 
 use crate::utils::BytesExt;
 
@@ -63,9 +62,6 @@ impl Pid {
     /// ヌルパケット（Null packet）。
     pub const NULL: Pid = Pid::new(0x1FFF);
 
-    /// ワンセグにおけるPMTのPID範囲。
-    pub const ONESEG_PMT_PID: RangeInclusive<Pid> = Pid::new(0x1FC8)..=Pid::new(0x1FCF);
-
     /// `Pid`を生成する。
     ///
     /// # パニック
@@ -113,6 +109,12 @@ impl Pid {
         // Safety: `Pid`を生成できている時点で値は範囲内
         unsafe { crate::utils::assume!(self.0 <= Pid::MAX) }
         self.0
+    }
+
+    /// このPIDがワンセグのPMTかどうかを返す。
+    #[inline]
+    pub const fn is_oneseg_pmt(&self) -> bool {
+        matches!(self.0, 0x1FC8..=0x1FCF)
     }
 }
 
