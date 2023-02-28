@@ -99,6 +99,33 @@ impl StreamType {
     pub fn is_known(&self) -> bool {
         matches!(self.0, 0x01..=0x1B | 0x24 | 0x80..=0x83 | 0x87)
     }
+
+    /// ストリーム形式が映像を示す場合に`true`を返す。
+    pub fn is_video(&self) -> bool {
+        matches!(
+            *self,
+            StreamType::MPEG1_VIDEO
+                | StreamType::MPEG2_VIDEO
+                | StreamType::MPEG4_VISUAL
+                | StreamType::H264
+                | StreamType::H265
+        )
+    }
+
+    /// ストリーム形式が音声を示す場合に`true`を返す。
+    pub fn is_audio(&self) -> bool {
+        matches!(
+            *self,
+            StreamType::MPEG1_AUDIO
+                | StreamType::MPEG2_AUDIO
+                | StreamType::AAC
+                | StreamType::MPEG4_AUDIO
+                | StreamType::AC3
+                | StreamType::DTS
+                | StreamType::TRUEHD
+                | StreamType::DOLBY_DIGITAL_PLUS
+        )
+    }
 }
 
 impl fmt::Debug for StreamType {
