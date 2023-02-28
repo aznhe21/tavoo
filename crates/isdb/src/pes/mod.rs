@@ -87,9 +87,6 @@ pub struct PesHeader {
     /// ストリーム識別子。
     pub stream_id: StreamId,
 
-    /// PESパケット長。
-    pub pes_packet_length: u16,
-
     /// PESヘッダオプション。
     pub option: Option<PesHeaderOption>,
 }
@@ -174,11 +171,7 @@ impl<'a> PesPacket<'a> {
 
         // TODO: crc16をチェック
 
-        let header = PesHeader {
-            stream_id,
-            pes_packet_length,
-            option,
-        };
+        let header = PesHeader { stream_id, option };
 
         Ok(PesPacket {
             header,
