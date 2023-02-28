@@ -2,8 +2,6 @@
 //!
 //! 分離には[`Demuxer`]を使用し、PIDごとの処理方法は[`Table`]を使用する。
 
-use arrayvec::ArrayVec;
-
 use crate::packet::Packet;
 use crate::pes::{PesError, PesPacket};
 use crate::pid::{Pid, PidTable};
@@ -496,7 +494,8 @@ impl PacketStore {
     #[inline]
     pub fn pes() -> PacketStore {
         PacketStore::Pes(PartialPesPacket {
-            buffer: Box::new(ArrayVec::new()),
+            // バッファサイズはLibISDBから
+            buffer: Vec::with_capacity(0x10005),
             finished: false,
         })
     }
@@ -504,7 +503,8 @@ impl PacketStore {
     #[inline]
     pub fn psi() -> PacketStore {
         PacketStore::Psi(PartialPsiSection {
-            buffer: Box::new(ArrayVec::new()),
+            // バッファサイズはLibISDBから
+            buffer: Vec::with_capacity(3 + 4093),
         })
     }
 
@@ -516,15 +516,13 @@ impl PacketStore {
 
 #[derive(Clone)]
 struct PartialPesPacket {
-    // バッファサイズはLibISDBから
-    buffer: Box<ArrayVec<u8, 0x10005>>,
+    buffer: Vec<u8>,
     finished: bool,
 }
 
 #[derive(Clone)]
 struct PartialPsiSection {
-    // バッファサイズはLibISDBから
-    buffer: Box<ArrayVec<u8, { 3 + 4093 }>>,
+    buffer: Vec<u8>,
 }
 
 impl PartialPesPacket {
@@ -544,10 +542,7 @@ impl PartialPesPacket {
             }
         }
 
-        // バッファに収まる形でdataを追記
-        let len = std::cmp::min(self.buffer.remaining_capacity(), data.len());
-        let _result = self.buffer.try_extend_from_slice(&data[..len]);
-        debug_assert!(_result.is_ok());
+        self.buffer.extend_from_slice(data);
 
         match PesPacket::parse(&**self.buffer) {
             Err(PesError::InsufficientLength) => return,
@@ -578,10 +573,7 @@ impl PartialPsiSection {
             self.buffer.clear();
         }
 
-        // バッファに収まる形でdataを追記
-        let len = std::cmp::min(self.buffer.remaining_capacity(), data.len());
-        let _result = self.buffer.try_extend_from_slice(&data[..len]);
-        debug_assert!(_result.is_ok());
+        self.buffer.extend_from_slice(data);
 
         let mut buf = self.buffer.as_slice();
         loop {
