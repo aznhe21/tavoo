@@ -6,6 +6,7 @@ use std::num::NonZeroU32;
 
 use thiserror::Error;
 
+use crate::time::Timestamp;
 use crate::utils::{BytesExt, SliceExt};
 
 /// ストリーム識別子。
@@ -170,13 +171,31 @@ impl<'a> PesPacket<'a> {
                 return Err(PesError::Corrupted);
             }
 
+            let (pts, dts) = if pts_dts_flags == 0b10 {
+                if data.len() < 9 + 5 {
+                    return Err(PesError::Corrupted);
+                }
+
+                let pts = Timestamp::read(data[9..=13].try_into().unwrap());
+                (Some(pts), Some(pts))
+            } else if pts_dts_flags == 0b11 {
+                if data.len() < 9 + 5 + 5 {
+                    return Err(PesError::Corrupted);
+                }
+
+                let pts = Timestamp::read(data[9..=13].try_into().unwrap());
+                let dts = Timestamp::read(data[14..=18].try_into().unwrap());
+                (Some(pts), Some(dts))
+            } else {
+                (None, None)
+            };
+
             let option = PesHeaderOption {
                 pes_scrambling_control,
                 pes_priority,
                 data_alignment_indicator,
                 copyright,
                 original_or_copy,
-                pts_dts_flags,
                 escr_flag,
                 es_rate_flag,
                 dsm_trick_mode_flag,
@@ -184,6 +203,8 @@ impl<'a> PesPacket<'a> {
                 pes_crc_flag,
                 pes_extension_flag,
                 pes_header_data_length,
+                pts,
+                dts,
             };
 
             (Some(option), mid)
@@ -238,8 +259,6 @@ pub struct PesHeaderOption {
     pub copyright: bool,
     /// PESパケットのペイロードの内容がオリジナルか、コピーかを示す。
     pub original_or_copy: bool,
-    /// PESパケットヘッダにPTSフィールド、DTSフィールドが存在するかどうかを示す（2ビット）。
-    pub pts_dts_flags: u8,
     /// ESCR基本及び拡張フィールドがPESパケットヘッダに存在するかどうか。
     pub escr_flag: bool,
     /// ES_rateフィールドがPESパケットヘッダに存在するかどうか。
@@ -254,6 +273,10 @@ pub struct PesHeaderOption {
     pub pes_extension_flag: bool,
     /// PESパケットヘッダに含まれるオプションフィールド及びスタッフィングバイトの全バイト数。
     pub pes_header_data_length: u8,
+    /// PTS（Presentation Time Stamp）。
+    pub pts: Option<Timestamp>,
+    /// DTS（Decoding Time Stamp）。
+    pub dts: Option<Timestamp>,
 }
 
 /// 同期型PES・非同期型に共通するPESデータ。
