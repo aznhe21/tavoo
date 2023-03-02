@@ -320,15 +320,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let service_id = format!("[{:04X}]", service_id);
 
                 if svc.pmt_pids.contains(&pid) {
-                    pid_texts.push(service_id);
+                    pid_texts.push(service_id.clone());
                     pid_texts.push("PMT".to_string());
-                } else if svc.pcr_pids.contains(&pid) {
-                    pid_texts.push(service_id);
+                }
+                if svc.pcr_pids.contains(&pid) {
+                    pid_texts.push(service_id.clone());
                     pid_texts.push("PCR".to_string());
-                } else if svc.ecm_pids.contains(&pid) {
-                    pid_texts.push(service_id);
+                }
+                if svc.ecm_pids.contains(&pid) {
+                    pid_texts.push(service_id.clone());
                     pid_texts.push("ECM".to_string());
-                } else if let Some(stream_type) = svc.stream_types.get(&pid) {
+                }
+                if let Some(stream_type) = svc.stream_types.get(&pid) {
                     pid_texts.push(service_id);
 
                     match *stream_type {
