@@ -136,25 +136,7 @@ impl fmt::Debug for Pid {
     }
 }
 
-macro_rules! pid_delegate_fmt {
-    ($($trait:path,)*) => {
-        $(
-            impl $trait for Pid {
-                fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                    self.0.fmt(f)
-                }
-            }
-        )*
-    };
-}
-
-pid_delegate_fmt!(
-    fmt::Display,
-    fmt::Binary,
-    fmt::Octal,
-    fmt::LowerHex,
-    fmt::UpperHex,
-);
+crate::utils::delegate_fmt!(Pid);
 
 /// [`Pid`]をキーにして値`V`にアクセスができるテーブル。
 ///

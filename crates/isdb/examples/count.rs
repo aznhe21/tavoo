@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io::BufReader;
 
 use fxhash::{FxHashMap, FxHashSet};
+use isdb::psi::table::ServiceId;
 use isdb::Pid;
 
 #[derive(Default)]
@@ -30,7 +31,7 @@ struct Filter {
     repo: isdb::psi::Repository,
     current_pmt_pids: Vec<Pid>,
 
-    services: FxHashMap<u16, Service>,
+    services: FxHashMap<ServiceId, Service>,
     emm_pids: FxHashSet<Pid>,
 
     counter: Counter,
@@ -93,7 +94,7 @@ impl isdb::demux::Filter for Filter {
 
                     let service = self
                         .services
-                        .entry(program.program_number.get())
+                        .entry(program.program_number)
                         .or_insert_with(Default::default);
                     service.pmt_pids.insert(program.program_map_pid);
                     ctx.table().set_as_psi(program.program_map_pid, Tag::Pmt);

@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use fxhash::{FxHashMap, FxHashSet};
 use isdb::data_module::LogoType;
+use isdb::psi::table::NetworkId;
 
 #[derive(Debug)]
 struct AppArgs {
@@ -95,7 +96,7 @@ const TRNS: [u8; 141] = [
 
 fn save_logo(
     args: &AppArgs,
-    saved_logos: &mut FxHashMap<(u16, u16, u16, LogoType), FxHashSet<Vec<u8>>>,
+    saved_logos: &mut FxHashMap<(NetworkId, u16, u16, LogoType), FxHashSet<Vec<u8>>>,
     saved_count: &mut usize,
     logo: &isdb::filters::logo::LogoData,
 ) {

@@ -2,11 +2,12 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
 
+use isdb::psi::table::ServiceId;
 use isdb::Pid;
 
 #[derive(Debug)]
 struct AppArgs {
-    service: Option<u16>,
+    service: Option<ServiceId>,
     path: PathBuf,
 }
 
@@ -36,7 +37,7 @@ ARGS:
             std::process::exit(0);
         }
 
-        let service = args.opt_value_from_str("--sid")?;
+        let service = args.opt_value_from_str("--sid")?.and_then(ServiceId::new);
 
         Ok(AppArgs {
             service,
@@ -46,10 +47,10 @@ ARGS:
 }
 
 struct Filter {
-    manual_service_id: Option<u16>,
+    manual_service_id: Option<ServiceId>,
 
     repo: isdb::psi::Repository,
-    current_service_id: Option<u16>,
+    current_service_id: Option<ServiceId>,
     pmt_pid: Pid,
     caption_pids: Vec<Pid>,
 
@@ -60,7 +61,7 @@ struct Filter {
 }
 
 impl Filter {
-    pub fn new(service_id: Option<u16>) -> Filter {
+    pub fn new(service_id: Option<ServiceId>) -> Filter {
         Filter {
             manual_service_id: service_id,
 
@@ -122,13 +123,13 @@ impl isdb::demux::Filter for Filter {
                     Some(service_id) => pat
                         .pmts
                         .iter()
-                        .find(|program| program.program_number.get() == service_id),
+                        .find(|program| program.program_number == service_id),
                 };
                 let Some(program) = program else { return };
 
                 self.pmt_pid = program.program_map_pid;
                 ctx.table().set_as_psi(self.pmt_pid, Tag::Pmt);
-                self.current_service_id = Some(program.program_number.get());
+                self.current_service_id = Some(program.program_number);
             }
 
             Tag::Pmt => {

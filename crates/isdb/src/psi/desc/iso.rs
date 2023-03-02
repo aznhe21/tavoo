@@ -3,6 +3,7 @@
 use crate::pid::Pid;
 use crate::utils::{BytesExt, SliceExt};
 
+use super::super::table::ServiceId;
 use super::base::Descriptor;
 
 /// サービス形式種別。
@@ -109,7 +110,7 @@ impl<'a> Descriptor<'a> for ConditionalAccessDescriptor<'a> {
 #[derive(Debug)]
 pub struct ServiceEntry {
     /// サービス識別。
-    pub service_id: u16,
+    pub service_id: ServiceId,
     /// サービス形式種別。
     pub service_type: ServiceType,
 }
@@ -128,14 +129,18 @@ impl Descriptor<'_> for ServiceListDescriptor {
         let services = data
             .chunks_exact(3)
             .map(|chunk| {
-                let service_id = chunk[0..=1].read_be_16();
+                let Some(service_id) = ServiceId::new(chunk[0..=1].read_be_16()) else {
+                    log::debug!("invalid ServiceListDescriptor::service_id");
+                    return None;
+                };
                 let service_type = ServiceType(chunk[2]);
-                ServiceEntry {
+
+                Some(ServiceEntry {
                     service_id,
                     service_type,
-                }
+                })
             })
-            .collect();
+            .collect::<Option<_>>()?;
 
         Some(ServiceListDescriptor { services })
     }
@@ -335,7 +340,7 @@ pub enum SignalType {
 #[derive(Debug)]
 pub struct Emergency {
     /// サービス識別。
-    pub service_id: u16,
+    pub service_id: ServiceId,
     /// 開始／終了フラグ。
     pub start_end_flag: bool,
     /// 信号種別。
@@ -363,7 +368,10 @@ impl Descriptor<'_> for EmergencyInformationDescriptor {
                 return None;
             }
 
-            let service_id = data[0..=1].read_be_16();
+            let Some(service_id) = ServiceId::new(data[0..=1].read_be_16()) else {
+                log::debug!("invalid EmergencyInformationDescriptor::service_id");
+                return None;
+            };
             let start_end_flag = data[2] & 0b10000000 != 0;
             let signal_level = match (data[2] & 0b01000000) >> 6 {
                 0 => SignalType::First,

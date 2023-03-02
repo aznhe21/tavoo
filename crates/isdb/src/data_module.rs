@@ -1,6 +1,7 @@
 //! ARIB STD-B21で規定されるデータモジュール。
 
 use crate::eight::str::AribStr;
+use crate::psi::table::{NetworkId, ServiceId, TransportStreamId};
 use crate::utils::{BytesExt, SliceExt};
 
 /// コード情報。
@@ -107,11 +108,11 @@ impl<'a> KeywordTable<'a> {
 #[derive(Debug)]
 pub struct LogoService {
     /// オリジナルネットワーク識別。
-    pub original_network_id: u16,
+    pub original_network_id: NetworkId,
     /// トランスポートストリーム識別。
-    pub transport_stream_id: u16,
+    pub transport_stream_id: TransportStreamId,
     /// サービス識別。
-    pub service_id: u16,
+    pub service_id: ServiceId,
 }
 
 /// ロゴ情報。
@@ -189,17 +190,29 @@ impl<'a> Logo<'a> {
             let services = services
                 .chunks_exact(6)
                 .map(|chunk| {
-                    let original_network_id = chunk[0..=1].read_be_16();
-                    let transport_stream_id = chunk[2..=3].read_be_16();
-                    let service_id = chunk[4..=5].read_be_16();
+                    let Some(original_network_id) = NetworkId::new(chunk[0..=1].read_be_16())
+                    else {
+                        log::debug!("invalid LogoInfo::original_network_id");
+                        return None;
+                    };
+                    let Some(transport_stream_id) =
+                        TransportStreamId::new(chunk[2..=3].read_be_16())
+                    else {
+                        log::debug!("invalid LogoInfo::transport_stream_id");
+                        return None;
+                    };
+                    let Some(service_id) = ServiceId::new(chunk[4..=5].read_be_16()) else {
+                        log::debug!("invalid LogoInfo::service_id");
+                        return None;
+                    };
 
-                    LogoService {
+                    Some(LogoService {
                         original_network_id,
                         transport_stream_id,
                         service_id,
-                    }
+                    })
                 })
-                .collect();
+                .collect::<Option<_>>()?;
 
             if rem.len() < 2 {
                 log::debug!("invalid LogoInfo::data_size");

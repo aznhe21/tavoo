@@ -3,6 +3,7 @@
 use crate::eight::str::AribStr;
 use crate::utils::{BytesExt, SliceExt};
 
+use super::super::table::{NetworkId, TransportStreamId};
 use super::base::Descriptor;
 
 /// CA_EMM_TS記述子。
@@ -11,9 +12,9 @@ pub struct CaEmmTsDescriptor {
     /// 限定受信方式識別。
     pub ca_system_id: u16,
     /// トランスポートストリーム識別。
-    pub transport_stream_id: u16,
+    pub transport_stream_id: TransportStreamId,
     /// オリジナルネットワーク識別。
-    pub original_network_id: u16,
+    pub original_network_id: NetworkId,
     /// 電源保持時間（単位は分）。
     pub power_supply_period: u8,
 }
@@ -28,8 +29,14 @@ impl Descriptor<'_> for CaEmmTsDescriptor {
         }
 
         let ca_system_id = data[0..=1].read_be_16();
-        let transport_stream_id = data[2..=3].read_be_16();
-        let original_network_id = data[4..=5].read_be_16();
+        let Some(transport_stream_id) = TransportStreamId::new(data[2..=3].read_be_16()) else {
+            log::debug!("invalid CaEmmTsDescriptor::transport_stream_id");
+            return None;
+        };
+        let Some(original_network_id) = NetworkId::new(data[4..=5].read_be_16()) else {
+            log::debug!("invalid CaEmmTsDescriptor::original_network_id");
+            return None;
+        };
         let power_supply_period = data[6];
 
         Some(CaEmmTsDescriptor {

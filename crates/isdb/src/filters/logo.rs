@@ -8,13 +8,14 @@ use crate::dsmcc;
 use crate::pes::PesPacket;
 use crate::pid::Pid;
 use crate::psi::desc::{self, ServiceType, StreamType};
+use crate::psi::table::{NetworkId, ServiceId};
 use crate::psi::{self, PsiSection};
 
 /// 取得したロゴ。
 #[derive(Debug)]
 pub struct LogoData<'a> {
     /// 所属するネットワークID。
-    pub network_id: u16,
+    pub network_id: NetworkId,
 
     /// 種別。
     pub logo_type: data_module::LogoType,
@@ -37,7 +38,7 @@ pub struct LogoDownloadFilter<F> {
     repo: psi::Repository,
     es_pids: FxHashSet<Pid>,
 
-    services: FxHashMap<u16, Service>,
+    services: FxHashMap<ServiceId, Service>,
     versions: FxHashMap<u32, u16>,
     logo_downloads: FxHashMap<u16, dsmcc::download::DownloadData>,
 
@@ -92,7 +93,7 @@ impl<F: FnMut(&LogoData)> LogoDownloadFilter<F> {
 
         for program in &*pat.pmts {
             self.services.insert(
-                program.program_number.get(),
+                program.program_number,
                 Service {
                     pmt_pid: program.program_map_pid,
                     service_type: ServiceType::INVALID,

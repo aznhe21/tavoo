@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io::BufReader;
 use std::path::PathBuf;
 
+use isdb::psi::table::{EventId, ServiceId};
 use isdb::{AribString, Pid};
 
 #[derive(Debug)]
@@ -44,20 +45,20 @@ ARGS:
 
 #[derive(Debug)]
 struct Event {
-    event_id: u16,
+    event_id: EventId,
     name: AribString,
 }
 
 #[derive(Debug)]
 struct Service {
-    service_id: u16,
+    service_id: ServiceId,
     provider_name: AribString,
     service_name: AribString,
     events: Vec<Event>,
 }
 
 impl Service {
-    fn has_event(&self, event_id: u16) -> bool {
+    fn has_event(&self, event_id: EventId) -> bool {
         self.events.iter().any(|ev| ev.event_id == event_id)
     }
 }
@@ -82,7 +83,7 @@ impl Filter {
         }
     }
 
-    fn find_service(&mut self, service_id: u16) -> Option<&mut Service> {
+    fn find_service(&mut self, service_id: ServiceId) -> Option<&mut Service> {
         self.services
             .iter_mut()
             .find(|svc| svc.service_id == service_id)
@@ -110,12 +111,12 @@ impl isdb::demux::Filter for Filter {
                 };
 
                 for program in &*pat.pmts {
-                    if self.find_service(program.program_number.get()).is_some() {
+                    if self.find_service(program.program_number).is_some() {
                         continue;
                     }
 
                     self.services.push(Service {
-                        service_id: program.program_number.get(),
+                        service_id: program.program_number,
                         provider_name: AribString::new(),
                         service_name: AribString::new(),
                         events: Vec::new(),

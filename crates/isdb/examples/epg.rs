@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io::BufReader;
 
 use fxhash::FxHashMap;
+use isdb::psi::table::{EventId, NetworkId, ServiceId};
 use isdb::Pid;
 
 #[derive(Debug)]
@@ -22,20 +23,17 @@ struct Event {
 struct Service {
     /// サービス名。
     name: String,
-    /// キーはイベント識別。
-    events: FxHashMap<u16, Event>,
+    events: FxHashMap<EventId, Event>,
 }
 
 #[derive(Debug, Default)]
 struct Network {
-    /// キーはサービス識別。
-    services: FxHashMap<u16, Service>,
+    services: FxHashMap<ServiceId, Service>,
 }
 
 struct Filter {
     repo: isdb::psi::Repository,
-    /// キーはネットワーク識別。
-    networks: FxHashMap<u16, Network>,
+    networks: FxHashMap<NetworkId, Network>,
 }
 
 impl Filter {

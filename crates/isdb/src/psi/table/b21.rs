@@ -6,6 +6,7 @@ use crate::time::DateTime;
 use crate::utils::{BytesExt, SliceExt};
 
 use super::b10::{RunningStatus, VersionIndicator};
+use super::iso::{NetworkId, ServiceId, TransportStreamId};
 
 /// Dit（Discontinuity Information Table）。
 #[derive(Debug)]
@@ -42,7 +43,7 @@ impl PsiTable<'_> for Dit {
 #[derive(Debug)]
 pub struct SitService<'a> {
     /// サービス識別。
-    pub service_id: u16,
+    pub service_id: ServiceId,
     /// 進行状態。
     pub running_status: RunningStatus,
     /// 記述子の塊。
@@ -92,7 +93,10 @@ impl<'a> PsiTable<'a> for Sit<'a> {
                 return None;
             }
 
-            let service_id = data[0..=1].read_be_16();
+            let Some(service_id) = ServiceId::new(data[0..=1].read_be_16()) else {
+                log::debug!("invalid SitService::service_id");
+                return None;
+            };
             let running_status = ((data[2] & 0b01110000) >> 4).into();
             let Some((descriptors, rem)) = DescriptorBlock::read(&data[2..]) else {
                 log::debug!("invalid SitService::descriptors");
@@ -154,11 +158,11 @@ pub struct Sdtt<'a> {
     /// モデル識別。
     pub model_id: u8,
     /// トランスポートストリーム識別。
-    pub transport_stream_id: u16,
+    pub transport_stream_id: TransportStreamId,
     /// オリジナルネットワーク識別。
-    pub original_network_id: u16,
+    pub original_network_id: NetworkId,
     /// サービス識別。
-    pub service_id: u16,
+    pub service_id: ServiceId,
     /// ダウンロードコンテンツを格納する配列。
     pub contents: Vec<SdttContent<'a>>,
 }
@@ -193,9 +197,18 @@ impl<'a> PsiTable<'a> for Sdtt<'a> {
 
         let maker_id = ((syntax.table_id_extension & 0b1111_1111_0000_0000) >> 8) as u8;
         let model_id = (syntax.table_id_extension & 0b0000_0000_1111_1111) as u8;
-        let transport_stream_id = data[0..=1].read_be_16();
-        let original_network_id = data[2..=3].read_be_16();
-        let service_id = data[4..=5].read_be_16();
+        let Some(transport_stream_id) = TransportStreamId::new(data[0..=1].read_be_16()) else {
+            log::debug!("invalid Sdtt::transport_stream_id");
+            return None;
+        };
+        let Some(original_network_id) = NetworkId::new(data[2..=3].read_be_16()) else {
+            log::debug!("invalid Sdtt::original_network_id");
+            return None;
+        };
+        let Some(service_id) = ServiceId::new(data[4..=5].read_be_16()) else {
+            log::debug!("invalid Sdtt::service_id");
+            return None;
+        };
         let num_of_contents = data[6];
 
         let mut data = &data[7..];
@@ -288,7 +301,7 @@ pub struct Cdt<'a> {
     /// ダウンロードデータ識別。
     pub download_data_id: u16,
     /// オリジナルネットワーク識別。
-    pub original_network_id: u16,
+    pub original_network_id: NetworkId,
     /// データ属性。
     pub data_type: CdtDataType,
     /// 記述子の塊。
@@ -320,7 +333,10 @@ impl<'a> PsiTable<'a> for Cdt<'a> {
         }
 
         let download_data_id = syntax.table_id_extension;
-        let original_network_id = data[0..=1].read_be_16();
+        let Some(original_network_id) = NetworkId::new(data[0..=1].read_be_16()) else {
+            log::debug!("invalid Cdt::original_network_id");
+            return None;
+        };
         let data_type = CdtDataType(data[2]);
         let Some((descriptors, data)) = DescriptorBlock::read(&data[3..]) else {
             log::debug!("invalid Cdt::descriptors");

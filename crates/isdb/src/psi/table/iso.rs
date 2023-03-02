@@ -7,13 +7,31 @@ use crate::psi::desc::{DescriptorBlock, StreamType};
 use crate::psi::{PsiSection, PsiTable};
 use crate::utils::BytesExt;
 
+/// トランスポートストリーム識別。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct TransportStreamId(pub NonZeroU16);
+
+impl_id!(TransportStreamId);
+
+/// ネットワーク識別。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct NetworkId(pub NonZeroU16);
+
+impl_id!(NetworkId);
+
+/// サービス識別。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ServiceId(pub NonZeroU16);
+
+impl_id!(ServiceId);
+
 /// トランスポートストリームの物理的構成に関する情報。
 #[derive(Debug)]
 pub struct TransportStreamConfig<'a> {
     /// トランスポートストリーム識別。
-    pub transport_stream_id: u16,
+    pub transport_stream_id: TransportStreamId,
     /// オリジナルネットワーク識別。
-    pub original_network_id: u16,
+    pub original_network_id: NetworkId,
     /// トランスポート記述子の塊。
     pub transport_descriptors: DescriptorBlock<'a>,
 }
@@ -22,7 +40,7 @@ pub struct TransportStreamConfig<'a> {
 #[derive(Debug)]
 pub struct PatProgram {
     /// 放送番組番号識別。
-    pub program_number: NonZeroU16,
+    pub program_number: ServiceId,
     /// PMTのPID。
     pub program_map_pid: Pid,
 }
@@ -31,7 +49,7 @@ pub struct PatProgram {
 #[derive(Debug)]
 pub struct Pat {
     /// トランスポートストリーム識別。
-    pub transport_stream_id: u16,
+    pub transport_stream_id: TransportStreamId,
 
     /// NITのPID。
     pub network_pid: Pid,
@@ -56,7 +74,10 @@ impl PsiTable<'_> for Pat {
             return None;
         };
 
-        let transport_stream_id = syntax.table_id_extension;
+        let Some(transport_stream_id) = TransportStreamId::new(syntax.table_id_extension) else {
+            log::debug!("invalid Pat::table_id_extension");
+            return None;
+        };
 
         let mut network_pid = Pid::default();
         let mut pmts = Vec::new();
@@ -64,7 +85,7 @@ impl PsiTable<'_> for Pat {
             let program_number = chunk[0..=1].read_be_16();
             let pid = Pid::read(&chunk[2..=3]);
 
-            if let Some(program_number) = NonZeroU16::new(program_number) {
+            if let Some(program_number) = ServiceId::new(program_number) {
                 // PMT
                 pmts.push(PatProgram {
                     program_number,
@@ -125,7 +146,7 @@ pub struct PmtStream<'a> {
 #[derive(Debug)]
 pub struct Pmt<'a> {
     /// 放送番組番号識別。
-    pub program_number: u16,
+    pub program_number: ServiceId,
     /// PCRのPID。
     pub pcr_pid: Pid,
     /// 記述子の塊。
@@ -156,7 +177,10 @@ impl<'a> PsiTable<'a> for Pmt<'a> {
             return None;
         }
 
-        let program_number = syntax.table_id_extension;
+        let Some(program_number) = ServiceId::new(syntax.table_id_extension) else {
+            log::debug!("invalid Pmt::table_id_extension");
+            return None;
+        };
         let pcr_pid = Pid::read(&data[0..=1]);
         let Some((descriptors, mut data)) = DescriptorBlock::read(&data[2..]) else {
             log::debug!("invalid Pmt::descriptors");
@@ -198,7 +222,7 @@ impl<'a> PsiTable<'a> for Pmt<'a> {
 #[derive(Debug)]
 pub struct Nit<'a> {
     /// ネットワーク識別。
-    pub network_id: u16,
+    pub network_id: NetworkId,
     /// ネットワーク記述子の塊。
     pub network_descriptors: DescriptorBlock<'a>,
     /// TSの物理的構成を格納する配列。
@@ -227,7 +251,10 @@ impl<'a> PsiTable<'a> for Nit<'a> {
             return None;
         }
 
-        let network_id = syntax.table_id_extension;
+        let Some(network_id) = NetworkId::new(syntax.table_id_extension) else {
+            log::debug!("invalid Nit::table_id_extension");
+            return None;
+        };
         let Some((network_descriptors, data)) = DescriptorBlock::read(&data[0..]) else {
             log::debug!("invalid Nit::descriptors");
             return None;
@@ -250,8 +277,14 @@ impl<'a> PsiTable<'a> for Nit<'a> {
                 return None;
             }
 
-            let transport_stream_id = data[0..=1].read_be_16();
-            let original_network_id = data[2..=3].read_be_16();
+            let Some(transport_stream_id) = TransportStreamId::new(data[0..=1].read_be_16()) else {
+                log::debug!("invalid NitTransportStream::transport_stream_id");
+                return None;
+            };
+            let Some(original_network_id) = NetworkId::new(data[2..=3].read_be_16()) else {
+                log::debug!("invalid NitTransportStream::original_network_id");
+                return None;
+            };
             let Some((transport_descriptors, rem)) = DescriptorBlock::read(&data[4..]) else {
                 log::debug!("invalid NitTransportStream::transport_descriptors");
                 return None;

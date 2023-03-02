@@ -1,5 +1,6 @@
 //! ARIB STD-B10で規定されるテーブルと関連する型の定義。
 
+use std::num::NonZeroU16;
 use std::ops::RangeInclusive;
 
 use crate::psi::desc::DescriptorBlock;
@@ -7,7 +8,13 @@ use crate::psi::{PsiSection, PsiTable};
 use crate::time::DateTime;
 use crate::utils::{BytesExt, SliceExt};
 
-use super::iso::TransportStreamConfig;
+use super::iso::{NetworkId, ServiceId, TransportStreamConfig, TransportStreamId};
+
+/// イベント識別。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct EventId(pub NonZeroU16);
+
+impl_id!(EventId);
 
 /// SDT進行状態。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -76,7 +83,7 @@ impl VersionIndicator {
 #[derive(Debug)]
 pub struct SdtService<'a> {
     /// サービス識別。
-    pub service_id: u16,
+    pub service_id: ServiceId,
     /// 当該サービスに対するH-EITが存在するかどうか。
     pub h_eit_flag: bool,
     /// 当該サービスに対するM-EITが存在するかどうか。
@@ -99,9 +106,9 @@ pub struct SdtService<'a> {
 #[derive(Debug)]
 pub struct SdtCommon<'a> {
     /// トランスポートストリーム識別。
-    pub transport_stream_id: u16,
+    pub transport_stream_id: TransportStreamId,
     /// オリジナルネットワーク識別。
-    pub original_network_id: u16,
+    pub original_network_id: NetworkId,
     /// TSのサービスを格納する配列。
     pub services: Vec<SdtService<'a>>,
 }
@@ -119,8 +126,14 @@ impl<'a> SdtCommon<'a> {
             return None;
         };
 
-        let transport_stream_id = syntax.table_id_extension;
-        let original_network_id = data[0..=1].read_be_16();
+        let Some(transport_stream_id) = TransportStreamId::new(syntax.table_id_extension) else {
+            log::debug!("invalid SdtCommon::table_id_extension");
+            return None;
+        };
+        let Some(original_network_id) = NetworkId::new(data[0..=1].read_be_16()) else {
+            log::debug!("invalid SdtCommon::original_network_id");
+            return None;
+        };
 
         let mut data = &data[3..];
         let mut services = Vec::new();
@@ -130,7 +143,10 @@ impl<'a> SdtCommon<'a> {
                 return None;
             }
 
-            let service_id = data[0..=1].read_be_16();
+            let Some(service_id) = ServiceId::new(data[0..=1].read_be_16()) else {
+                log::debug!("invalid SdtService::service_id");
+                return None;
+            };
             let h_eit_flag = data[2] & 0b00010000 != 0;
             let m_eit_flag = data[2] & 0b00001000 != 0;
             let l_eit_flag = data[2] & 0b00000100 != 0;
@@ -250,8 +266,14 @@ impl<'a> PsiTable<'a> for Bat<'a> {
                 return None;
             }
 
-            let transport_stream_id = data[0..=1].read_be_16();
-            let original_network_id = data[2..=3].read_be_16();
+            let Some(transport_stream_id) = TransportStreamId::new(data[0..=1].read_be_16()) else {
+                log::debug!("invalid BatTransportStream::transport_stream_id");
+                return None;
+            };
+            let Some(original_network_id) = NetworkId::new(data[2..=3].read_be_16()) else {
+                log::debug!("invalid BatTransportStream::original_network_id");
+                return None;
+            };
             let Some((transport_descriptors, rem)) = DescriptorBlock::read(&data[4..]) else {
                 log::debug!("invalid BatTransportStream::descriptors");
                 return None;
@@ -277,7 +299,7 @@ impl<'a> PsiTable<'a> for Bat<'a> {
 #[derive(Debug)]
 pub struct EitEvent<'a> {
     /// イベント識別。
-    pub event_id: u16,
+    pub event_id: EventId,
     /// 開始時間。
     pub start_time: DateTime,
     /// 継続時間（単位は秒）。
@@ -294,11 +316,11 @@ pub struct EitEvent<'a> {
 #[derive(Debug)]
 pub struct EitCommon<'a> {
     /// サービス識別。
-    pub service_id: u16,
+    pub service_id: ServiceId,
     /// トランスポートストリーム識別。
-    pub transport_stream_id: u16,
+    pub transport_stream_id: TransportStreamId,
     /// オリジナルネットワーク識別。
-    pub original_network_id: u16,
+    pub original_network_id: NetworkId,
     /// セグメント最終セクション番号。
     pub segment_last_section_number: u8,
     /// 最終テーブル識別。
@@ -321,9 +343,18 @@ impl<'a> EitCommon<'a> {
             return None;
         }
 
-        let service_id = syntax.table_id_extension;
-        let transport_stream_id = data[0..=1].read_be_16();
-        let original_network_id = data[2..=3].read_be_16();
+        let Some(service_id) = ServiceId::new(syntax.table_id_extension) else {
+            log::debug!("invalid EitCommon::table_id_extension");
+            return None;
+        };
+        let Some(transport_stream_id) = TransportStreamId::new(data[0..=1].read_be_16()) else {
+            log::debug!("invalid EitCommon::transport_stream_id");
+            return None;
+        };
+        let Some(original_network_id) = NetworkId::new(data[2..=3].read_be_16()) else {
+            log::debug!("invalid EitCommon::original_network_id");
+            return None;
+        };
         let segment_last_section_number = data[4];
         let last_table_id = data[5];
 
@@ -335,7 +366,10 @@ impl<'a> EitCommon<'a> {
                 return None;
             }
 
-            let event_id = data[0..=1].read_be_16();
+            let Some(event_id) = EventId::new(data[0..=1].read_be_16()) else {
+                log::debug!("invalid EitEvent::event_id");
+                return None;
+            };
             let start_time = DateTime::read(data[2..=6].try_into().unwrap());
             let duration = data[7..=9].read_bcd_second();
             let running_status = ((data[10] & 0b11100000) >> 5).into();
@@ -441,13 +475,13 @@ impl PsiTable<'_> for Tdt {
 #[derive(Debug)]
 pub struct RstStatus {
     /// トランスポートストリーム識別。
-    pub transport_stream_id: u16,
+    pub transport_stream_id: TransportStreamId,
     /// オリジナルネットワーク識別。
-    pub original_network_id: u16,
+    pub original_network_id: NetworkId,
     /// サービス識別。
-    pub service_id: u16,
+    pub service_id: ServiceId,
     /// イベント識別。
-    pub event_id: u16,
+    pub event_id: EventId,
     /// 進行状態。
     pub running_status: RunningStatus,
 }
@@ -475,21 +509,34 @@ impl PsiTable<'_> for Rst {
             .data
             .chunks_exact(9)
             .map(|chunk| {
-                let transport_stream_id = chunk[0..=1].read_be_16();
-                let original_network_id = chunk[2..=3].read_be_16();
-                let service_id = chunk[4..=5].read_be_16();
-                let event_id = chunk[6..=7].read_be_16();
+                let Some(transport_stream_id) = TransportStreamId::new(chunk[0..=1].read_be_16())
+                else {
+                    log::debug!("invalid RstStatus::transport_stream_id");
+                    return None;
+                };
+                let Some(original_network_id) = NetworkId::new(chunk[2..=3].read_be_16()) else {
+                    log::debug!("invalid RstStatus::original_network_id");
+                    return None;
+                };
+                let Some(service_id) = ServiceId::new(chunk[4..=5].read_be_16()) else {
+                    log::debug!("invalid RstStatus::service_id");
+                    return None;
+                };
+                let Some(event_id) = EventId::new(chunk[6..=7].read_be_16()) else {
+                    log::debug!("invalid RstStatus::event_id");
+                    return None;
+                };
                 let running_status = (chunk[8] & 0b00000111).into();
 
-                RstStatus {
+                Some(RstStatus {
                     transport_stream_id,
                     original_network_id,
                     service_id,
                     event_id,
                     running_status,
-                }
+                })
             })
-            .collect();
+            .collect::<Option<_>>()?;
 
         Some(Rst { statuses })
     }
@@ -563,11 +610,11 @@ pub struct PcatContent<'a> {
 #[derive(Debug)]
 pub struct Pcat<'a> {
     /// サービス識別。
-    pub service_id: u16,
+    pub service_id: ServiceId,
     /// トランスポートストリーム識別。
-    pub transport_stream_id: u16,
+    pub transport_stream_id: TransportStreamId,
     /// オリジナルネットワーク識別。
-    pub original_network_id: u16,
+    pub original_network_id: NetworkId,
     /// コンテンツ識別。
     pub content_id: u32,
     /// コンテンツを格納する配列。
@@ -597,9 +644,18 @@ impl<'a> PsiTable<'a> for Pcat<'a> {
             return None;
         }
 
-        let service_id = syntax.table_id_extension;
-        let transport_stream_id = data[0..=1].read_be_16();
-        let original_network_id = data[2..=3].read_be_16();
+        let Some(service_id) = ServiceId::new(syntax.table_id_extension) else {
+            log::debug!("invalid Pcat::table_id_extension");
+            return None;
+        };
+        let Some(transport_stream_id) = TransportStreamId::new(data[0..=1].read_be_16()) else {
+            log::debug!("invalid Pcat::transport_stream_id");
+            return None;
+        };
+        let Some(original_network_id) = NetworkId::new(data[2..=3].read_be_16()) else {
+            log::debug!("invalid Pcat::original_network_id");
+            return None;
+        };
         let content_id = data[4..=7].read_be_32();
         let num_of_content_version = data[8];
         let mut data = &data[9..];
@@ -672,7 +728,7 @@ pub struct BitBroadcaster<'a> {
 /// BIT（Broadcaster Information Table）。
 pub struct Bit<'a> {
     /// オリジナルネットワーク識別。
-    pub original_network_id: u16,
+    pub original_network_id: NetworkId,
     /// 事業者表示適否。
     pub broadcast_view_propriety: bool,
     /// 第1記述子の塊。
@@ -703,7 +759,10 @@ impl<'a> PsiTable<'a> for Bit<'a> {
             return None;
         }
 
-        let original_network_id = syntax.table_id_extension;
+        let Some(original_network_id) = NetworkId::new(syntax.table_id_extension) else {
+            log::debug!("invalid Bit::table_id_extension");
+            return None;
+        };
         let broadcast_view_propriety = data[0] & 0b00010000 != 0;
         let Some((first_descriptors, mut data)) = DescriptorBlock::read(&data[0..]) else {
             log::debug!("invalid Bit::first_descriptors");
@@ -788,7 +847,7 @@ pub struct NbitInformation<'a> {
 #[derive(Debug)]
 pub struct NbitCommon<'a> {
     /// オリジナルネットワーク識別。
-    pub original_network_id: u16,
+    pub original_network_id: NetworkId,
     /// 掲示情報を格納する配列。
     pub informations: Vec<NbitInformation<'a>>,
 }
@@ -803,7 +862,10 @@ impl<'a> NbitCommon<'a> {
 
         let mut data = psi.data;
 
-        let original_network_id = syntax.table_id_extension;
+        let Some(original_network_id) = NetworkId::new(syntax.table_id_extension) else {
+            log::debug!("invalid NbitCommon::table_id_extension");
+            return None;
+        };
 
         let mut informations = Vec::new();
         while !data.is_empty() {
@@ -899,11 +961,11 @@ pub struct LdtDescription<'a> {
 #[derive(Debug)]
 pub struct Ldt<'a> {
     /// オリジナルサービス識別。
-    pub original_service_id: u16,
+    pub original_service_id: ServiceId,
     /// トランスポートストリーム識別。
-    pub transport_stream_id: u16,
+    pub transport_stream_id: TransportStreamId,
     /// オリジナルネットワーク識別。
-    pub original_network_id: u16,
+    pub original_network_id: NetworkId,
     /// 記述を格納する配列。
     pub descriptions: Vec<LdtDescription<'a>>,
 }
@@ -930,9 +992,18 @@ impl<'a> PsiTable<'a> for Ldt<'a> {
             return None;
         }
 
-        let original_service_id = syntax.table_id_extension;
-        let transport_stream_id = data[0..=1].read_be_16();
-        let original_network_id = data[2..=3].read_be_16();
+        let Some(original_service_id) = ServiceId::new(syntax.table_id_extension) else {
+            log::debug!("invalid Ldt::table_id_extension");
+            return None;
+        };
+        let Some(transport_stream_id) = TransportStreamId::new(data[0..=1].read_be_16()) else {
+            log::debug!("invalid Ldt::transport_stream_id");
+            return None;
+        };
+        let Some(original_network_id) = NetworkId::new(data[2..=3].read_be_16()) else {
+            log::debug!("invalid Ldt::original_network_id");
+            return None;
+        };
         let mut data = &data[4..];
 
         let mut descriptions = Vec::new();
@@ -977,13 +1048,13 @@ pub struct LitLocalEvent<'a> {
 #[derive(Debug)]
 pub struct Lit<'a> {
     /// イベント識別。
-    pub event_id: u16,
+    pub event_id: EventId,
     /// サービス識別。
-    pub service_id: u16,
+    pub service_id: ServiceId,
     /// トランスポートストリーム識別。
-    pub transport_stream_id: u16,
+    pub transport_stream_id: TransportStreamId,
     /// オリジナルネットワーク識別。
-    pub original_network_id: u16,
+    pub original_network_id: NetworkId,
     /// 番組内イベントの情報を格納する配列。
     pub local_events: Vec<LitLocalEvent<'a>>,
 }
@@ -1010,10 +1081,22 @@ impl<'a> PsiTable<'a> for Lit<'a> {
             return None;
         }
 
-        let event_id = syntax.table_id_extension;
-        let service_id = data[0..=1].read_be_16();
-        let transport_stream_id = data[2..=3].read_be_16();
-        let original_network_id = data[4..=5].read_be_16();
+        let Some(event_id) = EventId::new(syntax.table_id_extension) else {
+            log::debug!("invalid Lit::table_id_extension");
+            return None;
+        };
+        let Some(service_id) = ServiceId::new(data[0..=1].read_be_16()) else {
+            log::debug!("invalid Lit::service_id");
+            return None;
+        };
+        let Some(transport_stream_id) = TransportStreamId::new(data[2..=3].read_be_16()) else {
+            log::debug!("invalid Lit::transport_stream_id");
+            return None;
+        };
+        let Some(original_network_id) = NetworkId::new(data[4..=5].read_be_16()) else {
+            log::debug!("invalid Lit::original_network_id");
+            return None;
+        };
         let mut data = &data[6..];
 
         let mut local_events = Vec::new();
@@ -1176,7 +1259,7 @@ impl<'a> PsiTable<'a> for Ert<'a> {
 #[derive(Debug)]
 pub struct Itt<'a> {
     /// イベント識別。
-    pub event_id: u16,
+    pub event_id: EventId,
     /// 記述子の塊。
     pub descriptors: DescriptorBlock<'a>,
 }
@@ -1199,7 +1282,10 @@ impl<'a> PsiTable<'a> for Itt<'a> {
 
         let data = psi.data;
 
-        let event_id = syntax.table_id_extension;
+        let Some(event_id) = EventId::new(syntax.table_id_extension) else {
+            log::debug!("invalid Itt::event_id");
+            return None;
+        };
         let Some((descriptors, _)) = DescriptorBlock::read(&data[0..]) else {
             log::debug!("invalid Itt::descriptors");
             return None;

@@ -8,6 +8,7 @@ use crate::pid::Pid;
 use crate::time::{DateTime, MjdDate};
 use crate::utils::{BytesExt, SliceExt};
 
+use super::super::table::{EventId, NetworkId, ServiceId, TransportStreamId};
 use super::base::Descriptor;
 use super::iso::ServiceType;
 
@@ -241,11 +242,11 @@ impl<'a> Descriptor<'a> for ServiceDescriptor<'a> {
 #[derive(Debug)]
 pub struct LinkageDescriptor<'a> {
     /// トランスポートストリーム識別。
-    pub transport_stream_id: u16,
+    pub transport_stream_id: TransportStreamId,
     /// オリジナルネットワーク識別。
-    pub original_network_id: u16,
+    pub original_network_id: NetworkId,
     /// サービス識別。
-    pub service_id: u16,
+    pub service_id: ServiceId,
     /// リンク種別（4ビット）。
     pub linkage_type: u8,
     /// プライベートデータ。
@@ -261,9 +262,18 @@ impl<'a> Descriptor<'a> for LinkageDescriptor<'a> {
             return None;
         }
 
-        let transport_stream_id = data[0..=1].read_be_16();
-        let original_network_id = data[2..=3].read_be_16();
-        let service_id = data[4..=5].read_be_16();
+        let Some(transport_stream_id) = TransportStreamId::new(data[0..=1].read_be_16()) else {
+            log::debug!("invalid LinkageDescriptor::transport_stream_id");
+            return None;
+        };
+        let Some(original_network_id) = NetworkId::new(data[2..=3].read_be_16()) else {
+            log::debug!("invalid LinkageDescriptor::original_network_id");
+            return None;
+        };
+        let Some(service_id) = ServiceId::new(data[4..=5].read_be_16()) else {
+            log::debug!("invalid LinkageDescriptor::service_id");
+            return None;
+        };
         let linkage_type = data[6];
         let private_data = &data[7..];
 
@@ -878,37 +888,37 @@ pub enum SelectorInfo<'a> {
 #[derive(Debug)]
 pub struct LinkServiceInfo {
     /// オリジナルネットワーク識別。
-    pub original_network_id: u16,
+    pub original_network_id: NetworkId,
     /// トランスポートストリーム識別。
-    pub transport_stream_id: u16,
+    pub transport_stream_id: TransportStreamId,
     /// サービス識別。
-    pub service_id: u16,
+    pub service_id: ServiceId,
 }
 
 /// イベント。
 #[derive(Debug)]
 pub struct LinkEventInfo {
     /// オリジナルネットワーク識別。
-    pub original_network_id: u16,
+    pub original_network_id: NetworkId,
     /// トランスポートストリーム識別。
-    pub transport_stream_id: u16,
+    pub transport_stream_id: TransportStreamId,
     /// サービス識別。
-    pub service_id: u16,
+    pub service_id: ServiceId,
     /// イベント識別。
-    pub event_id: u16,
+    pub event_id: EventId,
 }
 
 /// イベントの特定モジュール。
 #[derive(Debug)]
 pub struct LinkModuleInfo {
     /// オリジナルネットワーク識別。
-    pub original_network_id: u16,
+    pub original_network_id: NetworkId,
     /// トランスポートストリーム識別。
-    pub transport_stream_id: u16,
+    pub transport_stream_id: TransportStreamId,
     /// サービス識別。
-    pub service_id: u16,
+    pub service_id: ServiceId,
     /// イベント識別。
-    pub event_id: u16,
+    pub event_id: EventId,
     /// コンポーネントタグ。
     pub component_tag: u8,
     /// モジュール識別。
@@ -919,11 +929,11 @@ pub struct LinkModuleInfo {
 #[derive(Debug)]
 pub struct LinkContentInfo {
     /// オリジナルネットワーク識別。
-    pub original_network_id: u16,
+    pub original_network_id: NetworkId,
     /// トランスポートストリーム識別。
-    pub transport_stream_id: u16,
+    pub transport_stream_id: TransportStreamId,
     /// サービス識別。
-    pub service_id: u16,
+    pub service_id: ServiceId,
     /// コンテンツ識別。
     pub content_id: u32,
 }
@@ -932,11 +942,11 @@ pub struct LinkContentInfo {
 #[derive(Debug)]
 pub struct LinkContentModuleInfo {
     /// オリジナルネットワーク識別。
-    pub original_network_id: u16,
+    pub original_network_id: NetworkId,
     /// トランスポートストリーム識別。
-    pub transport_stream_id: u16,
+    pub transport_stream_id: TransportStreamId,
     /// サービス識別。
-    pub service_id: u16,
+    pub service_id: ServiceId,
     /// コンテンツ識別。
     pub content_id: u32,
     /// コンポーネントタグ。
@@ -1003,9 +1013,18 @@ impl<'a> Descriptor<'a> for HyperlinkDescriptor<'a> {
                     return None;
                 }
 
-                let original_network_id = selector[0..=1].read_be_16();
-                let transport_stream_id = selector[2..=3].read_be_16();
-                let service_id = selector[4..=5].read_be_16();
+                let Some(original_network_id) = NetworkId::new(selector[0..=1].read_be_16()) else {
+                    log::debug!("invalid LinkServiceInfo::original_network_id");
+                    return None;
+                };
+                let Some(transport_stream_id) = TransportStreamId::new(selector[2..=3].read_be_16()) else {
+                    log::debug!("invalid LinkServiceInfo::transport_stream_id");
+                    return None;
+                };
+                let Some(service_id) = ServiceId::new(selector[4..=5].read_be_16()) else {
+                    log::debug!("invalid LinkServiceInfo::service_id");
+                    return None;
+                };
 
                 SelectorInfo::LinkServiceInfo(LinkServiceInfo {
                     original_network_id,
@@ -1019,10 +1038,22 @@ impl<'a> Descriptor<'a> for HyperlinkDescriptor<'a> {
                     return None;
                 }
 
-                let original_network_id = selector[0..=1].read_be_16();
-                let transport_stream_id = selector[2..=3].read_be_16();
-                let service_id = selector[4..=5].read_be_16();
-                let event_id = selector[6..=7].read_be_16();
+                let Some(original_network_id) = NetworkId::new(selector[0..=1].read_be_16()) else {
+                    log::debug!("invalid LinkEventInfo::original_network_id");
+                    return None;
+                };
+                let Some(transport_stream_id) = TransportStreamId::new(selector[2..=3].read_be_16()) else {
+                    log::debug!("invalid LinkEventInfo::transport_stream_id");
+                    return None;
+                };
+                let Some(service_id) = ServiceId::new(selector[4..=5].read_be_16()) else {
+                    log::debug!("invalid LinkEventInfo::service_id");
+                    return None;
+                };
+                let Some(event_id) = EventId::new(selector[6..=7].read_be_16()) else {
+                    log::debug!("invalid LinkEventInfo::event_id");
+                    return None;
+                };
 
                 SelectorInfo::LinkEventInfo(LinkEventInfo {
                     original_network_id,
@@ -1037,10 +1068,22 @@ impl<'a> Descriptor<'a> for HyperlinkDescriptor<'a> {
                     return None;
                 }
 
-                let original_network_id = selector[0..=1].read_be_16();
-                let transport_stream_id = selector[2..=3].read_be_16();
-                let service_id = selector[4..=5].read_be_16();
-                let event_id = selector[6..=7].read_be_16();
+                let Some(original_network_id) = NetworkId::new(selector[0..=1].read_be_16()) else {
+                    log::debug!("invalid LinkModuleInfo::original_network_id");
+                    return None;
+                };
+                let Some(transport_stream_id) = TransportStreamId::new(selector[2..=3].read_be_16()) else {
+                    log::debug!("invalid LinkModuleInfo::transport_stream_id");
+                    return None;
+                };
+                let Some(service_id) = ServiceId::new(selector[4..=5].read_be_16()) else {
+                    log::debug!("invalid LinkModuleInfo::service_id");
+                    return None;
+                };
+                let Some(event_id) = EventId::new(selector[6..=7].read_be_16()) else {
+                    log::debug!("invalid LinkModuleInfo::event_id");
+                    return None;
+                };
                 let component_tag = selector[8];
                 let module_id = selector[9..=10].read_be_16();
 
@@ -1059,9 +1102,18 @@ impl<'a> Descriptor<'a> for HyperlinkDescriptor<'a> {
                     return None;
                 }
 
-                let original_network_id = selector[0..=1].read_be_16();
-                let transport_stream_id = selector[2..=3].read_be_16();
-                let service_id = selector[4..=5].read_be_16();
+                let Some(original_network_id) = NetworkId::new(selector[0..=1].read_be_16()) else {
+                    log::debug!("invalid LinkContentInfo::original_network_id");
+                    return None;
+                };
+                let Some(transport_stream_id) = TransportStreamId::new(selector[2..=3].read_be_16()) else {
+                    log::debug!("invalid LinkContentInfo::transport_stream_id");
+                    return None;
+                };
+                let Some(service_id) = ServiceId::new(selector[4..=5].read_be_16()) else {
+                    log::debug!("invalid LinkContentInfo::service_id");
+                    return None;
+                };
                 let content_id = selector[6..=9].read_be_32();
 
                 SelectorInfo::LinkContentInfo(LinkContentInfo {
@@ -1077,9 +1129,18 @@ impl<'a> Descriptor<'a> for HyperlinkDescriptor<'a> {
                     return None;
                 }
 
-                let original_network_id = selector[0..=1].read_be_16();
-                let transport_stream_id = selector[2..=3].read_be_16();
-                let service_id = selector[4..=5].read_be_16();
+                let Some(original_network_id) = NetworkId::new(selector[0..=1].read_be_16()) else {
+                    log::debug!("invalid LinkContentModuleInfo::original_network_id");
+                    return None;
+                };
+                let Some(transport_stream_id) = TransportStreamId::new(selector[2..=3].read_be_16()) else {
+                    log::debug!("invalid LinkContentModuleInfo::transport_stream_id");
+                    return None;
+                };
+                let Some(service_id) = ServiceId::new(selector[4..=5].read_be_16()) else {
+                    log::debug!("invalid LinkContentModuleInfo::service_id");
+                    return None;
+                };
                 let content_id = selector[6..=9].read_be_32();
                 let component_tag = selector[10];
                 let module_id = selector[11..=12].read_be_16();
@@ -1355,7 +1416,7 @@ impl<'a> Descriptor<'a> for TsInformationDescriptor<'a> {
 #[derive(Debug)]
 pub struct BroadcasterId {
     /// オリジナルネットワーク識別。
-    pub original_network_id: u16,
+    pub original_network_id: NetworkId,
     /// ブロードキャスタ識別。
     pub broadcaster_id: u8,
 }
@@ -1401,17 +1462,20 @@ impl<'a> Descriptor<'a> for ExtendedBroadcasterDescriptor<'a> {
     const TAG: u8 = 0xCE;
 
     fn read(data: &'a [u8]) -> Option<ExtendedBroadcasterDescriptor<'a>> {
-        fn read_broadcaster_ids(broadcaster_ids: &[u8]) -> Vec<BroadcasterId> {
+        fn read_broadcaster_ids(broadcaster_ids: &[u8]) -> Option<Vec<BroadcasterId>> {
             broadcaster_ids
                 .chunks_exact(3)
                 .map(|chunk| {
-                    let original_network_id = chunk[0..=1].read_be_16();
+                    let Some(original_network_id) = NetworkId::new(chunk[0..=1].read_be_16()) else {
+                        log::debug!("invalid BroadcasterId::original_network_id");
+                        return None;
+                    };
                     let broadcaster_id = chunk[2];
 
-                    BroadcasterId {
+                    Some(BroadcasterId {
                         original_network_id,
                         broadcaster_id,
-                    }
+                    })
                 })
                 .collect()
         }
@@ -1447,7 +1511,7 @@ impl<'a> Descriptor<'a> for ExtendedBroadcasterDescriptor<'a> {
                     log::debug!("invalid DigitalTerrestrialTelevisionBroadcast::broadcaster_ids");
                     return None;
                 };
-                let broadcaster_ids = read_broadcaster_ids(broadcaster_ids);
+                let broadcaster_ids = read_broadcaster_ids(broadcaster_ids)?;
                 let private_data = data;
 
                 ExtendedBroadcasterDescriptor::DigitalTerrestrialTelevisionBroadcast(
@@ -1481,7 +1545,7 @@ impl<'a> Descriptor<'a> for ExtendedBroadcasterDescriptor<'a> {
                     log::debug!("invalid DigitalTerrestrialSoundBroadcast::broadcaster_ids");
                     return None;
                 };
-                let broadcaster_ids = read_broadcaster_ids(broadcaster_ids);
+                let broadcaster_ids = read_broadcaster_ids(broadcaster_ids)?;
                 let private_data = data;
 
                 ExtendedBroadcasterDescriptor::DigitalTerrestrialSoundBroadcast(
@@ -1662,22 +1726,22 @@ impl<'a> Descriptor<'a> for SeriesDescriptor<'a> {
 #[derive(Debug)]
 pub struct ActualEvent {
     /// サービス識別。
-    pub service_id: u16,
+    pub service_id: ServiceId,
     /// イベント識別。
-    pub event_id: u16,
+    pub event_id: EventId,
 }
 
 /// イベントグループ記述子における`RelayToOtherNetworks`か`MovementFromOtherNetworks`に入る値。
 #[derive(Debug)]
 pub struct OtherNetwork {
     /// オリジナルネットワーク識別。
-    pub original_network_id: u16,
+    pub original_network_id: NetworkId,
     /// トランスポートストリーム識別。
-    pub transport_stream_id: u16,
+    pub transport_stream_id: TransportStreamId,
     /// サービス識別。
-    pub service_id: u16,
+    pub service_id: ServiceId,
     /// イベント識別。
-    pub event_id: u16,
+    pub event_id: EventId,
 }
 
 /// イベントグループ記述子におけるグループ。
@@ -1710,19 +1774,35 @@ impl<'a> Descriptor<'a> for EventGroupDescriptor<'a> {
     const TAG: u8 = 0xD6;
 
     fn read(data: &'a [u8]) -> Option<EventGroupDescriptor<'a>> {
-        fn read_other_networks(data: &[u8]) -> Vec<OtherNetwork> {
+        fn read_other_networks(data: &[u8]) -> Option<Vec<OtherNetwork>> {
             data.chunks_exact(8)
                 .map(|chunk| {
-                    let original_network_id = chunk[0..=1].read_be_16();
-                    let transport_stream_id = chunk[2..=3].read_be_16();
-                    let service_id = chunk[4..=5].read_be_16();
-                    let event_id = chunk[6..=7].read_be_16();
-                    OtherNetwork {
+                    let Some(original_network_id) = NetworkId::new(chunk[0..=1].read_be_16())
+                    else {
+                        log::debug!("invalid OtherNetwork::original_network_id");
+                        return None;
+                    };
+                    let Some(transport_stream_id) =
+                        TransportStreamId::new(chunk[2..=3].read_be_16())
+                    else {
+                        log::debug!("invalid OtherNetwork::transport_stream_id");
+                        return None;
+                    };
+                    let Some(service_id) = ServiceId::new(chunk[4..=5].read_be_16()) else {
+                        log::debug!("invalid OtherNetwork::service_id");
+                        return None;
+                    };
+                    let Some(event_id) = EventId::new(chunk[6..=7].read_be_16()) else {
+                        log::debug!("invalid OtherNetwork::event_id");
+                        return None;
+                    };
+
+                    Some(OtherNetwork {
                         original_network_id,
                         transport_stream_id,
                         service_id,
                         event_id,
-                    }
+                    })
                 })
                 .collect()
         }
@@ -1741,22 +1821,28 @@ impl<'a> Descriptor<'a> for EventGroupDescriptor<'a> {
         let events = events
             .chunks_exact(4)
             .map(|chunk| {
-                let service_id = chunk[0..=1].read_be_16();
-                let event_id = chunk[2..=3].read_be_16();
+                let Some(service_id) = ServiceId::new(chunk[0..=1].read_be_16()) else {
+                    log::debug!("invalid ActualEvent::service_id");
+                    return None;
+                };
+                let Some(event_id) = EventId::new(chunk[2..=3].read_be_16()) else {
+                    log::debug!("invalid ActualEvent::event_id");
+                    return None;
+                };
 
-                ActualEvent {
+                Some(ActualEvent {
                     service_id,
                     event_id,
-                }
+                })
             })
-            .collect();
+            .collect::<Option<_>>()?;
 
         let group = match group_type {
             0x1 => EventGroup::Common(data),
             0x2 => EventGroup::Relay(data),
             0x3 => EventGroup::Movement(data),
-            0x4 => EventGroup::RelayToOtherNetworks(read_other_networks(data)),
-            0x5 => EventGroup::MovementFromOtherNetworks(read_other_networks(data)),
+            0x4 => EventGroup::RelayToOtherNetworks(read_other_networks(data)?),
+            0x5 => EventGroup::MovementFromOtherNetworks(read_other_networks(data)?),
             _ => EventGroup::Undefined(data),
         };
 
@@ -1973,11 +2059,11 @@ pub struct LdtLinkedDescriptor {
 #[derive(Debug)]
 pub struct LdtLinkageDescriptor {
     /// オリジナルサービス識別。
-    pub original_service_id: u16,
+    pub original_service_id: ServiceId,
     /// トランスポートストリーム識別。
-    pub transport_stream_id: u16,
+    pub transport_stream_id: TransportStreamId,
     /// オリジナルネットワーク識別。
-    pub original_network_id: u16,
+    pub original_network_id: NetworkId,
     /// リンク先の記述を格納する配列。
     pub descriptors: Vec<LdtLinkedDescriptor>,
 }
@@ -1991,9 +2077,18 @@ impl Descriptor<'_> for LdtLinkageDescriptor {
             return None;
         }
 
-        let original_service_id = data[0..=1].read_be_16();
-        let transport_stream_id = data[2..=3].read_be_16();
-        let original_network_id = data[4..=5].read_be_16();
+        let Some(original_service_id) = ServiceId::new(data[0..=1].read_be_16()) else {
+            log::debug!("invalid LdtLinkageDescriptor::original_network_id");
+            return None;
+        };
+        let Some(transport_stream_id) = TransportStreamId::new(data[2..=3].read_be_16()) else {
+            log::debug!("invalid LdtLinkageDescriptor::transport_stream_id");
+            return None;
+        };
+        let Some(original_network_id) = NetworkId::new(data[4..=5].read_be_16()) else {
+            log::debug!("invalid LdtLinkageDescriptor::original_network_id");
+            return None;
+        };
         let descriptors = data[6..]
             .chunks_exact(4)
             .map(|chunk| {

@@ -1,5 +1,7 @@
 //! PSIテーブルの定義。
 
+#[macro_use]
+mod macros;
 mod b10;
 mod b21;
 mod iso;
