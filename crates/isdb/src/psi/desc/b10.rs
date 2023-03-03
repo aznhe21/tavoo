@@ -1307,6 +1307,58 @@ impl<'a> Descriptor<'a> for TargetRegionDescriptor<'a> {
     }
 }
 
+/// ビデオエンコードフォーマット。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum VideoEncodeFormat {
+    /// 1080/P
+    Vef1080P,
+    /// 1080/I
+    Vef1080I,
+    /// 720/P
+    Vef720P,
+    /// 480/P
+    Vef480P,
+    /// 480/I
+    Vef480I,
+    /// 240/P
+    Vef240P,
+    /// 120/P
+    Vef120P,
+    /// 2160/60P
+    Vef2160_60P,
+    /// 180P
+    Vef180P,
+    /// 2160/120P
+    Vef2160_120P,
+    /// 4320/60P
+    Vef4320_60P,
+    /// 4320/120P
+    Vef4320_120P,
+    /// 不明（拡張用）。
+    Unknown,
+}
+
+impl From<u8> for VideoEncodeFormat {
+    #[inline]
+    fn from(value: u8) -> VideoEncodeFormat {
+        match value {
+            0b0000 => VideoEncodeFormat::Vef1080P,
+            0b0001 => VideoEncodeFormat::Vef1080I,
+            0b0010 => VideoEncodeFormat::Vef720P,
+            0b0011 => VideoEncodeFormat::Vef480P,
+            0b0100 => VideoEncodeFormat::Vef480I,
+            0b0101 => VideoEncodeFormat::Vef240P,
+            0b0110 => VideoEncodeFormat::Vef120P,
+            0b0111 => VideoEncodeFormat::Vef2160_60P,
+            0b1000 => VideoEncodeFormat::Vef180P,
+            0b1001 => VideoEncodeFormat::Vef2160_120P,
+            0b1010 => VideoEncodeFormat::Vef4320_60P,
+            0b1011 => VideoEncodeFormat::Vef2160_120P,
+            _ => VideoEncodeFormat::Unknown,
+        }
+    }
+}
+
 /// ビデオデコードコントロール記述子。
 #[derive(Debug)]
 pub struct VideoDecodeControlDescriptor {
@@ -1314,8 +1366,8 @@ pub struct VideoDecodeControlDescriptor {
     pub still_picture_flag: bool,
     /// シーケンスエンドコードフラグ。
     pub sequence_end_code_flag: bool,
-    /// ビデオエンコードフォーマット（4ビット）。
-    pub video_encode_format: u8,
+    /// ビデオエンコードフォーマット。
+    pub video_encode_format: VideoEncodeFormat,
 }
 
 impl Descriptor<'_> for VideoDecodeControlDescriptor {
@@ -1329,7 +1381,7 @@ impl Descriptor<'_> for VideoDecodeControlDescriptor {
 
         let still_picture_flag = data[0] & 0b10000000 != 0;
         let sequence_end_code_flag = data[0] & 0b01000000 != 0;
-        let video_encode_format = (data[0] & 0b00111100) >> 2;
+        let video_encode_format = ((data[0] & 0b00111100) >> 2).into();
 
         Some(VideoDecodeControlDescriptor {
             still_picture_flag,
