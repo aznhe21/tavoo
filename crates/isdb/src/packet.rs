@@ -298,13 +298,13 @@ impl Pcr {
 
     /// PCRを秒に変換する。
     #[inline]
-    pub fn to_secs(&self) -> u64 {
+    pub fn as_secs(&self) -> u64 {
         self.full() / 27_000_000
     }
 
     /// PCRを秒成分を含むナノ秒に変換する。
     #[inline]
-    pub fn to_nanos(&self) -> u64 {
+    pub fn as_nanos(&self) -> u64 {
         self.full() * 1_000 / 27
     }
 

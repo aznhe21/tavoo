@@ -260,7 +260,7 @@ impl isdb::demux::Filter for Filter {
         let Some(af) = ctx.packet().adaptation_field() else { return };
         let Some(pcr) = af.pcr() else { return };
 
-        self.last_pcr = Some(chrono::Duration::nanoseconds(pcr.to_nanos() as i64));
+        self.last_pcr = Some(chrono::Duration::nanoseconds(pcr.as_nanos() as i64));
     }
 }
 

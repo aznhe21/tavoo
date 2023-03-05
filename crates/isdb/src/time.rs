@@ -218,13 +218,13 @@ impl Timestamp {
 
     /// PTS・DTSを秒に変換する。
     #[inline]
-    pub fn to_secs(&self) -> u64 {
+    pub fn as_secs(&self) -> u64 {
         self.0 / 90_000
     }
 
     /// PTS・DTSを秒成分を含むナノ秒に変換する。
     #[inline]
-    pub fn to_nanos(&self) -> u64 {
+    pub fn as_nanos(&self) -> u64 {
         self.0 * 1_000_000 / 90
     }
 
