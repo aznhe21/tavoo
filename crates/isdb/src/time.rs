@@ -1,6 +1,7 @@
 //! ARIB STD-B10で規定される日付時刻。
 
 use std::fmt::{self, Write};
+use std::ops;
 use std::time::Duration;
 
 use crate::utils::BytesExt;
@@ -233,6 +234,82 @@ impl Timestamp {
         let secs = self.0 / 90_000;
         let nanos = (self.0 % 90_000 * 1_000_000 / 90) as u32;
         Duration::new(secs, nanos)
+    }
+
+    /// 検査付きの加算。`self + rhs`を計算し、オーバーフローが発生すれば`None`を返す。
+    #[inline]
+    pub const fn checked_add(&self, rhs: Timestamp) -> Option<Timestamp> {
+        // Option::mapはconst fnではない
+        match self.0.checked_add(rhs.0) {
+            Some(x) => Some(Timestamp(x)),
+            None => None,
+        }
+    }
+
+    /// 検査付きの減算。`self - rhs`を計算し、オーバーフローが発生すれば`None`を返す。
+    #[inline]
+    pub const fn checked_sub(&self, rhs: Timestamp) -> Option<Timestamp> {
+        // Option::mapはconst fnではない
+        match self.0.checked_sub(rhs.0) {
+            Some(x) => Some(Timestamp(x)),
+            None => None,
+        }
+    }
+
+    /// 飽和する加算。`self + rhs`を計算し、オーバーフローする代わりに数値の境界で飽和する。
+    #[inline]
+    pub const fn saturating_add(&self, rhs: Timestamp) -> Timestamp {
+        Timestamp(self.0.saturating_add(rhs.0))
+    }
+
+    /// 飽和する減算。`self - rhs`を計算し、オーバーフローする代わりに数値の境界で飽和する。
+    #[inline]
+    pub const fn saturating_sub(&self, rhs: Timestamp) -> Timestamp {
+        Timestamp(self.0.saturating_sub(rhs.0))
+    }
+
+    /// 折り返す加算。`self + rhs`を計算し、型の境界で回り込み（ラップアラウンド）が起きる。
+    #[inline]
+    pub const fn wrapping_add(&self, rhs: Timestamp) -> Timestamp {
+        Timestamp(self.0.wrapping_add(rhs.0))
+    }
+
+    /// 折り返す減算。`self - rhs`を計算し、型の境界で回り込み（ラップアラウンド）が起きる。
+    #[inline]
+    pub const fn wrapping_sub(&self, rhs: Timestamp) -> Timestamp {
+        Timestamp(self.0.wrapping_sub(rhs.0))
+    }
+}
+
+impl ops::Add<Timestamp> for Timestamp {
+    type Output = Timestamp;
+
+    #[inline]
+    fn add(self, rhs: Timestamp) -> Timestamp {
+        Timestamp(self.0 + rhs.0)
+    }
+}
+
+impl ops::AddAssign<Timestamp> for Timestamp {
+    #[inline]
+    fn add_assign(&mut self, rhs: Timestamp) {
+        self.0 += rhs.0;
+    }
+}
+
+impl ops::Sub<Timestamp> for Timestamp {
+    type Output = Timestamp;
+
+    #[inline]
+    fn sub(self, rhs: Timestamp) -> Timestamp {
+        Timestamp(self.0 - rhs.0)
+    }
+}
+
+impl ops::SubAssign<Timestamp> for Timestamp {
+    #[inline]
+    fn sub_assign(&mut self, rhs: Timestamp) {
+        self.0 -= rhs.0;
     }
 }
 
