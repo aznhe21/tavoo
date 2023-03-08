@@ -219,18 +219,19 @@ impl Timestamp {
 
     /// PTS・DTSを秒に変換する。
     #[inline]
-    pub fn as_secs(&self) -> u64 {
+    pub const fn as_secs(&self) -> u64 {
         self.0 / 90_000
     }
 
     /// PTS・DTSを秒成分を含むナノ秒に変換する。
     #[inline]
-    pub fn as_nanos(&self) -> u64 {
+    pub const fn as_nanos(&self) -> u64 {
         self.0 * 1_000_000 / 90
     }
 
     /// PTS・DTSを[`Duration`]に変換する。
-    pub fn to_duration(&self) -> Duration {
+    #[inline]
+    pub const fn to_duration(&self) -> Duration {
         let secs = self.0 / 90_000;
         let nanos = (self.0 % 90_000 * 1_000_000 / 90) as u32;
         Duration::new(secs, nanos)
