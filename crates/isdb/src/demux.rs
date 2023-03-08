@@ -21,12 +21,6 @@ impl<T: Copy> Table<T> {
         Table(PidTable::from_fn(|_| None))
     }
 
-    /// テーブルを初期化し何も設定されていない状態にする。
-    #[inline]
-    pub fn reset(&mut self) {
-        self.0.fill(None);
-    }
-
     /// `pid`のパケットに処理が設定されているかどうかを返す。
     #[inline]
     pub fn is_set(&self, pid: Pid) -> bool {
@@ -277,7 +271,7 @@ impl<T: Filter + ?Sized> Filter for &mut T {
 /// impl isdb::demux::Filter for Filter {
 ///     type Tag = Tag;
 ///
-///     // `Demuxer`生成時や再初期化時に呼ばれる
+///     // 初期化時に一度だけ呼ばれる。
 ///     fn on_setup(&mut self, table: &mut isdb::demux::Table<Tag>) {
 ///         // PATのPIDをPSIとして処理すると設定する。タグにはPATであることを示す値を指定する
 ///         table.set_as_psi(isdb::pid::Pid::PAT, Tag::Pat);
@@ -351,14 +345,6 @@ impl<T: Filter> Demuxer<T> {
 
         filter.on_setup(&mut table);
         Demuxer { filter, cc, table }
-    }
-
-    /// `Demuxer`の状態を初期化する。
-    pub fn reset(&mut self) {
-        self.cc.fill(0x10);
-        self.table.reset();
-
-        self.filter.on_setup(&mut self.table);
     }
 
     /// 内包するフィルターを参照で返す。
