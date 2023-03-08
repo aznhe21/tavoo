@@ -74,7 +74,10 @@ impl<T: Copy> Table<T> {
     /// `tag`により、PMTなど動的に変わるPIDの代わりに定数でパケット種別を区別することができる。
     #[inline]
     pub fn set_as_psi(&mut self, pid: Pid, tag: T) {
-        self.0[pid] = Some(PacketState::new(PacketStore::psi(), tag));
+        self.0[pid] = Some(PacketState::new(
+            PacketStore::Psi(PartialPsiSection::new()),
+            tag,
+        ));
     }
 
     /// `pid`のパケットをPESとして分離するよう設定する。
@@ -82,7 +85,10 @@ impl<T: Copy> Table<T> {
     /// `tag`により、PMTなど動的に変わるPIDの代わりに定数でパケット種別を区別することができる。
     #[inline]
     pub fn set_as_pes(&mut self, pid: Pid, tag: T) {
-        self.0[pid] = Some(PacketState::new(PacketStore::pes(), tag));
+        self.0[pid] = Some(PacketState::new(
+            PacketStore::Pes(PartialPesPacket::new()),
+            tag,
+        ));
     }
 
     /// `pid`のパケットをユーザー独自に処理するよう設定する。
@@ -90,7 +96,7 @@ impl<T: Copy> Table<T> {
     /// `tag`により、PMTなど動的に変わるPIDの代わりに定数でパケット種別を区別することができる。
     #[inline]
     pub fn set_as_custom(&mut self, pid: Pid, tag: T) {
-        self.0[pid] = Some(PacketState::new(PacketStore::custom(), tag));
+        self.0[pid] = Some(PacketState::new(PacketStore::Custom, tag));
     }
 
     /// `pid`のパケットで何も処理しないよう設定を解除する。
@@ -347,6 +353,22 @@ impl<T: Filter> Demuxer<T> {
         Demuxer { filter, cc, table }
     }
 
+    /// `Demuxer`で処理しているパケットの状態をリセットする。
+    ///
+    /// ストリームをシークする際にこのメソッドを使うことで、
+    /// パケットの処理状態が不正になることを防ぐ。
+    pub fn reset_packets(&mut self) {
+        self.cc.fill(0x10);
+
+        for state in self.table.0.iter_mut().flatten() {
+            match &mut state.store {
+                PacketStore::Pes(pes) => pes.reset(),
+                PacketStore::Psi(psi) => psi.reset(),
+                _ => {}
+            }
+        }
+    }
+
     /// 内包するフィルターを参照で返す。
     #[inline]
     pub fn filter(&self) -> &T {
@@ -474,31 +496,6 @@ enum PacketStore {
     Temp,
 }
 
-impl PacketStore {
-    #[inline]
-    pub fn pes() -> PacketStore {
-        PacketStore::Pes(PartialPesPacket {
-            // バッファサイズはLibISDBから
-            buffer: Vec::with_capacity(0x10005),
-            // unit_start_indicatorが真になるまでのパケットは処理しない
-            state: PesState::Completed,
-        })
-    }
-
-    #[inline]
-    pub fn psi() -> PacketStore {
-        PacketStore::Psi(PartialPsiSection {
-            // バッファサイズはLibISDBから
-            buffer: Vec::with_capacity(3 + 4093),
-        })
-    }
-
-    #[inline]
-    pub fn custom() -> PacketStore {
-        PacketStore::Custom
-    }
-}
-
 #[derive(Debug, Clone, Copy)]
 enum PesState {
     /// ヘッダ受信中。
@@ -523,6 +520,22 @@ struct PartialPsiSection {
 }
 
 impl PartialPesPacket {
+    #[inline]
+    pub fn new() -> PartialPesPacket {
+        PartialPesPacket {
+            // バッファサイズはLibISDBから
+            buffer: Vec::with_capacity(0x10005),
+            // unit_start_indicatorが真になるまでのパケットは処理しない
+            state: PesState::Completed,
+        }
+    }
+
+    #[inline]
+    pub fn reset(&mut self) {
+        self.buffer.clear();
+        self.state = PesState::Completed;
+    }
+
     fn parse_complete<T: Filter>(filter: &mut T, ctx: &mut Context<T::Tag>, data: &[u8]) {
         match PesPacket::parse_complete(data) {
             // ヘッダは受信済みなのでこれらのエラーが来ることはない
@@ -592,6 +605,19 @@ impl PartialPesPacket {
 }
 
 impl PartialPsiSection {
+    #[inline]
+    pub fn new() -> PartialPsiSection {
+        PartialPsiSection {
+            // バッファサイズはLibISDBから
+            buffer: Vec::with_capacity(3 + 4093),
+        }
+    }
+
+    #[inline]
+    pub fn reset(&mut self) {
+        self.buffer.clear();
+    }
+
     pub fn write<T: Filter>(
         &mut self,
         filter: &mut T,
