@@ -376,4 +376,26 @@ mod tests {
         assert_eq!(dt.to_string(), "1982-09-06 12:34:56");
         assert_eq!(format!("{:?}", dt), "1982-09-06 (Mon) 12:34:56");
     }
+
+    #[test]
+    fn test_timestamp() {
+        assert_eq!(Timestamp::from(Duration::ZERO), Timestamp(0));
+        assert_eq!(
+            Timestamp::from(Duration::new(123, 456789000)),
+            Timestamp((123.456789 * 90_000.) as u64)
+        );
+
+        assert_eq!(
+            Timestamp::from(Duration::new(123, 456789000)).as_secs(),
+            123
+        );
+        assert_eq!(
+            Timestamp::from(Duration::new(123, 456789000)).as_nanos(),
+            123456788888
+        );
+        assert_eq!(
+            Timestamp::from(Duration::new(123, 456789000)).to_duration(),
+            Duration::new(123, 456788888)
+        );
+    }
 }
