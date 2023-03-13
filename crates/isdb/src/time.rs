@@ -209,6 +209,14 @@ impl fmt::Debug for DateTime {
 pub struct Timestamp(pub u64);
 
 impl Timestamp {
+    /// [`Duration`]から`Timestamp`を生成する。
+    #[inline]
+    pub const fn from_duration(dur: Duration) -> Timestamp {
+        let secs = dur.as_secs();
+        let nanos = dur.subsec_nanos();
+        Timestamp((secs * 90_000) + (nanos as u64 * 90 / 1_000_000))
+    }
+
     /// `data`から`Timestamp`を読み取る。
     pub fn read(data: &[u8; 5]) -> Timestamp {
         let timestamp = ((data[0] & 0b00001110) as u64) << 29
@@ -279,6 +287,13 @@ impl Timestamp {
     #[inline]
     pub const fn wrapping_sub(&self, rhs: Timestamp) -> Timestamp {
         Timestamp(self.0.wrapping_sub(rhs.0))
+    }
+}
+
+impl From<Duration> for Timestamp {
+    #[inline]
+    fn from(value: Duration) -> Timestamp {
+        Timestamp::from_duration(value)
     }
 }
 
