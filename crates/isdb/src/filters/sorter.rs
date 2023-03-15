@@ -314,6 +314,11 @@ impl<T> Sorter<T> {
     pub fn services(&self) -> &ServiceMap {
         &self.services
     }
+
+    /// すべてのサービス及び内包する`Shooter`を、前者は参照で、後者は可変参照で返す。
+    pub fn pair(&mut self) -> (&ServiceMap, &mut T) {
+        (&self.services, &mut self.shooter)
+    }
 }
 
 mod sealed {
