@@ -27,7 +27,7 @@ fn main() {
         .build(&event_loop)
         .unwrap();
 
-    let player = player::Player::new(&window, event_loop.create_proxy()).unwrap();
+    let mut player = player::Player::new(&window, event_loop.create_proxy()).unwrap();
 
     let mut modifiers = winit::event::ModifiersState::empty();
     event_loop.run(move |event, _, control_flow| {

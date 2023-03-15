@@ -30,31 +30,31 @@ impl<E: From<PlayerEvent>> Player<E> {
 impl<E> Player<E> {
     /// 指定されたファイルを開き、再生を開始する。
     #[inline]
-    pub fn open<P: AsRef<Path>>(&self, path: P) -> Result<()> {
+    pub fn open<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         self.inner.open(path)
     }
 
     /// TSの処理中にイベントループに送られた[`PlayerEvent`]を処理する。
     #[inline]
-    pub fn handle_event(&self, event: PlayerEvent) -> Result<()> {
+    pub fn handle_event(&mut self, event: PlayerEvent) -> Result<()> {
         self.inner.handle_event(event.0)
     }
 
     /// 再生する。
     #[inline]
-    pub fn play(&self) -> Result<()> {
+    pub fn play(&mut self) -> Result<()> {
         self.inner.play()
     }
 
     /// 一時停止する。
     #[inline]
-    pub fn pause(&self) -> Result<()> {
+    pub fn pause(&mut self) -> Result<()> {
         self.inner.pause()
     }
 
     /// 再生、または一時停止する。
     #[inline]
-    pub fn play_or_pause(&self) -> Result<()> {
+    pub fn play_or_pause(&mut self) -> Result<()> {
         self.inner.play_or_pause()
     }
 
@@ -63,25 +63,25 @@ impl<E> Player<E> {
     /// 一時停止中などで映像が描画されない場合があるため、
     /// 必要に応じてこのメソッドを呼び出す必要がある。
     #[inline]
-    pub fn repaint(&self) -> Result<()> {
+    pub fn repaint(&mut self) -> Result<()> {
         self.inner.repaint()
     }
 
     /// 映像の大きさを設定する。
     #[inline]
-    pub fn resize_video(&self, width: u32, height: u32) -> Result<()> {
+    pub fn resize_video(&mut self, width: u32, height: u32) -> Result<()> {
         self.inner.resize_video(width, height)
     }
 
     /// 再生位置を取得する。
     #[inline]
-    pub fn position(&self) -> Result<Duration> {
+    pub fn position(&mut self) -> Result<Duration> {
         self.inner.position()
     }
 
     /// 再生位置を設定する。
     #[inline]
-    pub fn set_position(&self, pos: Duration) -> Result<()> {
+    pub fn set_position(&mut self, pos: Duration) -> Result<()> {
         self.inner.set_position(pos)
     }
 
@@ -93,7 +93,7 @@ impl<E> Player<E> {
 
     /// 音量を設定する。
     #[inline]
-    pub fn set_volume(&self, value: f32) -> Result<()> {
+    pub fn set_volume(&mut self, value: f32) -> Result<()> {
         self.inner.set_volume(value)
     }
 
@@ -105,7 +105,7 @@ impl<E> Player<E> {
 
     /// 再生速度を設定する。
     #[inline]
-    pub fn set_rate(&self, value: f32) -> Result<()> {
+    pub fn set_rate(&mut self, value: f32) -> Result<()> {
         self.inner.set_rate(value)
     }
 
@@ -113,7 +113,7 @@ impl<E> Player<E> {
     ///
     /// 終了処理は`Drop`ではなくこちらで行うため、終了時にはこのメソッドを必ず呼び出す必要がある。
     #[inline]
-    pub fn shutdown(&self) -> Result<()> {
+    pub fn shutdown(&mut self) -> Result<()> {
         self.inner.shutdown()
     }
 
@@ -153,19 +153,19 @@ impl<E> Player<E> {
     ///
     /// `service_id`に`None`を指定した場合、既定のサービスを選択する。
     #[inline]
-    pub fn select_service(&self, service_id: Option<ServiceId>) -> Result<()> {
+    pub fn select_service(&mut self, service_id: Option<ServiceId>) -> Result<()> {
         self.inner.select_service(service_id)
     }
 
     /// 指定されたコンポーネントタグの映像ストリームを選択する。
     #[inline]
-    pub fn select_video_stream(&self, component_tag: u8) -> Result<()> {
+    pub fn select_video_stream(&mut self, component_tag: u8) -> Result<()> {
         self.inner.select_video_stream(component_tag)
     }
 
     /// 指定されたコンポーネントタグの音声ストリームを選択する。
     #[inline]
-    pub fn select_audio_stream(&self, component_tag: u8) -> Result<()> {
+    pub fn select_audio_stream(&mut self, component_tag: u8) -> Result<()> {
         self.inner.select_audio_stream(component_tag)
     }
 }

@@ -70,7 +70,7 @@ impl<E> Player<E> {
     }
 
     #[inline]
-    pub fn open<P: AsRef<Path>>(&self, path: P) -> Result<()> {
+    pub fn open<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         let path = path.as_ref();
         self.inner().open(path)?;
         Ok(())
@@ -97,55 +97,55 @@ impl<E> Player<E> {
     }
 
     #[inline]
-    pub fn select_service(&self, service_id: Option<ServiceId>) -> Result<()> {
+    pub fn select_service(&mut self, service_id: Option<ServiceId>) -> Result<()> {
         self.inner().select_service(service_id)?;
         Ok(())
     }
 
     #[inline]
-    pub fn select_video_stream(&self, component_tag: u8) -> Result<()> {
+    pub fn select_video_stream(&mut self, component_tag: u8) -> Result<()> {
         self.inner().select_video_stream(component_tag)?;
         Ok(())
     }
 
     #[inline]
-    pub fn select_audio_stream(&self, component_tag: u8) -> Result<()> {
+    pub fn select_audio_stream(&mut self, component_tag: u8) -> Result<()> {
         self.inner().select_audio_stream(component_tag)?;
         Ok(())
     }
 
     #[inline]
-    pub fn handle_event(&self, event: PlayerEvent) -> Result<()> {
+    pub fn handle_event(&mut self, event: PlayerEvent) -> Result<()> {
         self.inner().handle_event(event)?;
         Ok(())
     }
 
     #[inline]
-    pub fn play(&self) -> Result<()> {
+    pub fn play(&mut self) -> Result<()> {
         self.inner().play()?;
         Ok(())
     }
 
     #[inline]
-    pub fn pause(&self) -> Result<()> {
+    pub fn pause(&mut self) -> Result<()> {
         self.inner().pause()?;
         Ok(())
     }
 
     #[inline]
-    pub fn play_or_pause(&self) -> Result<()> {
+    pub fn play_or_pause(&mut self) -> Result<()> {
         self.inner().play_or_pause()?;
         Ok(())
     }
 
     #[inline]
-    pub fn repaint(&self) -> Result<()> {
+    pub fn repaint(&mut self) -> Result<()> {
         self.inner().repaint()?;
         Ok(())
     }
 
     #[inline]
-    pub fn resize_video(&self, width: u32, height: u32) -> Result<()> {
+    pub fn resize_video(&mut self, width: u32, height: u32) -> Result<()> {
         self.inner().resize_video(width, height)?;
         Ok(())
     }
@@ -157,7 +157,7 @@ impl<E> Player<E> {
     }
 
     #[inline]
-    pub fn set_position(&self, pos: Duration) -> Result<()> {
+    pub fn set_position(&mut self, pos: Duration) -> Result<()> {
         self.inner().set_position(pos)?;
         Ok(())
     }
@@ -169,7 +169,7 @@ impl<E> Player<E> {
     }
 
     #[inline]
-    pub fn set_volume(&self, value: f32) -> Result<()> {
+    pub fn set_volume(&mut self, value: f32) -> Result<()> {
         self.inner().set_volume(value)?;
         Ok(())
     }
@@ -181,13 +181,13 @@ impl<E> Player<E> {
     }
 
     #[inline]
-    pub fn set_rate(&self, value: f32) -> Result<()> {
+    pub fn set_rate(&mut self, value: f32) -> Result<()> {
         self.inner().set_rate(value)?;
         Ok(())
     }
 
     #[inline]
-    pub fn shutdown(&self) -> Result<()> {
+    pub fn shutdown(&mut self) -> Result<()> {
         self.inner().shutdown()?;
         Ok(())
     }
