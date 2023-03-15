@@ -14,25 +14,26 @@ use crate::time;
 use crate::AribStr;
 use crate::AribString;
 
-type FxIndexMap<K, V> = indexmap::IndexMap<K, V, fxhash::FxBuildHasher>;
-
 /// [`Sorter`]から仕分けた結果を受け取るためのトレイト。
+///
+/// 各メソッドには現在[`Sorter`]の保持するサービス一覧が与えられる。
 pub trait Shooter {
     /// PATが更新された際に呼ばれる。
-    fn on_pat_updated(&mut self);
+    fn on_pat_updated(&mut self, services: &ServiceMap);
 
     /// `service_id`のPMTが更新された際に呼ばれる。
-    fn on_pmt_updated(&mut self, service_id: ServiceId);
+    fn on_pmt_updated(&mut self, services: &ServiceMap, service: &Service);
 
     /// `service_id`のEITが更新された際に呼ばれる。
     ///
     /// このメソッドが呼ばれた後に`Service::present_event`等が`None`を返す場合、
     /// EIT未受信ではないためイベントが存在しないことを表す。
-    fn on_eit_updated(&mut self, service_id: ServiceId, is_present: bool);
+    fn on_eit_updated(&mut self, services: &ServiceMap, service: &Service, is_present: bool);
 
     /// 映像パケットを受信した際に呼ばれる。
     fn on_video_packet(
         &mut self,
+        services: &ServiceMap,
         pid: Pid,
         pts: Option<time::Timestamp>,
         dts: Option<time::Timestamp>,
@@ -42,6 +43,7 @@ pub trait Shooter {
     /// 音声パケットを受信した際に呼ばれる。
     fn on_audio_packet(
         &mut self,
+        services: &ServiceMap,
         pid: Pid,
         pts: Option<time::Timestamp>,
         dts: Option<time::Timestamp>,
@@ -49,7 +51,7 @@ pub trait Shooter {
     );
 
     /// 字幕パケットを受信した際に呼ばれる。
-    fn on_caption(&mut self, pid: Pid, caption: &Caption);
+    fn on_caption(&mut self, services: &ServiceMap, pid: Pid, caption: &Caption);
 }
 
 /// PMTで送出されるストリーム情報。
@@ -270,7 +272,7 @@ impl<'a> Caption<'a> {
 }
 
 /// サービス識別からサービス情報を得るための、順序を保持する連想配列。
-pub type ServiceMap = FxIndexMap<ServiceId, Service>;
+pub type ServiceMap = indexmap::IndexMap<ServiceId, Service, fxhash::FxBuildHasher>;
 
 /// 仕分け用フィルター。
 pub struct Sorter<T> {
@@ -287,7 +289,7 @@ impl<T> Sorter<T> {
             shooter,
             repo: psi::Repository::new(),
 
-            services: FxIndexMap::default(),
+            services: ServiceMap::default(),
         }
     }
 
@@ -391,7 +393,7 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                     unset_streams(&*service.caption_streams);
                 }
 
-                self.shooter.on_pat_updated();
+                self.shooter.on_pat_updated(&self.services);
             }
             Tag::Pmt => {
                 let Some(pmt) = self.repo.read::<psi::table::Pmt>(psi) else {
@@ -482,7 +484,10 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                     ctx.table().unset(lost_pid);
                 }
 
-                self.shooter.on_pmt_updated(pmt.program_number);
+                self.shooter.on_pmt_updated(
+                    &self.services,
+                    self.services.get(&pmt.program_number).unwrap(),
+                );
             }
             Tag::Sdt => {
                 let Some(psi::table::Sdt::Actual(sdt)) = self.repo.read(psi) else {
@@ -552,7 +557,11 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                     service.following_event = event;
                 }
 
-                self.shooter.on_eit_updated(eit.service_id, is_present);
+                self.shooter.on_eit_updated(
+                    &self.services,
+                    self.services.get(&eit.service_id).unwrap(),
+                    is_present,
+                );
             }
             tag @ _ => {
                 log::error!("invalid tag: {:?}", tag);
@@ -567,16 +576,26 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                     return;
                 };
 
-                self.shooter
-                    .on_video_packet(ctx.packet().pid(), option.pts, option.dts, pes.data);
+                self.shooter.on_video_packet(
+                    &self.services,
+                    ctx.packet().pid(),
+                    option.pts,
+                    option.dts,
+                    pes.data,
+                );
             }
             Tag::Audio => {
                 let Some(option) = &pes.header.option else {
                     return;
                 };
 
-                self.shooter
-                    .on_audio_packet(ctx.packet().pid(), option.pts, option.dts, pes.data);
+                self.shooter.on_audio_packet(
+                    &self.services,
+                    ctx.packet().pid(),
+                    option.pts,
+                    option.dts,
+                    pes.data,
+                );
             }
             Tag::Caption => {
                 let Some(pes) = pes::IndependentPes::read(pes.data) else {
@@ -603,7 +622,8 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                     Caption::Data(caption)
                 };
 
-                self.shooter.on_caption(ctx.packet().pid(), &caption);
+                self.shooter
+                    .on_caption(&self.services, ctx.packet().pid(), &caption);
             }
             tag @ _ => {
                 log::debug!("invalid tag: {:?}", tag);
