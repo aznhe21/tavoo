@@ -9,12 +9,12 @@ rust-version.workspace = true
 [dependencies]
 anyhow = "1.0.69"
 cfg-if = "1.0.0"
+crossbeam-utils = "0.8.15"
 env_logger = "0.10.0"
 fxhash = "0.2.1"
 isdb = { path = "../isdb" }
 log = "0.4.17"
 parking_lot = "0.12.1"
-raw-window-handle = "0.5.0"
 winit = "0.28.1"
 
 [target.'cfg(windows)'.dependencies.windows]

@@ -1,3 +1,4 @@
+mod extract;
 mod player;
 mod sys;
 
@@ -77,7 +78,10 @@ fn main() {
                         // 0～8番目のサービス選択
                         let n = key as usize - winit::event::VirtualKeyCode::Key1 as usize;
 
-                        if let Some(service_id) = player.services().get_index(n).map(|(&k, _)| k) {
+                        let Some(services) = player.services() else {
+                            return;
+                        };
+                        if let Some(service_id) = services.get_index(n).map(|(&k, _)| k) {
                             if let Err(e) = player.select_service(Some(service_id)) {
                                 log::error!("select_service: {}", e)
                             }
@@ -90,7 +94,9 @@ fn main() {
                         // サービス切り替え
                         let next = key == winit::event::VirtualKeyCode::K;
 
-                        let services = player.services();
+                        let Some(services) = player.services() else {
+                            return;
+                        };
                         let service_index = player
                             .selected_service()
                             .and_then(|svc| services.get_index_of(&svc.service_id()))
@@ -225,7 +231,7 @@ fn main() {
             }
 
             Event::LoopDestroyed => {
-                player.shutdown().unwrap();
+                player.close().unwrap();
             }
 
             _ => {}

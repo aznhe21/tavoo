@@ -1,978 +1,450 @@
-use std::cell::{Cell, RefCell};
-use std::marker::PhantomData;
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
 use isdb::psi::table::ServiceId;
-use parking_lot::lock_api::{RawMutex, RawMutexTimed};
-use raw_window_handle::{HasRawWindowHandle, RawWindowHandle};
-use windows::core::{self as C, implement, AsImpl, Interface};
+use parking_lot::Mutex;
+use windows::core::{self as C, AsImpl};
 use windows::Win32::Foundation as F;
-use windows::Win32::Media::KernelStreaming::GUID_NULL;
 use windows::Win32::Media::MediaFoundation as MF;
+use winit::platform::windows::WindowExtWindows;
 
+use crate::extract::{self, ExtractHandler};
+
+use super::session;
 use super::stream::TransportStream;
-use super::utils::{get_stream_descriptor_by_index, PropVariant, WinResult};
+use super::utils::WinResult;
 
-pub type PlayerEvent = MF::IMFMediaEvent;
+pub type PlayerEvent = C::AgileReference<MF::IMFMediaEvent>;
 
-// ジェネリクスと#[implement]を併用できないので型消去
-struct EventLoopWrapper(Box<dyn EventLoop>);
-
-trait EventLoop {
-    fn send_player_event(
-        &self,
-        event: PlayerEvent,
-    ) -> Result<(), winit::event_loop::EventLoopClosed<()>>;
+#[derive(Default)]
+struct State {
+    thread_handle: Option<std::thread::JoinHandle<()>>,
+    session: Option<session::Session>,
 }
 
-impl<E: From<crate::player::PlayerEvent>> EventLoop for winit::event_loop::EventLoopProxy<E> {
-    fn send_player_event(
-        &self,
-        event: PlayerEvent,
-    ) -> Result<(), winit::event_loop::EventLoopClosed<()>> {
-        match self.send_event(crate::player::PlayerEvent(event).into()) {
-            Ok(()) => Ok(()),
-            Err(_) => Err(winit::event_loop::EventLoopClosed(())),
+struct Session<Event: 'static> {
+    hwnd_video: F::HWND,
+    event_loop: winit::event_loop::EventLoopProxy<Event>,
+    handler: ExtractHandler,
+    state: Arc<Mutex<State>>,
+}
+
+impl<Event> Clone for Session<Event> {
+    fn clone(&self) -> Session<Event> {
+        Session {
+            hwnd_video: self.hwnd_video,
+            event_loop: self.event_loop.clone(),
+            handler: self.handler.clone(),
+            state: self.state.clone(),
         }
     }
 }
 
-pub struct Player<E> {
-    inner: MF::IMFAsyncCallback,
-    _marker: PhantomData<E>,
+pub struct Player<Event: 'static> {
+    hwnd_video: F::HWND,
+    event_loop: winit::event_loop::EventLoopProxy<Event>,
+    session: Option<Session<Event>>,
 }
 
-impl<E: From<crate::player::PlayerEvent>> Player<E> {
+impl<Event> Player<Event> {
     pub fn new(
         window: &winit::window::Window,
-        event_loop: winit::event_loop::EventLoopProxy<E>,
-    ) -> Result<Player<E>> {
-        let RawWindowHandle::Win32(handle) = window.raw_window_handle() else {
-            unreachable!()
-        };
-        let hwnd_video = F::HWND(handle.hwnd as isize);
-
-        let event_loop = EventLoopWrapper(Box::new(event_loop));
-
-        Ok(Player {
-            inner: PlayerInner::new(hwnd_video, event_loop)?,
-            _marker: PhantomData,
-        })
-    }
-}
-
-impl<E> Player<E> {
-    #[inline]
-    fn inner(&self) -> &PlayerInner {
-        self.inner.as_impl()
-    }
-
-    #[inline]
-    pub fn open<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
-        let path = path.as_ref();
-        self.inner().open(path)?;
-        Ok(())
-    }
-
-    #[inline]
-    pub fn selected_service(&self) -> Option<isdb::filters::sorter::Service> {
-        self.inner().selected_service()
-    }
-
-    #[inline]
-    pub fn active_video_tag(&self) -> Option<u8> {
-        self.inner().active_video_tag()
-    }
-
-    #[inline]
-    pub fn active_audio_tag(&self) -> Option<u8> {
-        self.inner().active_audio_tag()
-    }
-
-    #[inline]
-    pub fn services(&self) -> isdb::filters::sorter::ServiceMap {
-        self.inner().services()
-    }
-
-    #[inline]
-    pub fn select_service(&mut self, service_id: Option<ServiceId>) -> Result<()> {
-        self.inner().select_service(service_id)?;
-        Ok(())
-    }
-
-    #[inline]
-    pub fn select_video_stream(&mut self, component_tag: u8) -> Result<()> {
-        self.inner().select_video_stream(component_tag)?;
-        Ok(())
-    }
-
-    #[inline]
-    pub fn select_audio_stream(&mut self, component_tag: u8) -> Result<()> {
-        self.inner().select_audio_stream(component_tag)?;
-        Ok(())
-    }
-
-    #[inline]
-    pub fn handle_event(&mut self, event: PlayerEvent) -> Result<()> {
-        self.inner().handle_event(event)?;
-        Ok(())
-    }
-
-    #[inline]
-    pub fn play(&mut self) -> Result<()> {
-        self.inner().play()?;
-        Ok(())
-    }
-
-    #[inline]
-    pub fn pause(&mut self) -> Result<()> {
-        self.inner().pause()?;
-        Ok(())
-    }
-
-    #[inline]
-    pub fn play_or_pause(&mut self) -> Result<()> {
-        self.inner().play_or_pause()?;
-        Ok(())
-    }
-
-    #[inline]
-    pub fn repaint(&mut self) -> Result<()> {
-        self.inner().repaint()?;
-        Ok(())
-    }
-
-    #[inline]
-    pub fn resize_video(&mut self, width: u32, height: u32) -> Result<()> {
-        self.inner().resize_video(width, height)?;
-        Ok(())
-    }
-
-    #[inline]
-    pub fn position(&self) -> Result<Duration> {
-        let pos = self.inner().position()?;
-        Ok(pos)
-    }
-
-    #[inline]
-    pub fn set_position(&mut self, pos: Duration) -> Result<()> {
-        self.inner().set_position(pos)?;
-        Ok(())
-    }
-
-    #[inline]
-    pub fn volume(&self) -> Result<f32> {
-        let value = self.inner().volume()?;
-        Ok(value)
-    }
-
-    #[inline]
-    pub fn set_volume(&mut self, value: f32) -> Result<()> {
-        self.inner().set_volume(value)?;
-        Ok(())
-    }
-
-    #[inline]
-    pub fn rate(&self) -> Result<f32> {
-        let value = self.inner().rate()?;
-        Ok(value)
-    }
-
-    #[inline]
-    pub fn set_rate(&mut self, value: f32) -> Result<()> {
-        self.inner().set_rate(value)?;
-        Ok(())
-    }
-
-    #[inline]
-    pub fn shutdown(&mut self) -> Result<()> {
-        self.inner().shutdown()?;
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum State {
-    Closed,
-    Ready,
-    OpenPending,
-    Started,
-    Paused,
-    Stopped,
-    Closing,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Command {
-    Stop,
-    Start,
-    Pause,
-}
-
-#[derive(Debug)]
-struct OpRequest {
-    command: Cell<Option<Command>>,
-    rate: Cell<Option<f32>>,
-    pos: Cell<Option<Duration>>,
-}
-
-#[implement(MF::IMFAsyncCallback)]
-struct PlayerInner {
-    // セッションが閉じられたらロック解除されるミューテックス
-    close_mutex: parking_lot::RawMutex,
-
-    session: RefCell<Option<MF::IMFMediaSession>>,
-    source: RefCell<Option<MF::IMFMediaSource>>,
-    presentation_clock: RefCell<Option<MF::IMFPresentationClock>>,
-    video_display: RefCell<Option<MF::IMFVideoDisplayControl>>,
-    audio_volume: RefCell<Option<MF::IMFAudioStreamVolume>>,
-    rate_control: RefCell<Option<MF::IMFRateControl>>,
-
-    state: Cell<State>,
-    /// 現在の再生速度
-    current_rate: Cell<f32>,
-    /// シーク待ち中のシーク位置
-    seeking_pos: Cell<Option<Duration>>,
-    /// 再生・停止や速度変更等の処理待ち
-    is_pending: Cell<bool>,
-    /// 処理待ち中に受け付けた操作要求
-    op_request: OpRequest,
-
-    hwnd_video: F::HWND,
-    event_loop: EventLoopWrapper,
-}
-
-impl PlayerInner {
-    pub fn new(
-        hwnd_video: F::HWND,
-        event_loop: EventLoopWrapper,
-    ) -> WinResult<MF::IMFAsyncCallback> {
+        event_loop: winit::event_loop::EventLoopProxy<Event>,
+    ) -> Result<Player<Event>> {
         unsafe {
             MF::MFStartup(
                 (MF::MF_SDK_VERSION << 16) | MF::MF_API_VERSION,
                 MF::MFSTARTUP_NOSOCKET,
             )?;
-
-            let close_mutex = parking_lot::RawMutex::INIT;
-            close_mutex.lock();
-            Ok(PlayerInner {
-                close_mutex,
-
-                session: RefCell::new(None),
-                source: RefCell::new(None),
-                presentation_clock: RefCell::new(None),
-                video_display: RefCell::new(None),
-                audio_volume: RefCell::new(None),
-                rate_control: RefCell::new(None),
-
-                state: Cell::new(State::Closed),
-                current_rate: Cell::new(1.),
-                seeking_pos: Cell::new(None),
-                is_pending: Cell::new(false),
-                op_request: OpRequest {
-                    command: Cell::new(None),
-                    rate: Cell::new(None),
-                    pos: Cell::new(None),
-                },
-
-                hwnd_video,
-                event_loop,
-            }
-            .into())
-        }
-    }
-
-    fn intf(&self) -> MF::IMFAsyncCallback {
-        unsafe { self.cast().unwrap() }
-    }
-
-    fn create_session(&self) -> WinResult<()> {
-        unsafe {
-            self.close_session()?;
-
-            debug_assert_eq!(self.state.get(), State::Closed);
-
-            let mut session = self.session.borrow_mut();
-            let session = session.insert(MF::MFCreateMediaSession(None)?);
-            session.BeginGetEvent(&self.intf(), None)?;
-
-            *self.presentation_clock.borrow_mut() = Some(session.GetClock()?.cast()?);
-
-            self.state.set(State::Ready);
-
-            Ok(())
-        }
-    }
-
-    fn close_session(&self) -> WinResult<()> {
-        unsafe {
-            let mut r = Ok(());
-
-            self.presentation_clock.take();
-            self.video_display.take();
-            self.audio_volume.take();
-            self.rate_control.take();
-
-            if let Some(session) = self.session.borrow().as_ref() {
-                self.state.set(State::Closing);
-                r = session.Close();
-                if r.is_ok() {
-                    let wait_result = self.close_mutex.try_lock_for(Duration::from_secs(5));
-                    if !wait_result {
-                        log::trace!("close_session timed out");
-                    }
-                }
-            }
-
-            if r.is_ok() {
-                if let Some(source) = self.source.borrow().as_ref() {
-                    let _ = source.Shutdown();
-                }
-                if let Some(session) = self.session.borrow().as_ref() {
-                    let _ = session.Shutdown();
-                }
-            }
-
-            self.source.take();
-            self.session.take();
-            self.state.set(State::Closed);
-
-            r
-        }
-    }
-
-    fn shutdown(&self) -> WinResult<()> {
-        unsafe {
-            let r = self.close_session();
-            let _ = MF::MFShutdown();
-            self.close_mutex.unlock();
-
-            r
-        }
-    }
-
-    fn create_media_sink_activate(
-        source_sd: &MF::IMFStreamDescriptor,
-        hwnd_video: F::HWND,
-    ) -> WinResult<MF::IMFActivate> {
-        unsafe {
-            let handler = source_sd.GetMediaTypeHandler()?;
-            let major_type = handler.GetMajorType()?;
-
-            if log::log_enabled!(log::Level::Debug) {
-                let media_type = handler.GetCurrentMediaType()?;
-                log::debug!(
-                    "codec: {}",
-                    match media_type.GetGUID(&MF::MF_MT_SUBTYPE)? {
-                        MF::MFVideoFormat_MPEG2 => "MPEG-2",
-                        MF::MFVideoFormat_H264 => "H.264",
-                        MF::MFVideoFormat_H265 => "H.265",
-                        MF::MFAudioFormat_MPEG => "MPEG Audio",
-                        MF::MFAudioFormat_AAC => "AAC",
-                        MF::MFAudioFormat_Dolby_AC3 => "AC3",
-                        _ => "Unknown",
-                    }
-                );
-                if let Ok(size) = media_type.GetUINT64(&MF::MF_MT_FRAME_SIZE) {
-                    log::debug!("size: {}x{}", (size >> 32) as u32, size as u32);
-                }
-                if let Ok(ratio) = media_type.GetUINT64(&MF::MF_MT_PIXEL_ASPECT_RATIO) {
-                    log::debug!("ratio: {}/{}", (ratio >> 32) as u32, ratio as u32);
-                }
-            }
-
-            let activate = match major_type {
-                MF::MFMediaType_Audio => MF::MFCreateAudioRendererActivate()?,
-                MF::MFMediaType_Video => MF::MFCreateVideoRendererActivate(hwnd_video)?,
-                _ => return Err(F::E_FAIL.into()),
-            };
-
-            Ok(activate)
-        }
-    }
-
-    fn add_source_node(
-        topology: &MF::IMFTopology,
-        source: &MF::IMFMediaSource,
-        pd: &MF::IMFPresentationDescriptor,
-        sd: &MF::IMFStreamDescriptor,
-    ) -> WinResult<MF::IMFTopologyNode> {
-        unsafe {
-            let node = MF::MFCreateTopologyNode(MF::MF_TOPOLOGY_SOURCESTREAM_NODE)?;
-            node.SetUnknown(&MF::MF_TOPONODE_SOURCE, source)?;
-            node.SetUnknown(&MF::MF_TOPONODE_PRESENTATION_DESCRIPTOR, pd)?;
-            node.SetUnknown(&MF::MF_TOPONODE_STREAM_DESCRIPTOR, sd)?;
-            topology.AddNode(&node)?;
-
-            Ok(node)
-        }
-    }
-
-    fn add_output_node(
-        topology: &MF::IMFTopology,
-        activate: &MF::IMFActivate,
-        id: u32,
-    ) -> WinResult<MF::IMFTopologyNode> {
-        unsafe {
-            let node = MF::MFCreateTopologyNode(MF::MF_TOPOLOGY_OUTPUT_NODE)?;
-            node.SetObject(activate)?;
-            node.SetUINT32(&MF::MF_TOPONODE_STREAMID, id)?;
-            node.SetUINT32(&MF::MF_TOPONODE_NOSHUTDOWN_ON_REMOVE, F::FALSE.0 as u32)?;
-            topology.AddNode(&node)?;
-
-            Ok(node)
-        }
-    }
-
-    fn add_branch_to_partial_topology(
-        topology: &MF::IMFTopology,
-        source: &MF::IMFMediaSource,
-        pd: &MF::IMFPresentationDescriptor,
-        i: u32,
-        hwnd_video: F::HWND,
-    ) -> WinResult<()> {
-        unsafe {
-            let (selected, sd) = get_stream_descriptor_by_index(pd, i)?;
-
-            if selected {
-                let sink_activate = Self::create_media_sink_activate(&sd, hwnd_video)?;
-                let source_node = Self::add_source_node(topology, source, pd, &sd)?;
-                let output_node = Self::add_output_node(topology, &sink_activate, 0)?;
-                source_node.ConnectOutput(0, &output_node, 0)?;
-            }
-
-            Ok(())
-        }
-    }
-
-    fn create_playback_topology(
-        source: &MF::IMFMediaSource,
-        pd: &MF::IMFPresentationDescriptor,
-        hwnd_video: F::HWND,
-    ) -> WinResult<MF::IMFTopology> {
-        unsafe {
-            let topology = MF::MFCreateTopology()?;
-
-            let c_source_streams = pd.GetStreamDescriptorCount()?;
-            for i in 0..c_source_streams {
-                Self::add_branch_to_partial_topology(&topology, source, pd, i, hwnd_video)?;
-            }
-
-            Ok(topology)
-        }
-    }
-
-    pub fn open(&self, path: &Path) -> WinResult<()> {
-        fn open(this: &PlayerInner, path: &Path) -> WinResult<()> {
-            unsafe {
-                this.create_session()?;
-
-                let mut source = this.source.borrow_mut();
-                let source = source.insert(TransportStream::new(path)?);
-                let source_pd = source.CreatePresentationDescriptor()?;
-
-                let topology =
-                    PlayerInner::create_playback_topology(source, &source_pd, this.hwnd_video)?;
-                this.session
-                    .borrow()
-                    .as_ref()
-                    .unwrap()
-                    .SetTopology(0, &topology)?;
-
-                Ok(())
-            }
         }
 
-        let r = open(self, path);
-
-        self.state.set(if r.is_ok() {
-            State::OpenPending
-        } else {
-            State::Closed
-        });
-
-        r
+        Ok(Player {
+            hwnd_video: F::HWND(window.hwnd()),
+            event_loop,
+            session: None,
+        })
     }
 
-    fn run_pending_ops(&self, new_state: State) -> WinResult<()> {
-        if self.state.get() == new_state && self.is_pending.take() {
-            match self.op_request.command.take() {
-                None => {}
-                Some(Command::Start) => self.start_playback()?,
-                Some(Command::Pause) => self.pause()?,
-                Some(Command::Stop) => self.stop()?,
-            }
+    #[inline]
+    pub fn is_opened(&self) -> bool {
+        self.session.is_some()
+    }
 
-            if let Some(rate) = self.op_request.rate.take() {
-                if rate != self.current_rate.get() {
-                    self.set_rate(rate)?;
-                }
-            }
+    pub fn open<P: AsRef<Path>>(&mut self, path: P) -> Result<()>
+    where
+        Event: From<crate::player::PlayerEvent> + Send,
+    {
+        let _ = self.close();
 
-            self.seeking_pos.take();
-            if let Some(pos) = self.op_request.pos.take() {
-                self.set_position_internal(pos)?;
-            }
-        }
+        let extractor = extract::Extractor::new();
+        let session = Session {
+            hwnd_video: self.hwnd_video,
+            event_loop: self.event_loop.clone(),
+            handler: extractor.handler(),
+            state: Arc::new(Mutex::new(State::default())),
+        };
+        let file = std::fs::File::open(path)?;
+        let thread_handle = extractor.spawn(file, session.clone());
+        session.state.lock().thread_handle = Some(thread_handle);
 
+        self.session = Some(session);
         Ok(())
     }
 
-    pub fn handle_event(&self, event: MF::IMFMediaEvent) -> WinResult<()> {
-        unsafe {
-            let me_type = event.GetType()?;
-            let status = event.GetStatus()?;
+    pub fn close(&mut self) -> Result<()> {
+        if let Some(session) = self.session.take() {
+            session.handler.shutdown();
 
-            match MF::MF_EVENT_TYPE(me_type as i32) {
-                MF::MESessionStarted => self.on_session_started(status, &event)?,
-                MF::MESessionPaused => self.on_session_paused(status, &event)?,
-                MF::MESessionRateChanged => self.on_session_rate_changed(status, &event)?,
+            let (session, thread_handle) = {
+                let mut state = session.state.lock();
+                (state.session.take(), state.thread_handle.take())
+            };
 
-                MF::MESessionTopologyStatus => self.on_topology_status(status, &event)?,
-                MF::MEEndOfPresentation => self.on_presentation_ended(status, &event)?,
-                MF::MENewPresentation => self.on_new_presentation(status, &event)?,
-
-                me => {
-                    log::debug!("media event: {:?}", me);
-                    status.ok()?;
-                }
+            if let Some(session) = session {
+                session.close()?;
             }
-
-            Ok(())
+            if let Some(thread_handle) = thread_handle {
+                let _ = thread_handle.join();
+            }
         }
-    }
-
-    fn on_session_started(&self, status: C::HRESULT, _event: &MF::IMFMediaEvent) -> WinResult<()> {
-        log::debug!("on_session_started");
-        status.ok()?;
-
-        self.run_pending_ops(State::Started)?;
         Ok(())
     }
 
-    fn on_session_paused(&self, status: C::HRESULT, _event: &MF::IMFMediaEvent) -> WinResult<()> {
-        log::debug!("on_session_paused");
-        status.ok()?;
-
-        self.run_pending_ops(State::Paused)?;
-        Ok(())
+    fn no_session() -> anyhow::Error {
+        anyhow::anyhow!("セッションがありません")
     }
 
-    fn on_session_rate_changed(
-        &self,
-        status: C::HRESULT,
-        event: &MF::IMFMediaEvent,
-    ) -> WinResult<()> {
-        unsafe {
-            log::debug!("on_session_rate_changed");
-
-            // 速度変更が成功した場合は既に速度をキャッシュ済み
-            // 失敗した場合は実際の速度に更新
-            if status.is_err() {
-                if let Ok(PropVariant::F32(rate)) = event.GetValue()?.try_into() {
-                    self.current_rate.set(rate);
-                }
-            }
-
-            Ok(())
-        }
+    fn with_session_must<T, E, F>(&self, f: F) -> Result<T>
+    where
+        E: Into<anyhow::Error>,
+        F: FnOnce(&session::Session) -> Result<T, E>,
+    {
+        let session = self.session.as_ref().ok_or_else(Self::no_session)?;
+        let state = session.state.lock();
+        let session = state.session.as_ref().ok_or_else(Self::no_session)?;
+        f(session).map_err(Into::into)
     }
 
-    fn on_topology_status(&self, status: C::HRESULT, event: &MF::IMFMediaEvent) -> WinResult<()> {
-        unsafe fn get_service<T: Interface>(
-            session: &MF::IMFMediaSession,
-            guid: &C::GUID,
-        ) -> WinResult<T> {
-            let mut ptr = std::ptr::null_mut();
-            MF::MFGetService(session, guid, &T::IID, &mut ptr)?;
-            debug_assert!(!ptr.is_null());
-            Ok(T::from_raw(ptr))
-        }
-
-        unsafe {
-            status.ok()?;
-
-            let status = event.GetUINT32(&MF::MF_EVENT_TOPOLOGY_STATUS)?;
-            if status == MF::MF_TOPOSTATUS_READY.0 as u32 {
-                log::debug!("on_topology_ready");
-
-                let session = self.session.borrow();
-                let Some(session) = session.as_ref() else {
-                    return Err(MF::MF_E_INVALIDREQUEST.into());
-                };
-
-                *self.video_display.borrow_mut() =
-                    get_service(session, &MF::MR_VIDEO_RENDER_SERVICE).ok();
-                *self.audio_volume.borrow_mut() =
-                    get_service(session, &MF::MR_STREAM_VOLUME_SERVICE).ok();
-                *self.rate_control.borrow_mut() =
-                    get_service(session, &MF::MF_RATE_CONTROL_SERVICE).ok();
-
-                self.start_playback()?;
-            }
-            Ok(())
-        }
-    }
-
-    fn on_presentation_ended(&self, status: C::HRESULT, _: &MF::IMFMediaEvent) -> WinResult<()> {
-        log::debug!("on_presentation_ended");
-        status.ok()?;
-
-        self.state.set(State::Stopped);
-        Ok(())
-    }
-
-    fn on_new_presentation(&self, status: C::HRESULT, event: &MF::IMFMediaEvent) -> WinResult<()> {
-        unsafe fn get_event_object<T: C::Interface>(event: &MF::IMFMediaEvent) -> WinResult<T> {
-            let Ok(PropVariant::IUnknown(unk)) = PropVariant::try_from(event.GetValue()?) else {
-                return Err(MF::MF_E_INVALIDTYPE.into());
-            };
-
-            unk.cast()
-        }
-
-        unsafe {
-            log::debug!("on_new_presentation");
-            status.ok()?;
-
-            let session = self.session.borrow();
-            let session = session.as_ref().expect("session closed");
-
-            let source = self.source.borrow();
-            let source = source.as_ref().expect("session closed");
-
-            let pd = get_event_object(event)?;
-            let topology = Self::create_playback_topology(source, &pd, self.hwnd_video)?;
-            session.SetTopology(0, &topology)?;
-
-            self.state.set(State::OpenPending);
-
-            Ok(())
-        }
-    }
-
-    fn start_playback(&self) -> WinResult<()> {
-        unsafe {
-            log::debug!("start_playback");
-
-            let session = self.session.borrow();
-            let session = session.as_ref().expect("session closed");
-
-            session.Start(&GUID_NULL, &Default::default())?;
-
-            self.state.set(State::Started);
-            self.is_pending.set(true);
-
-            Ok(())
-        }
-    }
-
-    pub fn play(&self) -> WinResult<()> {
-        if !matches!(self.state.get(), State::Paused | State::Stopped) {
-            return Err(MF::MF_E_INVALIDREQUEST.into());
-        }
-        if self.session.borrow().is_none() || self.source.borrow().is_none() {
-            return Err(F::E_UNEXPECTED.into());
-        }
-
-        if self.is_pending.get() {
-            self.op_request.command.set(Some(Command::Start));
-        } else {
-            self.start_playback()?;
-        }
-
-        Ok(())
-    }
-
-    pub fn pause(&self) -> WinResult<()> {
-        unsafe {
-            if self.state.get() != State::Started {
-                return Err(MF::MF_E_INVALIDREQUEST.into());
-            }
-
-            let session = self.session.borrow();
-            let Some(session) = session.as_ref() else {
-                return Err(F::E_UNEXPECTED.into());
-            };
-
-            if self.is_pending.get() {
-                self.op_request.command.set(Some(Command::Pause));
-            } else {
-                session.Pause()?;
-
-                self.state.set(State::Paused);
-                self.is_pending.set(true);
-            }
-
-            Ok(())
-        }
-    }
-
-    pub fn stop(&self) -> WinResult<()> {
-        unsafe {
-            if matches!(self.state.get(), State::Started | State::Paused) {
-                return Err(MF::MF_E_INVALIDREQUEST.into());
-            }
-
-            let session = self.session.borrow();
-            let Some(session) = session.as_ref() else {
-                return Err(F::E_UNEXPECTED.into());
-            };
-
-            if self.is_pending.get() {
-                self.op_request.command.set(Some(Command::Stop));
-            } else {
-                session.Stop()?;
-
-                self.state.set(State::Stopped);
-                self.is_pending.set(true);
-            }
-
-            Ok(())
-        }
-    }
-
-    pub fn play_or_pause(&self) -> WinResult<()> {
-        match self.state.get() {
-            State::Started => self.pause()?,
-            State::Paused => self.play()?,
-            _ => return Err(MF::MF_E_INVALIDREQUEST.into()),
-        }
-
-        Ok(())
-    }
-
-    pub fn repaint(&self) -> WinResult<()> {
-        unsafe {
-            if let Some(video_display) = &*self.video_display.borrow() {
-                video_display.RepaintVideo()
-            } else {
-                Ok(())
-            }
-        }
-    }
-
-    pub fn resize_video(&self, width: u32, height: u32) -> WinResult<()> {
-        unsafe {
-            if let Some(video_display) = &*self.video_display.borrow() {
-                let mut size = F::SIZE { cx: 0, cy: 0 };
-                video_display.GetNativeVideoSize(&mut size, std::ptr::null_mut())?;
-
-                let src = MF::MFVideoNormalizedRect {
-                    left: 0.,
-                    top: 0.,
-                    right: 1.,
-                    bottom: if size.cy == 1088 { 1080. / 1088. } else { 1. },
-                };
-                let dst = F::RECT {
-                    left: 0,
-                    top: 0,
-                    right: width as i32,
-                    bottom: height as i32,
-                };
-                video_display.SetVideoPosition(&src, &dst)?;
-            }
-
-            Ok(())
-        }
-    }
-
-    pub fn position(&self) -> WinResult<Duration> {
-        unsafe {
-            let presentation_clock = self.presentation_clock.borrow();
-            let Some(presentation_clock) = presentation_clock.as_ref() else {
-                return Err(MF::MF_E_NO_CLOCK.into());
-            };
-
-            let pos =
-                if let Some(pos) = self.op_request.pos.get().or_else(|| self.seeking_pos.get()) {
-                    pos
-                } else {
-                    Duration::from_nanos(presentation_clock.GetTime()? as u64 * 100)
-                };
-
-            Ok(pos)
-        }
-    }
-
-    fn set_position_internal(&self, pos: Duration) -> WinResult<()> {
-        unsafe {
-            let session = self.session.borrow();
-            let Some(session) = session.as_ref() else {
-                return Err(MF::MF_E_INVALIDREQUEST.into());
-            };
-
-            let time = (pos.as_nanos() / 100) as i64;
-            session.Start(&GUID_NULL, &PropVariant::I64(time).to_raw())?;
-            if self.state.get() == State::Paused {
-                session.Pause()?
-            }
-
-            self.seeking_pos.set(Some(pos));
-            self.is_pending.set(true);
-
-            Ok(())
-        }
-    }
-
-    pub fn set_position(&self, pos: Duration) -> WinResult<()> {
-        if self.is_pending.get() {
-            self.op_request.pos.set(Some(pos));
-        } else {
-            self.set_position_internal(pos)?;
-        }
-
-        Ok(())
-    }
-
-    pub fn volume(&self) -> WinResult<f32> {
-        unsafe {
-            let audio_volume = self.audio_volume.borrow();
-            let Some(audio_volume) = audio_volume.as_ref() else {
-                return Err(MF::MF_E_INVALIDREQUEST.into());
-            };
-
-            if audio_volume.GetChannelCount()? < 1 {
-                return Err(MF::MF_E_INVALIDREQUEST.into());
-            }
-
-            let value = audio_volume.GetChannelVolume(0)?;
-            Ok(value)
-        }
-    }
-
-    pub fn set_volume(&self, value: f32) -> WinResult<()> {
-        unsafe {
-            let audio_volume = self.audio_volume.borrow();
-            let Some(audio_volume) = audio_volume.as_ref() else {
-                return Err(MF::MF_E_INVALIDREQUEST.into());
-            };
-
-            let nch = audio_volume.GetChannelCount()? as usize;
-            audio_volume.SetAllVolumes(&*vec![value; nch])?;
-            Ok(())
-        }
-    }
-
-    pub fn rate(&self) -> WinResult<f32> {
-        unsafe {
-            let rate_control = self.rate_control.borrow();
-            let Some(rate_control) = rate_control.as_ref() else {
-                return Err(MF::MF_E_INVALIDREQUEST.into());
-            };
-
-            let mut rate = 0.;
-            rate_control.GetRate(std::ptr::null_mut(), &mut rate)?;
-            Ok(rate)
-        }
-    }
-
-    pub fn set_rate(&self, value: f32) -> WinResult<()> {
-        unsafe {
-            let rate_control = self.rate_control.borrow();
-            let Some(rate_control) = rate_control.as_ref() else {
-                return Err(MF::MF_E_INVALIDREQUEST.into());
-            };
-
-            if self.is_pending.get() {
-                self.op_request.rate.set(Some(value));
-            } else {
-                rate_control.SetRate(F::FALSE, value)?;
-                self.current_rate.set(value);
-            }
-
-            Ok(())
-        }
-    }
-
+    #[inline]
     pub fn selected_service(&self) -> Option<isdb::filters::sorter::Service> {
-        self.source
-            .borrow()
-            .as_ref()
-            .and_then(|source| source.as_impl().selected_service())
+        let session = self.session.as_ref()?;
+        let selected_service = session.handler.selected_stream();
+        let selected_service = selected_service.as_ref()?;
+        let service = session.handler.services()[&selected_service.service_id].clone();
+        Some(service)
     }
 
+    #[inline]
     pub fn active_video_tag(&self) -> Option<u8> {
-        self.source
-            .borrow()
-            .as_ref()
-            .and_then(|source| source.as_impl().active_video_tag())
+        let session = self.session.as_ref()?;
+        let selected_stream = session.handler.selected_stream();
+        selected_stream.as_ref()?.video_stream.component_tag()
     }
 
+    #[inline]
     pub fn active_audio_tag(&self) -> Option<u8> {
-        self.source
-            .borrow()
-            .as_ref()
-            .and_then(|source| source.as_impl().active_audio_tag())
+        let session = self.session.as_ref()?;
+        let selected_stream = session.handler.selected_stream();
+        selected_stream.as_ref()?.audio_stream.component_tag()
     }
 
-    pub fn services(&self) -> isdb::filters::sorter::ServiceMap {
-        let source = self.source.borrow();
-        let Some(source) = source.as_ref() else {
-            return Default::default();
-        };
-        source.as_impl().services()
+    #[inline]
+    pub fn services(&self) -> Option<isdb::filters::sorter::ServiceMap> {
+        let session = self.session.as_ref()?;
+        let services = session.handler.services();
+        Some(services.clone())
     }
 
-    pub fn select_service(&self, service_id: Option<ServiceId>) -> WinResult<()> {
-        let source = self.source.borrow();
-        let Some(source) = source.as_ref() else {
-            return Err(MF::MF_E_INVALIDREQUEST.into());
-        };
-
-        source.as_impl().select_service(service_id)?;
+    #[inline]
+    pub fn select_service(&mut self, service_id: Option<ServiceId>) -> Result<()> {
+        let session = self.session.as_ref().ok_or_else(Self::no_session)?;
+        session.handler.select_service(service_id);
         Ok(())
     }
 
-    pub fn select_video_stream(&self, component_tag: u8) -> WinResult<()> {
-        let source = self.source.borrow();
-        let Some(source) = source.as_ref() else {
-            return Err(MF::MF_E_INVALIDREQUEST.into());
-        };
-
-        source.as_impl().select_video_stream(component_tag)?;
+    #[inline]
+    pub fn select_video_stream(&mut self, component_tag: u8) -> Result<()> {
+        let session = self.session.as_ref().ok_or_else(Self::no_session)?;
+        session.handler.select_video_stream(component_tag);
         Ok(())
     }
 
-    pub fn select_audio_stream(&self, component_tag: u8) -> WinResult<()> {
-        let source = self.source.borrow();
-        let Some(source) = source.as_ref() else {
-            return Err(MF::MF_E_INVALIDREQUEST.into());
+    #[inline]
+    pub fn select_audio_stream(&mut self, component_tag: u8) -> Result<()> {
+        let session = self.session.as_ref().ok_or_else(Self::no_session)?;
+        session.handler.select_audio_stream(component_tag);
+        Ok(())
+    }
+
+    #[inline]
+    pub fn handle_event(&mut self, event: PlayerEvent) -> Result<()> {
+        match &self.session {
+            Some(session) => {
+                let state = session.state.lock();
+                if let Some(session) = &state.session {
+                    session.handle_event(event)?;
+                }
+            }
+            None => {}
+        }
+
+        Ok(())
+    }
+
+    #[inline]
+    pub fn play(&mut self) -> Result<()> {
+        self.with_session_must(|session| session.play())
+    }
+
+    #[inline]
+    pub fn pause(&mut self) -> Result<()> {
+        self.with_session_must(|session| session.pause())
+    }
+
+    #[inline]
+    pub fn play_or_pause(&mut self) -> Result<()> {
+        self.with_session_must(|session| session.play_or_pause())
+    }
+
+    #[inline]
+    pub fn stop(&mut self) -> Result<()> {
+        self.with_session_must(|session| session.stop())
+    }
+
+    #[inline]
+    pub fn repaint(&mut self) -> Result<()> {
+        match &self.session {
+            Some(session) => {
+                let state = session.state.lock();
+                if let Some(session) = &state.session {
+                    session.repaint()?;
+                }
+            }
+            None => {}
+        }
+
+        Ok(())
+    }
+
+    #[inline]
+    pub fn resize_video(&mut self, width: u32, height: u32) -> Result<()> {
+        match &self.session {
+            Some(session) => {
+                let state = session.state.lock();
+                if let Some(session) = &state.session {
+                    session.resize_video(width, height)?;
+                }
+            }
+            None => {}
+        }
+        Ok(())
+    }
+
+    #[inline]
+    pub fn position(&self) -> Result<Duration> {
+        self.with_session_must(|session| session.position())
+    }
+
+    #[inline]
+    pub fn set_position(&mut self, pos: Duration) -> Result<()> {
+        self.with_session_must(|session| session.set_position(pos))
+    }
+
+    #[inline]
+    pub fn volume(&self) -> Result<f32> {
+        self.with_session_must(|session| session.volume())
+    }
+
+    #[inline]
+    pub fn set_volume(&mut self, value: f32) -> Result<()> {
+        self.with_session_must(|session| session.set_volume(value))
+    }
+
+    #[inline]
+    pub fn rate(&self) -> Result<f32> {
+        self.with_session_must(|session| session.rate())
+    }
+
+    #[inline]
+    pub fn set_rate(&mut self, value: f32) -> Result<()> {
+        self.with_session_must(|session| session.set_rate(value))
+    }
+}
+
+impl<Event> Drop for Player<Event> {
+    fn drop(&mut self) {
+        unsafe {
+            let _ = MF::MFShutdown();
+        }
+    }
+}
+
+impl<Event> Session<Event>
+where
+    Event: From<crate::player::PlayerEvent> + Send,
+{
+    /// サービスが未選択の場合はパニックする。
+    fn reset(&self, changed: extract::StreamChanged) -> WinResult<()> {
+        let mut state = self.state.lock();
+        let (volume, rate) = if let Some(session) = &state.session {
+            // 音声種別が変わらない場合は何もしない
+            if !changed.video_type && !changed.video_pid && !changed.audio_type {
+                return Ok(());
+            }
+
+            let volume = session.volume().ok();
+            let rate = session.rate().ok();
+
+            session.close()?;
+
+            (volume, rate)
+        } else {
+            (None, None)
         };
 
-        source.as_impl().select_audio_stream(component_tag)?;
+        let selected_stream = self.handler.selected_stream();
+        let selected_stream = selected_stream.as_ref().expect("サービス未選択");
+        let source = TransportStream::new(
+            self.handler.clone(),
+            &selected_stream.video_stream,
+            &selected_stream.audio_stream,
+        )?;
+        let event_loop = session::EventLoopWrapper::new(self.event_loop.clone());
+
+        state.session = Some(session::Session::new(
+            self.hwnd_video,
+            event_loop,
+            self.handler.clone(),
+            source,
+            volume,
+            rate,
+        )?);
         Ok(())
     }
 }
 
-#[allow(non_snake_case)]
-impl MF::IMFAsyncCallback_Impl for PlayerInner {
-    fn GetParameters(&self, _: *mut u32, _: *mut u32) -> WinResult<()> {
-        log::trace!("Player::GetParameters");
-        Err(F::E_NOTIMPL.into())
+impl<Event> extract::Sink for Session<Event>
+where
+    Event: From<crate::player::PlayerEvent> + Send,
+{
+    fn on_services_updated(&mut self, _: &isdb::filters::sorter::ServiceMap) {
+        // TODO: UIに通知
+    }
+    fn on_streams_updated(&mut self, _: &isdb::filters::sorter::Service) {
+        // TODO: UIに通知
     }
 
-    fn Invoke(&self, presult: &Option<MF::IMFAsyncResult>) -> WinResult<()> {
-        log::trace!("Player::Invoke");
-        unsafe {
-            let session = self.session.borrow();
-            let session = session.as_ref().expect("session closed");
+    fn on_event_updated(&mut self, service: &isdb::filters::sorter::Service, is_present: bool) {
+        // TODO: UIに通知
+        let service_id = self
+            .handler
+            .selected_stream()
+            .as_ref()
+            .map(|ss| ss.service_id);
+        if service_id != Some(service.service_id()) {
+            return;
+        }
 
-            let event = session.EndGetEvent(presult.as_ref())?;
-            let me_type = event.GetType()?;
-            if me_type == MF::MESessionClosed.0 as u32 {
-                self.close_mutex.unlock();
-            } else {
-                session.BeginGetEvent(&self.intf(), None)?;
+        if is_present {
+            if let Some(name) = service.present_event().and_then(|e| e.name.as_ref()) {
+                log::info!("event changed: {}", name.display(Default::default()));
             }
+        }
+    }
 
-            if self.state.get() != State::Closing {
-                let _ = self.event_loop.0.send_player_event(event);
+    fn on_service_changed(&mut self, service: &isdb::filters::sorter::Service) {
+        // TODO: UIに通知
+        log::info!(
+            "service changed: {} ({:04X})",
+            service.service_name().display(Default::default()),
+            service.service_id()
+        );
+    }
+
+    fn on_stream_changed(&mut self, changed: extract::StreamChanged) {
+        // ストリームに変化があったということはサービスは選択されている
+        let r = self.reset(changed);
+        if let Err(e) = r {
+            // TODO: UIに通知
+            log::error!("stream error: {}", e);
+        }
+    }
+
+    fn on_video_packet(
+        &mut self,
+        pts: Option<isdb::time::Timestamp>,
+        _: Option<isdb::time::Timestamp>,
+        payload: &[u8],
+    ) {
+        let source = self.state.lock().session.as_ref().map(|s| s.source());
+        if let Some(source) = source {
+            let source: &TransportStream = source.as_impl();
+            source.deliver_video_packet(pts, payload);
+        }
+    }
+
+    fn on_audio_packet(
+        &mut self,
+        pts: Option<isdb::time::Timestamp>,
+        _: Option<isdb::time::Timestamp>,
+        payload: &[u8],
+    ) {
+        let source = self.state.lock().session.as_ref().map(|s| s.source());
+        if let Some(source) = source {
+            let source: &TransportStream = source.as_impl();
+            source.deliver_audio_packet(pts, payload);
+        }
+    }
+
+    fn on_caption(&mut self, caption: &isdb::filters::sorter::Caption) {
+        // TODO: UIに通知
+        let service_id = {
+            let selected_stream = self.handler.selected_stream();
+            let Some(selected_stream) = selected_stream.as_ref() else {
+                return;
+            };
+            selected_stream.service_id
+        };
+        let decode_opts = if self.handler.services()[&service_id].is_oneseg() {
+            isdb::eight::decode::Options::ONESEG_CAPTION
+        } else {
+            isdb::eight::decode::Options::CAPTION
+        };
+
+        for data_unit in caption.data_units() {
+            let isdb::pes::caption::DataUnit::StatementBody(caption) = data_unit else {
+                continue;
+            };
+
+            let caption = caption.to_string(decode_opts);
+            if !caption.is_empty() {
+                log::info!("caption: {}", caption);
             }
+        }
+    }
 
-            Ok(())
+    fn on_end_of_stream(&mut self) {
+        let source = self.state.lock().session.as_ref().map(|s| s.source());
+        if let Some(source) = source {
+            let source: &TransportStream = source.as_impl();
+            let _ = source.end_of_mpeg_stream();
+        }
+    }
+
+    fn on_stream_error(&mut self, error: std::io::Error) {
+        self.on_end_of_stream();
+        log::error!("stream error: {}", error);
+    }
+
+    fn needs_es(&self) -> bool {
+        let source = self.state.lock().session.as_ref().map(|s| s.source());
+        if let Some(source) = source {
+            let source: &TransportStream = source.as_impl();
+            source.streams_need_data()
+        } else {
+            false
         }
     }
 }

@@ -11,11 +11,11 @@ use crate::sys::player as imp;
 pub struct PlayerEvent(pub(crate) imp::PlayerEvent);
 
 /// TSを再生するためのプレイヤー。
-pub struct Player<E> {
+pub struct Player<E: 'static> {
     inner: imp::Player<E>,
 }
 
-impl<E: From<PlayerEvent>> Player<E> {
+impl<E> Player<E> {
     /// ウィンドウに描画する映像プレイヤーを生成する。
     pub fn new(
         window: &winit::window::Window,
@@ -25,12 +25,13 @@ impl<E: From<PlayerEvent>> Player<E> {
             inner: imp::Player::new(window, event_loop)?,
         })
     }
-}
 
-impl<E> Player<E> {
     /// 指定されたファイルを開き、再生を開始する。
     #[inline]
-    pub fn open<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
+    pub fn open<P: AsRef<Path>>(&mut self, path: P) -> Result<()>
+    where
+        E: From<PlayerEvent> + Send,
+    {
         self.inner.open(path)
     }
 
@@ -113,8 +114,8 @@ impl<E> Player<E> {
     ///
     /// 終了処理は`Drop`ではなくこちらで行うため、終了時にはこのメソッドを必ず呼び出す必要がある。
     #[inline]
-    pub fn shutdown(&mut self) -> Result<()> {
-        self.inner.shutdown()
+    pub fn close(&mut self) -> Result<()> {
+        self.inner.close()
     }
 
     /// 選択されたサービスを返す。
@@ -145,7 +146,7 @@ impl<E> Player<E> {
     ///
     /// TSを開いていない状態では空の連想配列を返す。
     #[inline]
-    pub fn services(&self) -> isdb::filters::sorter::ServiceMap {
+    pub fn services(&self) -> Option<isdb::filters::sorter::ServiceMap> {
         self.inner.services()
     }
 
