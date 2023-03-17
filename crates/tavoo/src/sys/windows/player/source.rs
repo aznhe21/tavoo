@@ -272,7 +272,7 @@ impl TransportStream {
         let outer = self.outer();
         let r = Inner::deliver_video_packet(&mut outer.inner.lock(), pts, payload);
         if let Err(e) = r {
-            log::error!("error[deliver_video_packet]: {}", e);
+            log::debug!("error[deliver_video_packet]: {}", e);
             outer.streaming_error(e);
         }
     }
@@ -281,7 +281,7 @@ impl TransportStream {
         let outer = self.outer();
         let r = Inner::deliver_audio_packet(&mut outer.inner.lock(), pts, payload);
         if let Err(e) = r {
-            log::error!("error[deliver_audio_packet]: {}", e);
+            log::debug!("error[deliver_audio_packet]: {}", e);
             outer.streaming_error(e);
         }
     }
@@ -764,7 +764,7 @@ impl MF::IMFMediaSource_Impl for Outer {
 
     fn CreatePresentationDescriptor(&self) -> WinResult<MF::IMFPresentationDescriptor> {
         unsafe {
-            log::debug!("TransportStream::CreatePresentationDescriptor");
+            log::trace!("TransportStream::CreatePresentationDescriptor");
 
             let inner = self.inner.lock();
             inner.check_shutdown()?;
@@ -781,7 +781,7 @@ impl MF::IMFMediaSource_Impl for Outer {
         start_pos: *const windows::Win32::System::Com::StructuredStorage::PROPVARIANT,
     ) -> WinResult<()> {
         unsafe {
-            log::debug!(
+            log::trace!(
                 "TransportStream::Start: pd={:?}, time_format={:?}, start_pos={:?}",
                 pd,
                 time_format.as_ref(),
@@ -825,7 +825,7 @@ impl MF::IMFMediaSource_Impl for Outer {
     }
 
     fn Stop(&self) -> WinResult<()> {
-        log::debug!("TransportStream::Stop");
+        log::trace!("TransportStream::Stop");
 
         let inner = self.inner.lock();
         inner.check_shutdown()?;
@@ -836,7 +836,7 @@ impl MF::IMFMediaSource_Impl for Outer {
     }
 
     fn Pause(&self) -> WinResult<()> {
-        log::debug!("TransportStream::Pause");
+        log::trace!("TransportStream::Pause");
 
         let inner = self.inner.lock();
         inner.check_shutdown()?;
@@ -848,7 +848,7 @@ impl MF::IMFMediaSource_Impl for Outer {
 
     fn Shutdown(&self) -> WinResult<()> {
         unsafe {
-            log::debug!("TransportStream::Shutdown");
+            log::trace!("TransportStream::Shutdown");
 
             let mut inner = self.inner.lock();
             inner.check_shutdown()?;

@@ -202,7 +202,7 @@ impl Inner {
                 }
 
                 if this.samples.is_empty() && this.is_eos {
-                    log::debug!("sample exhausted ({:p})", this);
+                    log::trace!("sample exhausted ({:p})", this);
                     this.event_queue.QueueEventParamVar(
                         MF::MEEndOfStream.0 as u32,
                         &GUID_NULL,

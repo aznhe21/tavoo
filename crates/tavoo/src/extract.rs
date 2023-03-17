@@ -372,14 +372,14 @@ impl<T: Sink> Selector<T> {
     fn select_service(&mut self, services: &ServiceMap, service_id: Option<ServiceId>) {
         let service = if let Some(service_id) = service_id {
             let Some(service) = services.get(&service_id) else {
-                log::error!("指定されたサービスが存在しない");
+                log::info!("select_service：指定されたサービスが存在しない");
                 return;
             };
 
             service
         } else {
             let Some((_, service)) = services.first() else {
-                log::error!("サービスが存在しない");
+                log::error!("select_service：サービスが存在しない");
                 return;
             };
 
@@ -387,7 +387,7 @@ impl<T: Sink> Selector<T> {
         };
 
         if !service.pmt_filled() {
-            log::trace!("PMT未受信");
+            log::trace!("select_service：PMT未受信");
             return;
         }
 
@@ -408,11 +408,11 @@ impl<T: Sink> Selector<T> {
             };
 
             let Some(video_stream) = service.find_video_stream(video_tag) else {
-                log::info!("映像ストリームが存在しない");
+                log::info!("select_service：映像ストリームが存在しない");
                 return;
             };
             let Some(audio_stream) = service.find_audio_stream(audio_tag) else {
-                log::info!("音声ストリームが存在しない");
+                log::info!("select_service：音声ストリームが存在しない");
                 return;
             };
 
@@ -441,13 +441,13 @@ impl<T: Sink> Selector<T> {
         let changed = {
             let mut state = self.state.write();
             let Some(selected_stream) = state.selected_stream.as_mut() else {
-                log::debug!("サービス未選択");
+                log::debug!("select_video_stream：サービス未選択");
                 return;
             };
 
             let service = &services[&selected_stream.service_id];
             let Some(video_stream) = service.find_video_stream(Some(component_tag)) else {
-                log::error!("映像ストリームが存在しない");
+                log::info!("select_video_stream：映像ストリームが存在しない");
                 return;
             };
 
@@ -475,13 +475,13 @@ impl<T: Sink> Selector<T> {
         let changed = {
             let mut state = self.state.write();
             let Some(selected_stream) = state.selected_stream.as_mut() else {
-                log::debug!("サービス未選択");
+                log::debug!("select_audio_stream：サービス未選択");
                 return;
             };
 
             let service = &services[&selected_stream.service_id];
             let Some(audio_stream) = service.find_audio_stream(Some(component_tag)) else {
-                log::error!("音声ストリームが存在しない");
+                log::info!("select_audio_stream：音声ストリームが存在しない");
                 return;
             };
 
@@ -516,11 +516,11 @@ impl<T: Sink> Selector<T> {
             let audio_tag = selected_stream.audio_stream.component_tag();
 
             let Some(video_stream) = service.find_video_stream(video_tag) else {
-                log::info!("映像ストリームが存在しない");
+                log::info!("update_es：映像ストリームが存在しない");
                 return;
             };
             let Some(audio_stream) = service.find_audio_stream(audio_tag) else {
-                log::info!("音声ストリームが存在しない");
+                log::info!("update_es：音声ストリームが存在しない");
                 return;
             };
 

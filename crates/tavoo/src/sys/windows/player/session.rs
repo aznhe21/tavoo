@@ -50,9 +50,9 @@ fn create_media_sink_activate(
         let handler = source_sd.GetMediaTypeHandler()?;
         let major_type = handler.GetMajorType()?;
 
-        if log::log_enabled!(log::Level::Debug) {
+        if log::log_enabled!(log::Level::Trace) {
             let media_type = handler.GetCurrentMediaType()?;
-            log::debug!(
+            log::trace!(
                 "codec: {}",
                 match media_type.GetGUID(&MF::MF_MT_SUBTYPE)? {
                     MF::MFVideoFormat_MPEG2 => "MPEG-2",
@@ -65,10 +65,10 @@ fn create_media_sink_activate(
                 }
             );
             if let Ok(size) = media_type.GetUINT64(&MF::MF_MT_FRAME_SIZE) {
-                log::debug!("size: {}x{}", (size >> 32) as u32, size as u32);
+                log::trace!("size: {}x{}", (size >> 32) as u32, size as u32);
             }
             if let Ok(ratio) = media_type.GetUINT64(&MF::MF_MT_PIXEL_ASPECT_RATIO) {
-                log::debug!("ratio: {}/{}", (ratio >> 32) as u32, ratio as u32);
+                log::trace!("ratio: {}/{}", (ratio >> 32) as u32, ratio as u32);
             }
         }
 
@@ -378,7 +378,7 @@ impl Inner {
                 let wait_result =
                     MutexGuard::unlocked(this, || close_mutex.try_lock_for(Duration::from_secs(5)));
                 if !wait_result {
-                    log::trace!("Session::shutdown timed out");
+                    log::trace!("Session::shutdown: timeout");
                 }
 
                 let _ = this.source.intf().Shutdown();
@@ -454,7 +454,7 @@ impl Inner {
         status: C::HRESULT,
         _event: &MF::IMFMediaEvent,
     ) -> WinResult<()> {
-        log::debug!("Session::on_session_started");
+        log::trace!("Session::on_session_started");
         status.ok()?;
 
         self.run_pending_ops(State::Started)?;
@@ -466,7 +466,7 @@ impl Inner {
         status: C::HRESULT,
         _event: &MF::IMFMediaEvent,
     ) -> WinResult<()> {
-        log::debug!("Session::on_session_paused");
+        log::trace!("Session::on_session_paused");
         status.ok()?;
 
         self.run_pending_ops(State::Paused)?;
@@ -479,7 +479,7 @@ impl Inner {
         event: &MF::IMFMediaEvent,
     ) -> WinResult<()> {
         unsafe {
-            log::debug!("Session::on_session_rate_changed");
+            log::trace!("Session::on_session_rate_changed");
 
             // 速度変更が成功した場合は既に速度をキャッシュ済み
             // 失敗した場合は実際の速度に更新
@@ -510,7 +510,7 @@ impl Inner {
 
             let status = event.GetUINT32(&MF::MF_EVENT_TOPOLOGY_STATUS)?;
             if status == MF::MF_TOPOSTATUS_READY.0 as u32 {
-                log::debug!("Session::on_topology_ready");
+                log::trace!("Session::on_topology_ready");
 
                 self.video_display = self.get_service(&MF::MR_VIDEO_RENDER_SERVICE).ok();
                 self.audio_volume = self.get_service(&MF::MR_STREAM_VOLUME_SERVICE).ok();
@@ -538,7 +538,7 @@ impl Inner {
         status: C::HRESULT,
         _: &MF::IMFMediaEvent,
     ) -> WinResult<()> {
-        log::debug!("Session::on_presentation_ended");
+        log::trace!("Session::on_presentation_ended");
         status.ok()?;
 
         self.state = State::Stopped;
@@ -559,7 +559,7 @@ impl Inner {
         }
 
         unsafe {
-            log::debug!("Session::on_new_presentation");
+            log::trace!("Session::on_new_presentation");
             status.ok()?;
 
             let pd = get_event_object(event)?;
@@ -574,7 +574,7 @@ impl Inner {
 
     fn start_playback(&mut self) -> WinResult<()> {
         unsafe {
-            log::debug!("Session::start_playback");
+            log::trace!("Session::start_playback");
 
             self.session.Start(&GUID_NULL, &Default::default())?;
 
