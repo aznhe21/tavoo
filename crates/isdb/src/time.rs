@@ -214,7 +214,10 @@ impl Timestamp {
     pub const fn from_duration(dur: Duration) -> Timestamp {
         let secs = dur.as_secs();
         let nanos = dur.subsec_nanos();
-        Timestamp((secs * 90_000) + (nanos as u64 * 90 / 1_000_000))
+        Timestamp(
+            secs.saturating_mul(90_000)
+                .saturating_add(nanos as u64 * 90 / 1_000_000),
+        )
     }
 
     /// `data`から`Timestamp`を読み取る。
@@ -234,7 +237,11 @@ impl Timestamp {
     /// PTS・DTSを秒成分を含むナノ秒に変換する。
     #[inline]
     pub const fn as_nanos(&self) -> u64 {
-        self.0 * 1_000_000 / 90
+        // (v * 1_000_000 / 90)と(v / 90 * 1_000_000)からできるだけオーバーフローしない方を選択
+        match self.0.checked_mul(1_000_000) {
+            Some(v) => v / 90,
+            None => (self.0 / 90).saturating_mul(1_000_000),
+        }
     }
 
     /// PTS・DTSを[`Duration`]に変換する。
