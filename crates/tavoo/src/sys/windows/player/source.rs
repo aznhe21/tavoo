@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 use parking_lot::{Mutex, MutexGuard};
@@ -199,6 +200,7 @@ unsafe impl Send for TransportStream {}
 impl TransportStream {
     pub fn new(
         handler: ExtractHandler,
+        first_pts: Arc<Mutex<Option<isdb::time::Timestamp>>>,
         video_stream: &isdb::filters::sorter::Stream,
         audio_stream: &isdb::filters::sorter::Stream,
     ) -> WinResult<TransportStream> {
@@ -224,7 +226,7 @@ impl TransportStream {
                 audio_stream: dummy_stream,
 
                 rate: 1.,
-                first_pts: None,
+                first_pts,
                 pending_eos: 0,
             });
             let this = TransportStream(
@@ -337,7 +339,7 @@ struct Inner {
     audio_stream: MF::IMFMediaStream,
 
     rate: f32,
-    first_pts: Option<isdb::time::Timestamp>,
+    first_pts: Arc<Mutex<Option<isdb::time::Timestamp>>>,
     pending_eos: usize,
 }
 
@@ -452,7 +454,8 @@ impl Inner {
                 let start_pos = if let Some(start_pos) = start_pos {
                     // ExtractHandlerに指定する開始時刻はPTS基準
                     let mut pos = (start_pos as u64) * 100;
-                    if let Some(first_pts) = this.first_pts {
+                    let first_pts = *this.first_pts.lock();
+                    if let Some(first_pts) = first_pts {
                         pos += first_pts.as_nanos()
                     }
                     this.handler.set_position(Duration::from_nanos(pos).into());
@@ -623,15 +626,15 @@ impl Inner {
             sample.AddBuffer(&buffer)?;
 
             if let Some(pts) = pts {
-                // FIXME: 映像切り替え時にその時点を`first_pts`にしてしまう
-                // let pts = if let Some(first_pts) = self.first_pts {
-                //     // TODO: ラップアラウンドを考慮する
-                //     // pts - first_pts
-                //     pts.saturating_sub(first_pts)
-                // } else {
-                //     self.first_pts = Some(pts);
-                //     isdb::time::Timestamp(0)
-                // };
+                let pts = {
+                    let mut first_pts = self.first_pts.lock();
+                    if let Some(first_pts) = &*first_pts {
+                        pts.wrapping_sub(*first_pts)
+                    } else {
+                        *first_pts = Some(pts);
+                        isdb::time::Timestamp(0)
+                    }
+                };
                 sample.SetSampleTime((pts.as_nanos() / 100) as i64)?;
             }
 
