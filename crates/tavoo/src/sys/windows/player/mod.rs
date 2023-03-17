@@ -1,3 +1,10 @@
+mod dummy;
+mod queue;
+mod session;
+mod source;
+mod stream;
+mod utils;
+
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -11,9 +18,8 @@ use winit::platform::windows::WindowExtWindows;
 
 use crate::extract::{self, ExtractHandler};
 
-use super::session;
-use super::source::TransportStream;
-use super::utils::WinResult;
+use self::source::TransportStream;
+use self::utils::WinResult;
 
 #[derive(Debug, Clone)]
 pub struct PlayerEvent(MF::IMFMediaEvent);
