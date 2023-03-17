@@ -5,7 +5,6 @@ use std::time::Duration;
 use anyhow::Result;
 use isdb::psi::table::ServiceId;
 use parking_lot::Mutex;
-use windows::core::{self as C, AsImpl};
 use windows::Win32::Foundation as F;
 use windows::Win32::Media::MediaFoundation as MF;
 use winit::platform::windows::WindowExtWindows;
@@ -13,10 +12,21 @@ use winit::platform::windows::WindowExtWindows;
 use crate::extract::{self, ExtractHandler};
 
 use super::session;
-use super::stream::TransportStream;
+use super::source::TransportStream;
 use super::utils::WinResult;
 
-pub type PlayerEvent = C::AgileReference<MF::IMFMediaEvent>;
+#[derive(Debug, Clone)]
+pub struct PlayerEvent(MF::IMFMediaEvent);
+
+impl From<MF::IMFMediaEvent> for PlayerEvent {
+    #[inline]
+    fn from(event: MF::IMFMediaEvent) -> PlayerEvent {
+        PlayerEvent(event)
+    }
+}
+
+// Safety: C++のサンプルではスレッドをまたいで使っているので安全なはず
+unsafe impl Send for PlayerEvent {}
 
 #[derive(Default)]
 struct State {
@@ -184,7 +194,7 @@ impl<Event> Player<Event> {
             Some(session) => {
                 let state = session.state.lock();
                 if let Some(session) = &state.session {
-                    session.handle_event(event)?;
+                    session.handle_event(event.0)?;
                 }
             }
             None => {}
@@ -380,7 +390,6 @@ where
     ) {
         let source = self.state.lock().session.as_ref().map(|s| s.source());
         if let Some(source) = source {
-            let source: &TransportStream = source.as_impl();
             source.deliver_video_packet(pts, payload);
         }
     }
@@ -393,7 +402,6 @@ where
     ) {
         let source = self.state.lock().session.as_ref().map(|s| s.source());
         if let Some(source) = source {
-            let source: &TransportStream = source.as_impl();
             source.deliver_audio_packet(pts, payload);
         }
     }
@@ -428,7 +436,6 @@ where
     fn on_end_of_stream(&mut self) {
         let source = self.state.lock().session.as_ref().map(|s| s.source());
         if let Some(source) = source {
-            let source: &TransportStream = source.as_impl();
             let _ = source.end_of_mpeg_stream();
         }
     }
@@ -441,7 +448,6 @@ where
     fn needs_es(&self) -> bool {
         let source = self.state.lock().session.as_ref().map(|s| s.source());
         if let Some(source) = source {
-            let source: &TransportStream = source.as_impl();
             source.streams_need_data()
         } else {
             false
