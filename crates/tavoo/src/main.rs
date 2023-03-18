@@ -165,7 +165,24 @@ fn main() {
                         .map(|new_audio_stream| new_audio_stream.component_tag().unwrap_or(0xFF));
 
                         if let Some(new_audio_tag) = new_audio_tag {
-                            log::info!("new audio tag: {:02X}", new_audio_tag);
+                            let ac = service.present_event().and_then(|event| {
+                                event
+                                    .audio_components
+                                    .iter()
+                                    .find(|ac| ac.component_tag == new_audio_tag)
+                            });
+                            if let Some(ac) = ac {
+                                if !ac.text.is_empty() {
+                                    log::info!(
+                                        "new audio: {}",
+                                        ac.text.display(Default::default())
+                                    );
+                                } else {
+                                    log::info!("new audio: {}", ac.lang_code);
+                                }
+                            } else {
+                                log::info!("new audio tag: {:02X}", new_audio_tag);
+                            }
 
                             if let Err(e) = player.select_audio_stream(new_audio_tag) {
                                 log::error!("select_audio_stream: {}", e)
