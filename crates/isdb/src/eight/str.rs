@@ -96,6 +96,13 @@ impl AribStr {
         buf
     }
 
+    /// `opts`に従い文字符号をデバッグ形式で表示するための、
+    /// [`Debug`][`fmt::Debug`]を実装したオブジェクトを返す。
+    #[inline]
+    pub fn debug(&self, opts: decode::Options) -> Debug {
+        Debug { inner: self, opts }
+    }
+
     /// `opts`に従い文字符号を安全に表示するための、
     /// [`Display`][`fmt::Display`]を実装したオブジェクトを返す。
     #[inline]
@@ -118,13 +125,13 @@ impl Default for &AribStr {
     }
 }
 
+/// 文字符号をデバッグ形式で表示する。
+///
+/// デコード用オプションは既定のものが使われるため、
+/// ワンセグでは正しくない文字列が出力される可能性がある。
 impl fmt::Debug for AribStr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("AribStr(")?;
-        f.debug_list()
-            .entries(self.0.iter().map(|c| crate::utils::UpperHex(c)))
-            .finish()?;
-        f.write_str(")")
+        self.debug(Default::default()).fmt(f)
     }
 }
 
@@ -241,6 +248,10 @@ impl ops::Deref for AribString {
     }
 }
 
+/// 文字符号をデバッグ形式で表示する。
+///
+/// デコード用オプションは既定のものが使われるため、
+/// ワンセグでは正しくない文字列が出力される可能性がある。
 impl fmt::Debug for AribString {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         fmt::Debug::fmt(&**self, f)
@@ -370,6 +381,85 @@ impl<'a> fmt::Debug for AribChars<'a> {
         f.write_str("AribChars(")?;
         f.debug_list().entries(self.clone()).finish()?;
         f.write_str(")")
+    }
+}
+
+/// [`AribStr`]をデバッグ形式で表示するための構造体。
+pub struct Debug<'a> {
+    inner: &'a AribStr,
+    opts: decode::Options,
+}
+
+impl<'a> fmt::Debug for Debug<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        if self.inner.is_empty() {
+            return f.debug_tuple("AribStr").field(&"").finish();
+        }
+
+        // 制御文字はAribCharのDebugで、図形文字はまとめてstrのDebugっぽく表示する
+        struct Field<'a>(std::cell::RefCell<std::iter::Peekable<AribChars<'a>>>);
+        impl<'a> fmt::Debug for Field<'a> {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                fn is_print(c: &AribChar) -> bool {
+                    matches!(
+                        c,
+                        AribChar::Generic(_)
+                            | AribChar::Null
+                            | AribChar::ActivePositionReturn
+                            | AribChar::Space
+                    )
+                }
+
+                let mut chars = self.0.borrow_mut();
+
+                let mut ch = chars.next().unwrap();
+                if !is_print(&ch) {
+                    return ch.fmt(f);
+                }
+
+                f.write_char('"')?;
+                loop {
+                    match ch {
+                        AribChar::Generic(c) => {
+                            let c = c
+                                .to_char(Default::default())
+                                .unwrap_or(char::REPLACEMENT_CHARACTER);
+                            if c == '\'' {
+                                f.write_char('\'')?;
+                            } else {
+                                for c in c.escape_debug() {
+                                    f.write_char(c)?;
+                                }
+                            }
+                        }
+                        AribChar::Null => f.write_str("\\0")?,
+                        AribChar::ActivePositionReturn => f.write_str("\\n")?,
+                        AribChar::Space => f.write_char(' ')?,
+                        _ => break,
+                    }
+
+                    match chars.next_if(is_print) {
+                        Some(c) => ch = c,
+                        None => break,
+                    }
+                }
+                f.write_char('"')
+            }
+        }
+
+        let field = Field(std::cell::RefCell::new(
+            self.inner.decode(self.opts).peekable(),
+        ));
+
+        let mut debug = f.debug_tuple("AribStr");
+        loop {
+            debug.field(&field);
+
+            if field.0.borrow_mut().peek().is_none() {
+                break;
+            }
+        }
+        debug.finish()
     }
 }
 
