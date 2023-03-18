@@ -5,6 +5,7 @@ use std::time::Duration;
 use fxhash::FxHashSet;
 
 use crate::demux;
+use crate::lang;
 use crate::packet;
 use crate::pes;
 use crate::pid::Pid;
@@ -243,6 +244,8 @@ pub struct EventInfo {
     pub text: Option<AribString>,
     /// 拡張番組情報。
     pub extended_items: Option<Vec<ExtendedEventItem>>,
+    /// 音声に関する情報。
+    pub audio_components: Vec<AudioComponent>,
 }
 
 /// 拡張番組情報の要素。
@@ -252,6 +255,33 @@ pub struct ExtendedEventItem {
     pub item: AribString,
     /// 概要。
     pub description: AribString,
+}
+
+/// 番組の音声に関する情報。
+#[derive(Debug, Clone)]
+pub struct AudioComponent {
+    /// コンポーネント内容（4ビット）。
+    pub stream_content: u8,
+    /// コンポーネント種別。
+    pub component_type: u8,
+    /// コンポーネントタグ。
+    pub component_tag: u8,
+    /// ストリーム形式種別。
+    pub stream_type: psi::desc::StreamType,
+    /// サイマルキャストグループ識別。
+    pub simulcast_group_tag: u8,
+    /// 主コンポーネントフラグ。
+    pub main_component_flag: bool,
+    /// 音質表示。
+    pub quality_indicator: psi::desc::QualityIndicator,
+    /// サンプリング周波数。
+    pub sampling_rate: psi::desc::SamplingFrequency,
+    /// 言語コード。
+    pub lang_code: lang::LangCode,
+    /// 言語コードその2。
+    pub lang_code_2: Option<lang::LangCode>,
+    /// コンポーネント記述。
+    pub text: AribString,
 }
 
 /// 字幕データ。
@@ -548,6 +578,25 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                                 })
                                 .collect()
                         });
+
+                    let audio_components = event
+                        .descriptors
+                        .get_all::<psi::desc::AudioComponentDescriptor>()
+                        .map(|acd| AudioComponent {
+                            stream_content: acd.stream_content,
+                            component_type: acd.component_type,
+                            component_tag: acd.component_tag,
+                            stream_type: acd.stream_type,
+                            simulcast_group_tag: acd.simulcast_group_tag,
+                            main_component_flag: acd.main_component_flag,
+                            quality_indicator: acd.quality_indicator,
+                            sampling_rate: acd.sampling_rate,
+                            lang_code: acd.lang_code,
+                            lang_code_2: acd.lang_code_2,
+                            text: acd.text.to_owned(),
+                        })
+                        .collect();
+
                     EventInfo {
                         event_id: event.event_id,
                         start_time: event.start_time.clone(),
@@ -555,6 +604,7 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                         name,
                         text,
                         extended_items,
+                        audio_components,
                     }
                 });
 
