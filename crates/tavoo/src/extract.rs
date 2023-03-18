@@ -1,4 +1,4 @@
-use std::io::{self, Read, Seek};
+use std::io::{self, Read, Seek, SeekFrom};
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 
@@ -183,16 +183,15 @@ impl Extractor {
         R: Read + Seek + Send + 'static,
         T: Sink + Send + 'static,
     {
-        let read = std::io::BufReader::with_capacity(self.capacity, read);
+        let read = io::BufReader::with_capacity(self.capacity, read);
         let demuxer = isdb::demux::Demuxer::new(isdb::filters::sorter::Sorter::new(Selector::new(
-            sink, self.state,
+            sink, read, self.state,
         )));
 
         let worker = Worker {
             parker: self.parker,
             commands: self.commands,
 
-            read,
             demuxer,
             probe_size: self.probe_size,
         };
@@ -332,6 +331,61 @@ pub struct SelectedStream {
     pub caption_pids: FxHashSet<isdb::Pid>,
 }
 
+/// ファイル上の位置とTSのタイムスタンプ。
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SeekPos {
+    stream_pos: u64,
+    timestamp: Timestamp,
+}
+
+/// TSのタイムスタンプからファイル上の位置を検索するためのキャッシュ。
+#[derive(Debug, Clone)]
+struct SeekCache(Vec<SeekPos>);
+
+impl SeekCache {
+    /// 前後のキャッシュと離す最低限の時間間隔。
+    const DISTANCE: Timestamp = Timestamp::from_duration(std::time::Duration::from_secs(15));
+
+    #[inline]
+    pub const fn new() -> SeekCache {
+        SeekCache(Vec::new())
+    }
+
+    pub fn add(&mut self, pos: SeekPos) {
+        let Err(index) = self.0.binary_search_by_key(&pos.timestamp, |sp| sp.timestamp) else {
+            // 同じタイムスタンプ
+            return;
+        };
+
+        if !self.0.is_empty()
+            && index > 0
+            && pos.timestamp - self.0[index - 1].timestamp < Self::DISTANCE
+        {
+            // 直前のキャッシュと位置が近すぎる
+            return;
+        }
+
+        if index < self.0.len() && self.0[index].timestamp - pos.timestamp < Self::DISTANCE {
+            // 直後のキャッシュと位置が近すぎる
+            return;
+        }
+
+        self.0.insert(index, pos);
+    }
+
+    pub fn find(&self, timestamp: Timestamp) -> Option<&SeekPos> {
+        match self.0.binary_search_by_key(&timestamp, |ts| ts.timestamp) {
+            // キャッシュがない、またはシーク対象より前のキャッシュがない
+            // つまり最初からシーク対象を検索する必要がある
+            Err(0) => None,
+            // 挿入すべき位置が返るため、その1つ前がシーク対象直前のキャッシュ
+            Err(next) => Some(&self.0[next - 1]),
+            // シーク対象と完全一致
+            Ok(pos) => Some(&self.0[pos]),
+        }
+    }
+}
+
 #[derive(Debug)]
 struct SeekInfo {
     /// シーク先の位置。
@@ -347,7 +401,8 @@ struct SeekInfo {
 }
 
 #[derive(Debug)]
-struct Selector<T> {
+struct Selector<R, T> {
+    read: io::BufReader<R>,
     sink: T,
 
     state: Arc<RwLock<State>>,
@@ -355,17 +410,20 @@ struct Selector<T> {
     cur_pos: Timestamp,
     /// シーク中の情報。シークが完了したら`None`が設定される。
     seek_info: Option<SeekInfo>,
+    seek_cache: SeekCache,
 }
 
-impl<T: Sink> Selector<T> {
+impl<R: Read + Seek, T: Sink> Selector<R, T> {
     #[inline]
-    fn new(sink: T, state: Arc<RwLock<State>>) -> Selector<T> {
+    fn new(sink: T, read: io::BufReader<R>, state: Arc<RwLock<State>>) -> Selector<R, T> {
         Selector {
+            read,
             sink,
 
             state,
             cur_pos: Timestamp(0),
             seek_info: None,
+            seek_cache: SeekCache::new(),
         }
     }
 
@@ -549,13 +607,21 @@ impl<T: Sink> Selector<T> {
     ///
     /// また、シークが完了した場合には保留していたイベントを発生させる。
     fn complete_seek(&mut self, pts: Option<Timestamp>) -> bool {
-        let seek_info = match (&mut self.seek_info, pts) {
+        let (seek_info, pts) = match (&mut self.seek_info, pts) {
             (None, _) => return true,
 
             // target_posまでは何も処理しない
-            (Some(seek_info), Some(pts)) if pts >= seek_info.target_pos => seek_info,
+            (Some(seek_info), Some(pts)) if pts >= seek_info.target_pos => (seek_info, pts),
             _ => return false,
         };
+
+        // シーク位置を記録
+        if let Ok(stream_pos) = self.read.stream_position() {
+            self.seek_cache.add(SeekPos {
+                stream_pos: stream_pos - 188,
+                timestamp: pts,
+            });
+        }
 
         // 保留していたイベントを発生させる
         let state = self.state.read();
@@ -599,7 +665,7 @@ impl<T: Sink> Selector<T> {
     }
 }
 
-impl<T: Sink> isdb::filters::sorter::Shooter for Selector<T> {
+impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> {
     fn on_pat_updated(&mut self, services: &ServiceMap) {
         self.state.write().services.clone_from(services);
 
@@ -727,18 +793,46 @@ impl<T: Sink> isdb::filters::sorter::Shooter for Selector<T> {
     }
 }
 
-struct Worker<R, T: Sink> {
+struct Limit<'a, R> {
+    inner: R,
+    limit: &'a mut u64,
+}
+
+impl<'a, R> Limit<'a, R> {
+    #[inline]
+    pub fn new(inner: R, limit: &'a mut u64) -> Limit<'a, R> {
+        Limit { inner, limit }
+    }
+}
+
+impl<'a, R: Read> Read for Limit<'a, R> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if *self.limit == 0 {
+            return Ok(0);
+        }
+
+        let max = std::cmp::min(buf.len() as u64, *self.limit) as usize;
+        let n = self.inner.read(&mut buf[..max])?;
+        assert!(
+            n as u64 <= *self.limit,
+            "number of read bytes exceeds limit"
+        );
+        *self.limit -= n as u64;
+        Ok(n)
+    }
+}
+
+struct Worker<R: Read + Seek, T: Sink> {
     parker: crossbeam_utils::sync::Parker,
     commands: Arc<Commands>,
 
-    read: io::BufReader<R>,
-    demuxer: isdb::demux::Demuxer<isdb::filters::sorter::Sorter<Selector<T>>>,
+    demuxer: isdb::demux::Demuxer<isdb::filters::sorter::Sorter<Selector<R, T>>>,
     probe_size: u64,
 }
 
 impl<R: Read + Seek, T: Sink> Worker<R, T> {
     #[inline]
-    fn selector(&mut self) -> &mut Selector<T> {
+    fn selector(&mut self) -> &mut Selector<R, T> {
         self.demuxer.filter_mut().shooter_mut()
     }
 
@@ -746,14 +840,13 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
     ///
     /// ストリームが見つからなかった場合は`false`を返す。
     fn probe_stream(&mut self) -> bool {
-        let mut probe_file = self.read.by_ref().take(self.probe_size);
+        let mut limit = self.probe_size;
         loop {
-            match isdb::Packet::read(&mut probe_file) {
+            match isdb::Packet::read(Limit::new(&mut self.selector().read, &mut limit)) {
                 Ok(Some(packet)) => {
                     self.demuxer.feed(&packet);
 
-                    let selector = self.demuxer.filter_mut().shooter_mut();
-                    if selector.state.read().selected_stream.is_some() {
+                    if self.selector().state.read().selected_stream.is_some() {
                         break true;
                     }
                 }
@@ -772,7 +865,7 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
     ///
     /// `Worker`を終了する必要がある場合には`false`を返す。
     fn next_packet(&mut self) -> bool {
-        match isdb::Packet::read(&mut self.read) {
+        match isdb::Packet::read(&mut self.selector().read) {
             Ok(Some(packet)) => {
                 self.demuxer.feed(&packet);
                 true
@@ -807,11 +900,26 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
     }
 
     fn set_position(&mut self, pos: Timestamp) -> bool {
-        // TODO: シーク位置をキャッシュして高速化
+        match self.selector().seek_cache.find(pos).cloned() {
+            Some(sp) => {
+                // 巻き戻し、または（早送りなので）キャッシュが先にある
+                if pos < self.selector().cur_pos || sp.timestamp > pos {
+                    log::trace!("シークキャッシュ：{:?} -> {:?}", sp.timestamp, pos);
+                    if let Err(e) = self.selector().read.seek(SeekFrom::Start(sp.stream_pos)) {
+                        self.selector().sink.on_stream_error(e);
+                        return false;
+                    }
 
-        if self.selector().cur_pos > pos {
-            if !self.reset() {
-                return false;
+                    self.demuxer.reset_packets();
+                }
+            }
+            None => {
+                if pos < self.selector().cur_pos {
+                    log::trace!("シークキャッシュなし：頭出し");
+                    if !self.reset() {
+                        return false;
+                    }
+                }
             }
         }
 
@@ -827,7 +935,7 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
     }
 
     fn reset(&mut self) -> bool {
-        match self.read.rewind() {
+        match self.selector().read.rewind() {
             Ok(_) => {
                 self.demuxer.reset_packets();
                 true
@@ -909,5 +1017,123 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
                 self.parker.park();
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use std::time::Duration;
+
+    #[test]
+    fn test_seek_cache() {
+        let mut cache = SeekCache::new();
+        cache.add(SeekPos {
+            stream_pos: 120,
+            timestamp: Duration::from_secs(120).into(),
+        });
+        cache.add(SeekPos {
+            stream_pos: 60,
+            timestamp: Duration::from_secs(60).into(),
+        });
+        assert_eq!(
+            &cache.0,
+            &vec![
+                SeekPos {
+                    stream_pos: 60,
+                    timestamp: Duration::from_secs(60).into(),
+                },
+                SeekPos {
+                    stream_pos: 120,
+                    timestamp: Duration::from_secs(120).into(),
+                },
+            ],
+        );
+
+        cache.add(SeekPos {
+            stream_pos: 60,
+            timestamp: Duration::from_secs(60).into(),
+        });
+        assert_eq!(
+            &cache.0,
+            &vec![
+                SeekPos {
+                    stream_pos: 60,
+                    timestamp: Duration::from_secs(60).into(),
+                },
+                SeekPos {
+                    stream_pos: 120,
+                    timestamp: Duration::from_secs(120).into(),
+                },
+            ],
+        );
+
+        cache.add(SeekPos {
+            stream_pos: 70,
+            timestamp: Duration::from_secs(70).into(),
+        });
+        assert_eq!(
+            &cache.0,
+            &vec![
+                SeekPos {
+                    stream_pos: 60,
+                    timestamp: Duration::from_secs(60).into(),
+                },
+                SeekPos {
+                    stream_pos: 120,
+                    timestamp: Duration::from_secs(120).into(),
+                },
+            ],
+        );
+
+        cache.add(SeekPos {
+            stream_pos: 110,
+            timestamp: Duration::from_secs(110).into(),
+        });
+        assert_eq!(
+            &cache.0,
+            &vec![
+                SeekPos {
+                    stream_pos: 60,
+                    timestamp: Duration::from_secs(60).into(),
+                },
+                SeekPos {
+                    stream_pos: 120,
+                    timestamp: Duration::from_secs(120).into(),
+                },
+            ],
+        );
+
+        assert_eq!(cache.find(Duration::from_secs(10).into()), None);
+        assert_eq!(cache.find(Duration::from_secs(50).into()), None);
+        assert_eq!(
+            cache.find(Duration::from_secs(60).into()),
+            Some(&SeekPos {
+                stream_pos: 60,
+                timestamp: Duration::from_secs(60).into(),
+            }),
+        );
+        assert_eq!(
+            cache.find(Duration::from_secs(80).into()),
+            Some(&SeekPos {
+                stream_pos: 60,
+                timestamp: Duration::from_secs(60).into(),
+            }),
+        );
+        assert_eq!(
+            cache.find(Duration::from_secs(119).into()),
+            Some(&SeekPos {
+                stream_pos: 60,
+                timestamp: Duration::from_secs(60).into(),
+            }),
+        );
+        assert_eq!(
+            cache.find(Duration::from_secs(120).into()),
+            Some(&SeekPos {
+                stream_pos: 120,
+                timestamp: Duration::from_secs(120).into(),
+            }),
+        );
     }
 }
