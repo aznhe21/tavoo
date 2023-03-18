@@ -53,6 +53,13 @@ pub trait Shooter {
 
     /// 字幕パケットを受信した際に呼ばれる。
     fn on_caption(&mut self, services: &ServiceMap, pid: Pid, caption: &Caption);
+
+    /// PCRが更新された際に呼ばれる。
+    ///
+    /// PCRが更新された全サービス識別が`service_ids`で渡される。
+    fn on_pcr(&mut self, services: &ServiceMap, service_ids: &[ServiceId]) {
+        let _ = (services, service_ids);
+    }
 }
 
 /// PMTで送出されるストリーム情報。
@@ -133,6 +140,12 @@ impl Service {
     #[inline]
     pub fn is_oneseg(&self) -> bool {
         self.pmt_pid.is_oneseg_pmt()
+    }
+
+    /// サービスにおけるPCRのPID。
+    #[inline]
+    pub fn pcr_pid(&self) -> Pid {
+        self.pcr_pid
     }
 
     /// サービスにおける現在のPCR。
@@ -696,11 +709,14 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                 };
 
                 let pid = ctx.packet().pid();
+                let mut service_ids = Vec::new();
                 for service in self.services.values_mut() {
                     if service.pcr_pid == pid {
                         service.pcr = Some(pcr);
+                        service_ids.push(service.service_id);
                     }
                 }
+                self.shooter.on_pcr(&self.services, &*service_ids);
             }
             tag @ _ => {
                 log::debug!("invalid tag: {:?}", tag);
