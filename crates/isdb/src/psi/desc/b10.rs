@@ -1307,6 +1307,74 @@ impl<'a> Descriptor<'a> for TargetRegionDescriptor<'a> {
     }
 }
 
+/// データコンテンツ記述子。
+#[derive(Debug)]
+pub struct DataContentDescriptor<'a> {
+    /// データ符号化方式識別。
+    pub data_component_id: u16,
+    /// エントリコンポーネント。
+    pub entry_component: u8,
+    /// セレクタ。
+    pub selector: &'a [u8],
+    /// 参照コンポーネント。
+    pub component_ref: &'a [u8],
+    /// 言語コード。
+    pub lang_code: LangCode,
+    /// コンテンツ記述。
+    pub text: &'a AribStr,
+}
+
+impl<'a> Descriptor<'a> for DataContentDescriptor<'a> {
+    const TAG: u8 = 0xC7;
+
+    fn read(data: &'a [u8]) -> Option<DataContentDescriptor<'a>> {
+        if data.len() < 4 {
+            log::debug!("invalid DataContentDescriptor");
+            return None;
+        }
+
+        let data_component_id = data[0..=1].read_be_16();
+        let entry_component = data[2];
+        let selector_length = data[3];
+        let Some((selector, data)) = data[4..].split_at_checked(selector_length as usize) else {
+            log::debug!("invalid DataContentDescriptor::selector");
+            return None;
+        };
+
+        if data.len() < 1 {
+            log::debug!("invalid DataContentDescriptor::num_of_component_ref");
+            return None;
+        }
+        let num_of_component_ref = data[0];
+        let Some((component_ref, data)) = data[1..].split_at_checked(num_of_component_ref as usize)
+        else {
+            log::debug!("invalid DataContentDescriptor::component_ref");
+            return None;
+        };
+
+        if data.len() < 4 {
+            log::debug!("invalid DataContentDescriptor::ISO_639_language_code");
+            return None;
+        }
+        let lang_code = LangCode(data[0..=2].try_into().unwrap());
+        let text_length = data[3];
+        let text = AribStr::from_bytes(&data[4..]);
+        if text.len() != text_length as usize {
+            log::debug!("invalid DataContentDescriptor::text");
+            return None;
+        };
+
+        Some(DataContentDescriptor {
+            data_component_id,
+            entry_component,
+            selector,
+            component_ref,
+            lang_code,
+            text,
+        })
+    }
+}
+
 /// ビデオエンコードフォーマット。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum VideoEncodeFormat {
