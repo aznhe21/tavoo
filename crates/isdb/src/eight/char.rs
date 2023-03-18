@@ -488,7 +488,7 @@ pub enum AribChar {
     /// TIMEでの処理待ち。
     ///
     /// 内包する値は中断する時間（単位は0.1秒）で`0..=63`の範囲である。
-    WaitForPcoess(u8),
+    WaitForProcess(u8),
 
     /// TIMEでの時刻制御モード。
     TimeControlMode(TimeControlMode),

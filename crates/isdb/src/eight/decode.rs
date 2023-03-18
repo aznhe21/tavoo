@@ -839,7 +839,7 @@ impl<'a> Decoder<'a> {
 
     fn read_time(&mut self) -> ReadResult<AribChar> {
         match try_opt!(self.read_byte()) {
-            0x20 => ReadResult::Char(AribChar::WaitForPcoess(try_opt!(self.read_byte()) & 0x3F)),
+            0x20 => ReadResult::Char(AribChar::WaitForProcess(try_opt!(self.read_byte()) & 0x3F)),
             0x28 => match try_opt!(self.read_byte()) {
                 0x40 => ReadResult::Char(AribChar::TimeControlMode(TimeControlMode::Free)),
                 0x41 => ReadResult::Char(AribChar::TimeControlMode(TimeControlMode::RealTime)),
