@@ -205,7 +205,7 @@ impl fmt::Debug for DateTime {
 }
 
 /// PESのPTS・DTSを表すタイムスタンプ。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Timestamp(pub u64);
 
 impl Timestamp {
@@ -336,6 +336,12 @@ impl ops::SubAssign<Timestamp> for Timestamp {
     }
 }
 
+impl fmt::Debug for Timestamp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.to_duration().fmt(f)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -403,6 +409,15 @@ mod tests {
         assert_eq!(
             Timestamp::from(Duration::new(123, 456789000)).to_duration(),
             Duration::new(123, 456788888)
+        );
+
+        assert_eq!(
+            format!("{:?}", Timestamp::from(Duration::from_secs(0))),
+            "0ns"
+        );
+        assert_eq!(
+            format!("{:?}", Timestamp::from(Duration::from_secs_f32(123.45))),
+            "123.449988888s"
         );
     }
 }
