@@ -75,7 +75,7 @@ pub enum Polarization {
 }
 
 /// 限定受信方式記述子。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ConditionalAccessDescriptor<'a> {
     /// 限定受信方式識別。
     pub ca_system_id: u16,
@@ -107,7 +107,7 @@ impl<'a> Descriptor<'a> for ConditionalAccessDescriptor<'a> {
 }
 
 /// サービスリスト記述子におけるサービス。
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServiceEntry {
     /// サービス識別。
     pub service_id: ServiceId,
@@ -116,7 +116,7 @@ pub struct ServiceEntry {
 }
 
 /// サービスリスト記述子。
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServiceListDescriptor {
     /// サービスを格納する配列。
     pub services: Vec<ServiceEntry>,
@@ -147,7 +147,7 @@ impl Descriptor<'_> for ServiceListDescriptor {
 }
 
 /// 衛星分配システム記述子。
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SatelliteDeliverySystemDescriptor {
     /// 周波数（単位は10kHz）。
     pub frequency: u32,
@@ -201,7 +201,7 @@ impl Descriptor<'_> for SatelliteDeliverySystemDescriptor {
 }
 
 /// アクセス制御記述子。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct AccessControlDescriptor<'a> {
     /// 限定受信方式識別。
     pub ca_system_id: u16,
@@ -237,7 +237,7 @@ impl<'a> Descriptor<'a> for AccessControlDescriptor<'a> {
 }
 
 /// 地上分配システム記述子におけるガードインターバル。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum GuardInterval {
     /// 1/32
     Guard1_32,
@@ -250,7 +250,7 @@ pub enum GuardInterval {
 }
 
 /// 地上分配システム記述子におけるモード情報。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TransmissionMode {
     /// Mode 1。
     Mode1,
@@ -263,7 +263,7 @@ pub enum TransmissionMode {
 }
 
 /// 地上分配システム記述子。
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TerrestrialDeliverySystemDescriptor {
     /// エリアコード。
     pub area_code: u16,
@@ -311,7 +311,7 @@ impl Descriptor<'_> for TerrestrialDeliverySystemDescriptor {
 }
 
 /// 部分受信記述子。
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PartialReceptionDescriptor {
     /// サービス識別。
     pub service_ids: Vec<u16>,
@@ -328,7 +328,7 @@ impl Descriptor<'_> for PartialReceptionDescriptor {
 }
 
 /// 緊急情報記述子における信号種別。
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum SignalType {
     /// 第1種開始信号。
     First,
@@ -337,7 +337,7 @@ pub enum SignalType {
 }
 
 /// 緊急情報記述子における緊急情報。
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Emergency {
     /// サービス識別。
     pub service_id: ServiceId,
@@ -350,7 +350,7 @@ pub struct Emergency {
 }
 
 /// 緊急情報記述子。
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EmergencyInformationDescriptor {
     /// 緊急情報を格納する配列。
     pub emergencies: Vec<Emergency>,
@@ -404,7 +404,7 @@ impl Descriptor<'_> for EmergencyInformationDescriptor {
 }
 
 /// データ符号化記述子。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct DataComponentDescriptor<'a> {
     /// データ符号化方式識別。
     pub data_component_id: u16,
@@ -432,7 +432,7 @@ impl<'a> Descriptor<'a> for DataComponentDescriptor<'a> {
 }
 
 /// 放送／非放送種別。
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum BroadcastingType {
     /// 放送。
     Broadcasting,
@@ -479,7 +479,7 @@ impl BroadcastingSystem {
 }
 
 /// システム管理記述子。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct SystemManagementDescriptor<'a> {
     /// 放送／非放送種別。
     pub broadcasting_flag: BroadcastingType,

@@ -26,7 +26,7 @@ pub struct ServiceId(pub NonZeroU16);
 impl_id!(ServiceId);
 
 /// トランスポートストリームの物理的構成に関する情報。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct TransportStreamConfig<'a> {
     /// トランスポートストリーム識別。
     pub transport_stream_id: TransportStreamId,
@@ -37,7 +37,7 @@ pub struct TransportStreamConfig<'a> {
 }
 
 /// PMTのあるPIDの定義。
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PatProgram {
     /// 放送番組番号識別。
     pub program_number: ServiceId,
@@ -46,7 +46,7 @@ pub struct PatProgram {
 }
 
 /// PAT（Program Association Table）。
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Pat {
     /// トランスポートストリーム識別。
     pub transport_stream_id: TransportStreamId,
@@ -106,7 +106,7 @@ impl PsiTable<'_> for Pat {
 }
 
 /// CAT（Conditional Access Table）。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Cat<'a> {
     /// 記述子の塊。
     pub descriptors: DescriptorBlock<'a>,
@@ -132,7 +132,7 @@ impl<'a> PsiTable<'a> for Cat<'a> {
 }
 
 /// 各サービスを構成するストリームのPIDの定義。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct PmtStream<'a> {
     /// ストリーム形式種別。
     pub stream_type: StreamType,
@@ -143,7 +143,7 @@ pub struct PmtStream<'a> {
 }
 
 /// PMT（Program Map Table）。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Pmt<'a> {
     /// 放送番組番号識別。
     pub program_number: ServiceId,
@@ -219,7 +219,7 @@ impl<'a> PsiTable<'a> for Pmt<'a> {
 }
 
 /// NIT（Network Information Table）。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Nit<'a> {
     /// ネットワーク識別。
     pub network_id: NetworkId,

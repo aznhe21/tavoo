@@ -9,7 +9,7 @@ use super::b10::{RunningStatus, VersionIndicator};
 use super::iso::{NetworkId, ServiceId, TransportStreamId};
 
 /// Dit（Discontinuity Information Table）。
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Dit {
     /// 変化フラグ。
     pub transition_flag: bool,
@@ -40,7 +40,7 @@ impl PsiTable<'_> for Dit {
 }
 
 /// パーシャルトランスポートストリームで伝送されるサービスとイベント。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct SitService<'a> {
     /// サービス識別。
     pub service_id: ServiceId,
@@ -51,7 +51,7 @@ pub struct SitService<'a> {
 }
 
 /// SIT（Selection Information Table）。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Sit<'a> {
     /// 記述子の塊。
     pub descriptors: DescriptorBlock<'a>,
@@ -119,7 +119,7 @@ impl<'a> PsiTable<'a> for Sit<'a> {
 }
 
 /// ダウンロード配信の開始時間と継続時間。
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SdttSchedule {
     /// 開始時間。
     pub start_time: DateTime,
@@ -128,7 +128,7 @@ pub struct SdttSchedule {
 }
 
 /// ダウンロードコンテンツ。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct SdttContent<'a> {
     /// group（4ビット）。
     pub group: u8,
@@ -151,7 +151,7 @@ pub struct SdttContent<'a> {
 }
 
 /// SDTT（Software Download Trigger Table）。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Sdtt<'a> {
     /// 製造者識別。
     pub maker_id: u8,
@@ -296,7 +296,7 @@ impl CdtDataType {
 }
 
 /// CDT（Common Data Table）。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Cdt<'a> {
     /// ダウンロードデータ識別。
     pub download_data_id: u16,

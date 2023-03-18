@@ -5,7 +5,7 @@ use crate::psi::PsiSection;
 use super::message::{DownloadDataBlock, DownloadInfoIndication};
 
 /// DSM-CCセクション。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum DsmccSection<'a> {
     /// DIIメッセージ。
     Dii(DownloadInfoIndication<'a>),

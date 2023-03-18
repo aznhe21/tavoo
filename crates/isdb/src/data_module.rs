@@ -5,7 +5,7 @@ use crate::psi::table::{NetworkId, ServiceId, TransportStreamId};
 use crate::utils::{BytesExt, SliceExt};
 
 /// コード情報。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct CodeInfo<'a> {
     /// コード。
     pub table_code: u8,
@@ -16,7 +16,7 @@ pub struct CodeInfo<'a> {
 }
 
 /// ジャンルコード表、番組特性コード表。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct CommonTable<'a> {
     /// コード情報を格納する配列。
     pub codes: Vec<CodeInfo<'a>>,
@@ -68,7 +68,7 @@ impl<'a> CommonTable<'a> {
 }
 
 /// 予約語表。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct KeywordTable<'a> {
     /// 予約語名記述。
     pub names: Vec<&'a AribStr>,
@@ -105,7 +105,7 @@ impl<'a> KeywordTable<'a> {
 }
 
 /// ロゴを使用するサービス。
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LogoService {
     /// オリジナルネットワーク識別。
     pub original_network_id: NetworkId,
@@ -116,7 +116,7 @@ pub struct LogoService {
 }
 
 /// ロゴ情報。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct LogoInfo<'a> {
     /// logo_id
     pub logo_id: u16,
@@ -152,7 +152,7 @@ impl LogoType {
 }
 
 /// ロゴデータ。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Logo<'a> {
     /// ロゴタイプ。
     pub logo_type: LogoType,
@@ -240,7 +240,7 @@ impl<'a> Logo<'a> {
 /// CDTで配信されるロゴのデータモジュール。
 ///
 /// [`Cdt::data_module`][`crate::psi::table::Cdt::data_module`]を読み取ることが出来る。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct CdtLogo<'a> {
     /// ロゴタイプ。
     pub logo_type: LogoType,

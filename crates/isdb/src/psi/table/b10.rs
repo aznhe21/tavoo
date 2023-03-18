@@ -80,7 +80,7 @@ impl VersionIndicator {
 
 /// 特定のトランスポートストリームに含まれるサービス。
 // h_eit_flag等の定義はARIB TR-B14による。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct SdtService<'a> {
     /// サービス識別。
     pub service_id: ServiceId,
@@ -103,7 +103,7 @@ pub struct SdtService<'a> {
 }
 
 /// SDT（Service Description Table）の共通データ。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct SdtCommon<'a> {
     /// トランスポートストリーム識別。
     pub transport_stream_id: TransportStreamId,
@@ -182,7 +182,7 @@ impl<'a> SdtCommon<'a> {
 }
 
 /// SDT（Service Description Table）。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Sdt<'a> {
     /// 現在のTSにおけるSDT。
     Actual(SdtCommon<'a>),
@@ -211,7 +211,7 @@ impl<'a> PsiTable<'a> for Sdt<'a> {
 }
 
 /// BAT（Bouquet Association Table）。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Bat<'a> {
     /// ブーケ識別。
     pub bouquet_id: u16,
@@ -296,7 +296,7 @@ impl<'a> PsiTable<'a> for Bat<'a> {
 }
 
 /// 各サービスに含まれるイベント。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct EitEvent<'a> {
     /// イベント識別。
     pub event_id: EventId,
@@ -313,7 +313,7 @@ pub struct EitEvent<'a> {
 }
 
 /// EIT（Event Information Table）の共通データ。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct EitCommon<'a> {
     /// サービス識別。
     pub service_id: ServiceId,
@@ -402,7 +402,7 @@ impl<'a> EitCommon<'a> {
 }
 
 /// EIT（Event Information Table）。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Eit<'a> {
     /// 自TSにおけるイベント［現在／次］。
     ActualPf(EitCommon<'a>),
@@ -441,7 +441,7 @@ impl<'a> PsiTable<'a> for Eit<'a> {
 }
 
 /// Tdt（Time and Date Table）。
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Tdt {
     /// 現在日付、現在時刻。
     pub jst_time: DateTime,
@@ -472,7 +472,7 @@ impl PsiTable<'_> for Tdt {
 }
 
 /// イベントの進行状態。
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RstStatus {
     /// トランスポートストリーム識別。
     pub transport_stream_id: TransportStreamId,
@@ -487,7 +487,7 @@ pub struct RstStatus {
 }
 
 /// RST（Running Status Table）。
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Rst {
     /// イベントの進行状態を格納する配列。
     pub statuses: Vec<RstStatus>,
@@ -543,7 +543,7 @@ impl PsiTable<'_> for Rst {
 }
 
 /// TOT（Time Offset Table）。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Tot<'a> {
     /// 現在日付、現在時刻。
     pub jst_time: DateTime,
@@ -583,7 +583,7 @@ impl<'a> PsiTable<'a> for Tot<'a> {
 }
 
 /// 差分配信の開始時刻と継続時間。
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PcatScheduleDescription {
     /// 開始時刻。
     pub start_time: DateTime,
@@ -592,7 +592,7 @@ pub struct PcatScheduleDescription {
 }
 
 /// 差分配信のコンテンツ情報。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct PcatContent<'a> {
     /// コンテンツバージョン。
     pub content_version: u16,
@@ -607,7 +607,7 @@ pub struct PcatContent<'a> {
 }
 
 /// PCAT（Partial Content Announcement Table）。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Pcat<'a> {
     /// サービス識別。
     pub service_id: ServiceId,
@@ -718,6 +718,7 @@ impl<'a> PsiTable<'a> for Pcat<'a> {
 }
 
 /// ブロードキャスタごとの情報。
+#[derive(Debug, PartialEq, Eq)]
 pub struct BitBroadcaster<'a> {
     /// ブロードキャスタ識別。
     pub broadcaster_id: u8,
@@ -726,6 +727,7 @@ pub struct BitBroadcaster<'a> {
 }
 
 /// BIT（Broadcaster Information Table）。
+#[derive(Debug, PartialEq, Eq)]
 pub struct Bit<'a> {
     /// オリジナルネットワーク識別。
     pub original_network_id: NetworkId,
@@ -827,7 +829,7 @@ pub enum NbitDescriptionBodyLocation {
 }
 
 /// 案内・お知らせ等の掲示情報。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct NbitInformation<'a> {
     /// 情報識別。
     pub information_id: u16,
@@ -844,7 +846,7 @@ pub struct NbitInformation<'a> {
 }
 
 /// NBIT（Network Board Information）の共通データ。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct NbitCommon<'a> {
     /// オリジナルネットワーク識別。
     pub original_network_id: NetworkId,
@@ -920,7 +922,7 @@ impl<'a> NbitCommon<'a> {
 }
 
 /// NBIT（Network Board Information Table）。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Nbit<'a> {
     /// 掲示板情報本体。
     Body(NbitCommon<'a>),
@@ -949,7 +951,7 @@ impl<'a> PsiTable<'a> for Nbit<'a> {
 }
 
 /// [`Ldt`]における記述。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct LdtDescription<'a> {
     /// 記述識別。
     pub description_id: u16,
@@ -958,7 +960,7 @@ pub struct LdtDescription<'a> {
 }
 
 /// LDT（Linked Description Table）。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Ldt<'a> {
     /// オリジナルサービス識別。
     pub original_service_id: ServiceId,
@@ -1036,7 +1038,7 @@ impl<'a> PsiTable<'a> for Ldt<'a> {
 }
 
 /// [`Lit`]における番組内イベントに関する情報。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct LitLocalEvent<'a> {
     /// 番組内イベント識別。
     pub local_event_id: u16,
@@ -1045,7 +1047,7 @@ pub struct LitLocalEvent<'a> {
 }
 
 /// LIT（Local Event Information Table）。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Lit<'a> {
     /// イベント識別。
     pub event_id: EventId,
@@ -1156,7 +1158,7 @@ pub enum ErtRelationType {
 }
 
 /// [`Ert`]におけるノード。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ErtNode<'a> {
     /// ノード識別。
     pub node_id: u16,
@@ -1171,7 +1173,7 @@ pub struct ErtNode<'a> {
 }
 
 /// ERT（Event Relation Table）。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Ert<'a> {
     /// イベント関係識別。
     pub event_relation_id: u16,
@@ -1256,7 +1258,7 @@ impl<'a> PsiTable<'a> for Ert<'a> {
 }
 
 /// ITT（Index Transmission Table）。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Itt<'a> {
     /// イベント識別。
     pub event_id: EventId,

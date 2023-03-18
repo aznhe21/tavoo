@@ -7,7 +7,7 @@ use super::super::table::{NetworkId, TransportStreamId};
 use super::base::Descriptor;
 
 /// CA_EMM_TS記述子。
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CaEmmTsDescriptor {
     /// 限定受信方式識別。
     pub ca_system_id: u16,
@@ -49,7 +49,7 @@ impl Descriptor<'_> for CaEmmTsDescriptor {
 }
 
 /// CA契約情報記述子。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct CaContractInfoDescriptor<'a> {
     /// 限定受信方式識別。
     pub ca_system_id: u16,
@@ -111,7 +111,7 @@ impl<'a> Descriptor<'a> for CaContractInfoDescriptor<'a> {
 }
 
 /// CAサービス記述子。
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CaServiceDescriptor {
     /// 限定受信方式識別。
     pub ca_system_id: u16,

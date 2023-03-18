@@ -37,7 +37,7 @@ impl<'a> fmt::Debug for DiiRawDescriptor<'a> {
 }
 
 /// 複数の記述子からなる記述子群。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DiiDescriptorBlock<'a>(&'a [u8]);
 
 impl<'a> DiiDescriptorBlock<'a> {
@@ -97,7 +97,7 @@ impl<'a> Iterator for DiiDescriptorIter<'a> {
 impl<'a> std::iter::FusedIterator for DiiDescriptorIter<'a> {}
 
 /// Type記述子。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct TypeDescriptor<'a> {
     /// メディア型。
     pub text: &'a AribStr,
@@ -114,7 +114,7 @@ impl<'a> DiiDescriptor<'a> for TypeDescriptor<'a> {
 }
 
 /// Name記述子。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct NameDescriptor<'a> {
     /// モジュールとして伝送するファイルのファイル名。
     pub text: &'a AribStr,
@@ -131,7 +131,7 @@ impl<'a> DiiDescriptor<'a> for NameDescriptor<'a> {
 }
 
 /// Info記述子。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct InfoDescriptor<'a> {
     /// 言語コード。
     pub lang_code: LangCode,
@@ -155,7 +155,7 @@ impl<'a> DiiDescriptor<'a> for InfoDescriptor<'a> {
 }
 
 /// Module_Link記述子。
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModuleLinkDescriptor {
     /// リンクされたモジュールの位置関係。
     pub position: u8,
@@ -183,7 +183,7 @@ impl DiiDescriptor<'_> for ModuleLinkDescriptor {
 }
 
 /// CRC記述子。
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Crc32Descriptor {
     /// CRC値。
     pub crc32: u32,
@@ -205,7 +205,7 @@ impl DiiDescriptor<'_> for Crc32Descriptor {
 }
 
 /// ダウンロード推定時間記述子。
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EstimatedDownloadTimeDescriptor {
     /// モジュールのダウンロード推定時間（単位は秒）。
     pub est_download_time: u32,
@@ -227,7 +227,7 @@ impl DiiDescriptor<'_> for EstimatedDownloadTimeDescriptor {
 }
 
 /// ARIB STD-B23で規定されるキャッシュ優先度記述子。
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CachingPriorityDescriptor {
     /// 優先度。
     pub priority_value: u8,
@@ -252,7 +252,7 @@ impl DiiDescriptor<'_> for CachingPriorityDescriptor {
 }
 
 /// Expire記述子。
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExpireDescriptor {
     /// 修正ユリウス暦と日本標準時で表される絶対時刻。
     AbsoluteTime(DateTime),
@@ -298,7 +298,7 @@ impl DiiDescriptor<'_> for ExpireDescriptor {
 }
 
 /// ActivationTime記述子。
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ActivationTimeDescriptor {
     /// 修正ユリウス暦と日本標準時で表される絶対時刻。
     PlaybackTime(DateTime),
@@ -369,7 +369,7 @@ impl DiiDescriptor<'_> for ActivationTimeDescriptor {
 }
 
 /// CompressionType記述子。
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompressionTypeDescriptor {
     /// 圧縮形式。
     pub compression_type: u8,
@@ -397,7 +397,7 @@ impl DiiDescriptor<'_> for CompressionTypeDescriptor {
 }
 
 /// Control記述子。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ControlDescriptor<'a> {
     /// モジュールの解釈・制御に必要な情報。
     pub control_data: &'a [u8],
@@ -412,7 +412,7 @@ impl<'a> DiiDescriptor<'a> for ControlDescriptor<'a> {
 }
 
 /// ProviderPrivate記述子。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ProviderPrivateDescriptor<'a> {
     /// この記述子のスコープを示す識別子の種類。
     pub private_scope_type: u8,
@@ -444,7 +444,7 @@ impl<'a> DiiDescriptor<'a> for ProviderPrivateDescriptor<'a> {
 }
 
 /// StoreRoot記述子。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct StoreRootDescriptor<'a> {
     /// `store_root_path`で指定されるディレクトリの内容を消去するか否か。
     pub update_type: bool,
@@ -472,7 +472,7 @@ impl<'a> DiiDescriptor<'a> for StoreRootDescriptor<'a> {
 }
 
 /// Subdirectory記述子。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct SubdirectoryDescriptor<'a> {
     /// 当該カルーセルに含まれるモジュールが蓄積されるサブディレクトリ。
     pub subdirectory_path: &'a AribStr,
@@ -489,7 +489,7 @@ impl<'a> DiiDescriptor<'a> for SubdirectoryDescriptor<'a> {
 }
 
 /// Title記述子。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct TitleDescriptor<'a> {
     /// 言語コード。
     pub lang_code: LangCode,
@@ -513,7 +513,7 @@ impl<'a> DiiDescriptor<'a> for TitleDescriptor<'a> {
 }
 
 /// DataEncoding記述子。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct DataEncodingDescriptor<'a> {
     /// データ符号化方式識別。
     pub data_component_id: u16,
@@ -541,7 +541,7 @@ impl<'a> DiiDescriptor<'a> for DataEncodingDescriptor<'a> {
 }
 
 /// ルート証明書記述子における汎用証明書。
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GenericRootCertificate {
     /// ルート証明書の有無とその識別情報。
     pub root_certificate_id: u32,
@@ -550,7 +550,7 @@ pub struct GenericRootCertificate {
 }
 
 /// ルート証明書記述子。
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RootCertificateDescriptor {
     /// 汎用証明書。
     Generic(Vec<GenericRootCertificate>),

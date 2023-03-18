@@ -7,7 +7,7 @@ use crate::utils::{BytesExt, SliceExt};
 use super::base::Descriptor;
 
 /// SubDescriptor
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct SubDescriptor<'a> {
     /// SubDescriptorType
     pub sub_descriptor_type: u8,
@@ -16,7 +16,7 @@ pub struct SubDescriptor<'a> {
 }
 
 /// [`DownloadContentDescriptor`]における`compatibility_descriptors`。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct CompatibilityDescriptor<'a> {
     /// descriptorType
     pub descriptor_type: u8,
@@ -102,7 +102,7 @@ impl<'a> CompatibilityDescriptor<'a> {
 }
 
 /// ダウンロードコンテンツ記述子におけるモジュール。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ModuleInfo<'a> {
     /// モジュール識別。
     pub module_id: u16,
@@ -113,7 +113,7 @@ pub struct ModuleInfo<'a> {
 }
 
 /// ダウンロードコンテンツ記述子におけるサービス記述。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct ServiceDescription<'a> {
     /// 言語コード。
     pub lang_code: LangCode,
@@ -122,7 +122,7 @@ pub struct ServiceDescription<'a> {
 }
 
 /// ダウンロードコンテンツ記述子。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct DownloadContentDescriptor<'a> {
     /// 再起動要否フラグ。
     pub reboot: bool,

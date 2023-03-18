@@ -41,7 +41,7 @@ impl<'a> fmt::Debug for RawDescriptor<'a> {
 }
 
 /// 複数の記述子からなる記述子群。
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct DescriptorBlock<'a>(&'a [u8]);
 
 impl<'a> DescriptorBlock<'a> {

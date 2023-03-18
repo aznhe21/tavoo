@@ -6,7 +6,7 @@ use crate::lang::LangCode;
 use crate::utils::{BytesExt, SliceExt};
 
 /// データグループ。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct DataGroup<'a> {
     /// データグループ識別、DGI（6ビット）。
     pub data_group_id: u8,
@@ -153,7 +153,7 @@ pub enum CaptionRollupMode {
 }
 
 /// 字幕管理データにおける言語。
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CaptionLanguage {
     /// 言語識別（3ビット）。
     pub language_tag: u8,
@@ -175,7 +175,7 @@ pub struct CaptionLanguage {
 }
 
 /// 字幕管理データ。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct CaptionManagementData<'a> {
     /// 時刻制御モード。
     pub tmd: TimeControlMode,
@@ -308,7 +308,7 @@ impl<'a> CaptionManagementData<'a> {
 }
 
 /// 字幕文データ。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct CaptionData<'a> {
     /// 時刻制御モード。
     pub tmd: TimeControlMode,
@@ -356,7 +356,7 @@ impl<'a> CaptionData<'a> {
 }
 
 /// データユニット。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum DataUnit<'a> {
     /// 字幕本文。
     StatementBody(&'a AribStr),

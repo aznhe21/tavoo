@@ -5,6 +5,7 @@ use super::message::{DiiModule, DownloadDataBlock, DownloadInfoIndication};
 /// [`DownloadInfoIndication`]と[`DownloadDataBlock`]を組み合わせてデータをダウンロードする。
 ///
 /// `DownloadData`は`DiiModule::module_id`ごとに管理する。
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DownloadData {
     download_id: u32,
     module_version: u8,

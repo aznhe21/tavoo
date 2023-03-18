@@ -280,7 +280,7 @@ pub struct PesHeaderOption {
 }
 
 /// 同期型PES・非同期型に共通するPESデータ。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct PesData<'a> {
     /// サービスに依存する領域。
     ///
@@ -293,7 +293,7 @@ pub struct PesData<'a> {
 }
 
 /// ARIB STD-B24第三編で規定される独立PES。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum IndependentPes<'a> {
     /// 同期型PES。
     Sync(PesData<'a>),

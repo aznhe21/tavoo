@@ -6,7 +6,7 @@ use crate::utils::{BytesExt, SliceExt};
 use super::desc::DiiDescriptorBlock;
 
 /// DIIメッセージ、DDBメッセージのヘッダ部分。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct DsmccAdaptationHeader<'a> {
     /// アダプテーション型。
     pub adaptation_type: u8,
@@ -15,7 +15,7 @@ pub struct DsmccAdaptationHeader<'a> {
 }
 
 /// [`DownloadInfoIndication`]における`modules`の要素。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct DiiModule<'a> {
     /// moduleId
     pub module_id: u16,
@@ -28,7 +28,7 @@ pub struct DiiModule<'a> {
 }
 
 /// `DownloadInfoIndication`における`dsmccMessageHeader`。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct DsmccMessageHeader<'a> {
     /// 0x11の場合このメッセージがMPEG-2 DSM-CCメッセージであることを示す。
     pub protocol_discriminator: u8,
@@ -43,7 +43,7 @@ pub struct DsmccMessageHeader<'a> {
 }
 
 /// DIIメッセージ。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct DownloadInfoIndication<'a> {
     /// DSM-CCメッセージヘッダ。
     pub header: DsmccMessageHeader<'a>,
@@ -162,7 +162,7 @@ impl<'a> DownloadInfoIndication<'a> {
 }
 
 /// `DownloadDataBlock`における`dsmcc_download_data_header`。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct DsmccDownloadDataHeader<'a> {
     /// 0x11の場合このメッセージがMPEG-2 DSM-CCメッセージであることを示す。
     pub protocol_discriminator: u8,
@@ -177,7 +177,7 @@ pub struct DsmccDownloadDataHeader<'a> {
 }
 
 /// DDBメッセージ。
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct DownloadDataBlock<'a> {
     /// DSM-CCダウンロードデータヘッダ。
     pub header: DsmccDownloadDataHeader<'a>,
