@@ -663,11 +663,12 @@ impl<T: Sink> isdb::filters::sorter::Shooter for Selector<T> {
         dts: Option<Timestamp>,
         payload: &[u8],
     ) {
-        if !self.complete_seek(pts) {
-            return;
-        }
+        // シーク中にシーク指示があった場合に基準がずれないようcur_posは常に更新
         if let Some(pts) = pts {
             self.cur_pos = pts;
+        }
+        if !self.complete_seek(pts) {
+            return;
         }
 
         {
@@ -687,11 +688,12 @@ impl<T: Sink> isdb::filters::sorter::Shooter for Selector<T> {
         dts: Option<Timestamp>,
         payload: &[u8],
     ) {
-        if !self.complete_seek(pts) {
-            return;
-        }
+        // シーク中にシーク指示があった場合に基準がずれないようcur_posは常に更新
         if let Some(pts) = pts {
             self.cur_pos = pts;
+        }
+        if !self.complete_seek(pts) {
+            return;
         }
 
         {
