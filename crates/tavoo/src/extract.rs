@@ -3,7 +3,6 @@ use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use fxhash::FxHashSet;
 use isdb::filters::sorter::{Service, ServiceMap, Stream};
 use isdb::psi::table::ServiceId;
 use isdb::time::Timestamp;
@@ -77,6 +76,9 @@ pub trait Sink {
 
     /// 選択中サービスで字幕パケットを受信した際に呼ばれる。
     fn on_caption(&mut self, caption: &isdb::filters::sorter::Caption);
+
+    /// 選択中サービスで文字スーパーのパケットを受信した際に呼ばれる。
+    fn on_superimpose(&mut self, caption: &isdb::filters::sorter::Caption);
 
     /// TSを終端まで読み終えた際に呼ばれる。
     fn on_end_of_stream(&mut self);
@@ -348,7 +350,9 @@ pub struct SelectedStream {
     /// 選択された音声のストリーム情報。
     pub audio_stream: Stream,
     /// 選択されたサービスにおける字幕のPID。
-    pub caption_pids: FxHashSet<isdb::Pid>,
+    pub caption_pid: Option<isdb::Pid>,
+    /// 選択されたサービスにおける文字スーパーのPID。
+    pub superimpose_pid: Option<isdb::Pid>,
 }
 
 /// ファイル上の位置とTSのタイムスタンプ。
@@ -502,7 +506,8 @@ impl<R: Read + Seek, T: Sink> Selector<R, T> {
                 service_id: service.service_id(),
                 video_stream: video_stream.clone(),
                 audio_stream: audio_stream.clone(),
-                caption_pids: service.caption_streams().iter().map(|s| s.pid()).collect(),
+                caption_pid: service.caption_stream().map(|s| s.pid()),
+                superimpose_pid: service.superimpose_stream().map(|s| s.pid()),
             });
 
             changed
@@ -611,8 +616,8 @@ impl<R: Read + Seek, T: Sink> Selector<R, T> {
 
             selected_stream.video_stream = video_stream.clone();
             selected_stream.audio_stream = audio_stream.clone();
-            selected_stream.caption_pids =
-                service.caption_streams().iter().map(|s| s.pid()).collect();
+            selected_stream.caption_pid = service.caption_stream().map(|s| s.pid());
+            selected_stream.superimpose_pid = service.superimpose_stream().map(|s| s.pid());
 
             changed
         };
@@ -806,12 +811,33 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
 
         {
             let state = self.state.read();
-            if !matches!(&state.selected_stream, Some(s) if s.caption_pids.contains(&pid)) {
+            if !matches!(&state.selected_stream, Some(ss) if ss.caption_pid == Some(pid)) {
                 return;
             }
         }
 
         self.sink.on_caption(caption);
+    }
+
+    fn on_superimpose(
+        &mut self,
+        _: &ServiceMap,
+        pid: isdb::Pid,
+        caption: &isdb::filters::sorter::Caption,
+    ) {
+        // TODO: シーク完了時点に表示されているであろう文字スーパーはスキップしたくない
+        if self.seek_info.is_some() {
+            return;
+        }
+
+        {
+            let state = self.state.read();
+            if !matches!(&state.selected_stream, Some(ss) if ss.superimpose_pid == Some(pid)) {
+                return;
+            }
+        }
+
+        self.sink.on_superimpose(caption);
     }
 
     fn on_pcr(&mut self, services: &ServiceMap, _: &[ServiceId]) {

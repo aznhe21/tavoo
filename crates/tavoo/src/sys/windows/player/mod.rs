@@ -443,6 +443,32 @@ where
         }
     }
 
+    fn on_superimpose(&mut self, caption: &isdb::filters::sorter::Caption) {
+        // TODO: UIに通知
+        let service_id = {
+            let selected_stream = self.handler.selected_stream();
+            let Some(selected_stream) = selected_stream.as_ref() else {
+                return;
+            };
+            selected_stream.service_id
+        };
+        let decode_opts = if self.handler.services()[&service_id].is_oneseg() {
+            isdb::eight::decode::Options::ONESEG_CAPTION
+        } else {
+            isdb::eight::decode::Options::CAPTION
+        };
+
+        for data_unit in caption.data_units() {
+            let isdb::pes::caption::DataUnit::StatementBody(caption) = data_unit else {
+                continue;
+            };
+
+            if !caption.is_empty() {
+                log::info!("superimpose: {:?}", caption.debug(decode_opts));
+            }
+        }
+    }
+
     fn on_end_of_stream(&mut self) {
         let source = self.state.lock().session.as_ref().map(|s| s.source());
         if let Some(source) = source {
