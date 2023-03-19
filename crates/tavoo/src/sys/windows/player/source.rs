@@ -211,6 +211,10 @@ impl TransportStream {
                 MF::MFCreatePresentationDescriptor(Some(&[video_sd.clone(), audio_sd.clone()]))?;
             presentation_descriptor.SelectStream(SID_VIDEO)?;
             presentation_descriptor.SelectStream(SID_AUDIO)?;
+            if let Some(duration) = handler.duration() {
+                presentation_descriptor
+                    .SetUINT64(&MF::MF_PD_DURATION, (duration.as_nanos() / 100) as u64)?;
+            }
 
             let event_queue = MF::MFCreateEventQueue()?;
             let dummy_stream: MF::IMFMediaStream = dummy::DummyStream.into();
@@ -456,7 +460,7 @@ impl Inner {
                     let mut pos = (start_pos as u64) * 100;
                     let first_pts = *this.first_pts.lock();
                     if let Some(first_pts) = first_pts {
-                        pos += first_pts.as_nanos()
+                        pos += first_pts.as_nanos();
                     }
                     this.handler.set_position(Duration::from_nanos(pos).into());
 
@@ -629,6 +633,7 @@ impl Inner {
                 let pts = {
                     let mut first_pts = self.first_pts.lock();
                     if let Some(first_pts) = &*first_pts {
+                        // TODO: ラップアラウンドを考慮する
                         pts.wrapping_sub(*first_pts)
                     } else {
                         *first_pts = Some(pts);

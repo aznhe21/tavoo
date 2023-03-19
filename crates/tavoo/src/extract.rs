@@ -1,6 +1,7 @@
 use std::io::{self, Read, Seek, SeekFrom};
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use fxhash::FxHashSet;
 use isdb::filters::sorter::{Service, ServiceMap, Stream};
@@ -118,6 +119,8 @@ struct Commands {
 /// 処理中のTSにおける状態。
 #[derive(Debug, Default)]
 struct State {
+    // TODO: 追っかけ再生に対応
+    duration: Option<Duration>,
     services: ServiceMap,
     selected_stream: Option<SelectedStream>,
 }
@@ -133,6 +136,7 @@ pub struct Extractor {
     parker: crossbeam_utils::sync::Parker,
     capacity: usize,
     probe_size: u64,
+    tail_probe_size: u64,
 }
 
 impl Extractor {
@@ -147,6 +151,7 @@ impl Extractor {
             parker: crossbeam_utils::sync::Parker::new(),
             capacity: 188 * 32,
             probe_size: 188 * 4096,
+            tail_probe_size: 188 * 1024,
         }
     }
 
@@ -174,6 +179,12 @@ impl Extractor {
         self.probe_size = probe_size;
     }
 
+    /// ストリーム長を取得するために末尾から解析する際の容量を設定する。
+    #[inline]
+    pub fn tail_probe_size(&mut self, tail_probe_size: u64) {
+        self.tail_probe_size = tail_probe_size;
+    }
+
     /// 指定された読み取り元`Read`と処理用`Sink`を使い、新しいスレッドで`Extractor`の処理を開始する。
     ///
     /// 戻り値の[`JoinHandle`][std::thread::JoinHandle]を使って終了待ちができるが、
@@ -194,6 +205,7 @@ impl Extractor {
 
             demuxer,
             probe_size: self.probe_size,
+            tail_probe_size: self.tail_probe_size,
         };
         std::thread::spawn(move || worker.run())
     }
@@ -211,6 +223,14 @@ pub struct ExtractHandler {
 }
 
 impl ExtractHandler {
+    /// ストリームの長さを返す。
+    ///
+    /// ストリーム長が不明な場合は`None`を返す。
+    #[inline]
+    pub fn duration(&self) -> Option<Duration> {
+        self.state.read().duration
+    }
+
     /// 現在のサービス一覧を返す。
     ///
     /// 戻り値はロックを保持しているため、できるだけ速く破棄すべきである。
@@ -344,7 +364,7 @@ struct SeekCache(Vec<SeekPos>);
 
 impl SeekCache {
     /// 前後のキャッシュと離す最低限の時間間隔。
-    const DISTANCE: Timestamp = Timestamp::from_duration(std::time::Duration::from_secs(15));
+    const DISTANCE: Timestamp = Timestamp::from_duration(Duration::from_secs(15));
 
     #[inline]
     pub const fn new() -> SeekCache {
@@ -832,6 +852,7 @@ struct Worker<R: Read + Seek, T: Sink> {
 
     demuxer: isdb::demux::Demuxer<isdb::filters::sorter::Sorter<Selector<R, T>>>,
     probe_size: u64,
+    tail_probe_size: u64,
 }
 
 impl<R: Read + Seek, T: Sink> Worker<R, T> {
@@ -845,24 +866,102 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
     /// ストリームが見つからなかった場合は`false`を返す。
     fn probe_stream(&mut self) -> bool {
         let mut limit = self.probe_size;
-        loop {
+        let service_id = loop {
             match isdb::Packet::read(Limit::new(&mut self.selector().read, &mut limit)) {
                 Ok(Some(packet)) => {
                     self.demuxer.feed(&packet);
 
-                    if self.selector().state.read().selected_stream.is_some() {
-                        break true;
+                    if let Some(ss) = &self.selector().state.read().selected_stream {
+                        break ss.service_id;
                     }
                 }
-                Ok(None) => {
-                    break false;
-                }
+                Ok(None) => return false,
                 Err(e) => {
                     self.selector().sink.on_stream_error(e);
-                    break false;
+                    return false;
+                }
+            }
+        };
+
+        let Ok(start_pos) = self.selector().read.stream_position() else {
+            // 確定位置が取得できなくてもエラーにはしない
+            return true;
+        };
+
+        let (pcr_pid, pcr) = {
+            let service = &self.demuxer.filter_mut().services()[&service_id];
+            (service.pcr_pid(), service.pcr())
+        };
+
+        let first_pcr = if let Some(pcr) = pcr {
+            pcr
+        } else {
+            // 選択中サービスにおける最初のPCRを、probe_sizeの範囲内で探す
+            loop {
+                match isdb::Packet::read(Limit::new(&mut self.selector().read, &mut limit)) {
+                    Ok(Some(packet)) => {
+                        if packet.pid() == pcr_pid {
+                            if let Some(pcr) = packet.adaptation_field().and_then(|af| af.pcr()) {
+                                break pcr;
+                            }
+                        }
+                    }
+                    // 最初のPCRが見つからなくてもエラーにはしない
+                    Ok(None) => return true,
+                    Err(e) => {
+                        self.selector().sink.on_stream_error(e);
+                        return false;
+                    }
+                }
+            }
+        };
+
+        let Ok(len) = self.selector().read.seek(SeekFrom::End(0)) else {
+            // ファイルの長さが取得できなくてもエラーにはしない
+            return true;
+        };
+
+        'probe: {
+            // ファイルサイズがtail_probe_sizeより小さい場合はストリームが確定した位置から読み取り続行
+            let seek_pos = len.checked_sub(self.tail_probe_size).unwrap_or(start_pos);
+            if self
+                .selector()
+                .read
+                .seek(SeekFrom::Start(seek_pos))
+                .is_err()
+            {
+                // シークできない場合は最後のPCR探しをやめる
+                // 確定位置まで戻すためbreak
+                break 'probe;
+            }
+
+            // 選択中サービスにおける最後のPCRを探す
+            let mut last_pcr = None;
+            while let Ok(Some(packet)) = isdb::Packet::read(&mut self.selector().read) {
+                if packet.pid() == pcr_pid {
+                    if let Some(pcr) = packet.adaptation_field().and_then(|af| af.pcr()) {
+                        last_pcr = Some(pcr);
+                    }
+                }
+            }
+
+            if let Some(last_pcr) = last_pcr {
+                // TODO: ラップアラウンドを考慮する
+                if let Some(duration) = last_pcr.to_duration().checked_sub(first_pcr.to_duration())
+                {
+                    log::trace!("ストリーム長：{:?}", duration);
+                    self.selector().state.write().duration = Some(duration);
                 }
             }
         }
+
+        if let Err(e) = self.selector().read.seek(SeekFrom::Start(start_pos)) {
+            // 確定位置まで戻れなかったのでエラー
+            self.selector().sink.on_stream_error(e);
+            return false;
+        }
+
+        true
     }
 
     /// 次のパケットを処理する。
@@ -1027,8 +1126,6 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    use std::time::Duration;
 
     #[test]
     fn test_seek_cache() {
