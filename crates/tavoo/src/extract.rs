@@ -791,6 +791,10 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
 
         self.sink.on_caption(caption);
     }
+
+    fn on_pcr(&mut self, services: &ServiceMap, _: &[ServiceId]) {
+        self.state.write().services.clone_from(services);
+    }
 }
 
 struct Limit<'a, R> {
