@@ -8,6 +8,7 @@ use isdb::Pid;
 #[derive(Debug)]
 struct AppArgs {
     service: Option<ServiceId>,
+    show_si: bool,
     path: PathBuf,
 }
 
@@ -24,6 +25,7 @@ FLAGS:
 OPTIONS:
   --sid [SID]   表示する字幕のサービスID。
                 未指定の場合はデフォルトのサービスが選択される。
+  --superimpose 字幕の代わりに文字スーパーを表示する。
 
 ARGS:
   <PATH>        字幕を表示するTSファイルのパス
@@ -38,9 +40,11 @@ ARGS:
         }
 
         let service = args.opt_value_from_str("--sid")?.and_then(ServiceId::new);
+        let show_si = args.contains("--superimpose");
 
         Ok(AppArgs {
             service,
+            show_si,
             path: args.free_from_str()?,
         })
     }
@@ -48,11 +52,13 @@ ARGS:
 
 struct Filter {
     manual_service_id: Option<ServiceId>,
+    show_si: bool,
 
     repo: isdb::psi::Repository,
     current_service_id: Option<ServiceId>,
     pmt_pid: Pid,
-    caption_pids: Vec<Pid>,
+    caption_pid: Option<Pid>,
+    superimpose_pid: Option<Pid>,
 
     pcr_pid: Pid,
     last_pcr: Option<chrono::Duration>,
@@ -61,14 +67,16 @@ struct Filter {
 }
 
 impl Filter {
-    pub fn new(service_id: Option<ServiceId>) -> Filter {
+    pub fn new(service_id: Option<ServiceId>, show_si: bool) -> Filter {
         Filter {
             manual_service_id: service_id,
+            show_si,
 
             repo: isdb::psi::Repository::new(),
             current_service_id: None,
             pmt_pid: Pid::NULL,
-            caption_pids: Vec::new(),
+            caption_pid: None,
+            superimpose_pid: None,
 
             pcr_pid: Pid::NULL,
             last_pcr: None,
@@ -94,6 +102,7 @@ enum Tag {
     Tot,
     Pcr,
     Caption(bool),
+    Superimpose(bool),
 }
 
 impl isdb::demux::Filter for Filter {
@@ -148,7 +157,10 @@ impl isdb::demux::Filter for Filter {
                     self.pcr_pid = pmt.pcr_pid;
                     ctx.table().set_as_custom(pmt.pcr_pid, Tag::Pcr);
                 }
-                for pid in self.caption_pids.drain(..) {
+                if let Some(pid) = self.caption_pid.take() {
+                    ctx.table().unset(pid);
+                }
+                if let Some(pid) = self.superimpose_pid.take() {
                     ctx.table().unset(pid);
                 }
 
@@ -157,15 +169,26 @@ impl isdb::demux::Filter for Filter {
                         continue;
                     }
 
-                    // let component_tag = stream
-                    //     .descriptors
-                    //     .get::<isdb::desc::StreamIdDescriptor>()
-                    //     .map(|desc| desc.component_tag);
+                    let component_tag = stream
+                        .descriptors
+                        .get::<isdb::psi::desc::StreamIdDescriptor>()
+                        .map(|desc| desc.component_tag);
 
-                    self.caption_pids.push(stream.elementary_pid);
-                    let is_oneseg = ctx.packet().pid().is_oneseg_pmt();
-                    ctx.table()
-                        .set_as_pes(stream.elementary_pid, Tag::Caption(is_oneseg));
+                    match component_tag {
+                        Some(0x30 | 0x87) if self.caption_pid.is_none() => {
+                            self.caption_pid = Some(stream.elementary_pid);
+                            let is_oneseg = ctx.packet().pid().is_oneseg_pmt();
+                            ctx.table()
+                                .set_as_pes(stream.elementary_pid, Tag::Caption(is_oneseg));
+                        }
+                        Some(0x38 | 0x88) if self.superimpose_pid.is_none() => {
+                            self.superimpose_pid = Some(stream.elementary_pid);
+                            let is_oneseg = ctx.packet().pid().is_oneseg_pmt();
+                            ctx.table()
+                                .set_as_pes(stream.elementary_pid, Tag::Superimpose(is_oneseg));
+                        }
+                        _ => {}
+                    }
                 }
             }
 
@@ -196,16 +219,32 @@ impl isdb::demux::Filter for Filter {
                 self.current_time = Some(dt);
                 self.base_pcr = self.last_pcr;
             }
-            Tag::Pcr | Tag::Caption(_) => {
+            Tag::Pcr | Tag::Caption(_) | Tag::Superimpose(_) => {
                 log::error!("来るはずのないタグ：{:?}", ctx.tag());
             }
         }
     }
 
     fn on_pes_packet(&mut self, ctx: &mut isdb::demux::Context<Tag>, pes: &isdb::pes::PesPacket) {
-        let Tag::Caption(is_oneseg) = ctx.tag() else {
-            log::error!("来るはずのないタグ：{:?}", ctx.tag());
-            return;
+        let is_oneseg = match ctx.tag() {
+            Tag::Caption(is_oneseg) => {
+                if self.show_si {
+                    return;
+                }
+
+                is_oneseg
+            }
+            Tag::Superimpose(is_oneseg) => {
+                if !self.show_si {
+                    return;
+                }
+
+                is_oneseg
+            }
+            _ => {
+                log::error!("来るはずのないタグ：{:?}", ctx.tag());
+                return;
+            }
         };
 
         let Some(current) = self.current() else {
@@ -272,7 +311,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let f = File::open(&*args.path)?;
     let f = BufReader::with_capacity(188 * 1024, f);
 
-    let mut demuxer = isdb::demux::Demuxer::new(Filter::new(args.service));
+    let mut demuxer = isdb::demux::Demuxer::new(Filter::new(args.service, args.show_si));
 
     for packet in isdb::Packet::iter(f) {
         demuxer.feed(&packet?);

@@ -53,6 +53,9 @@ pub trait Shooter {
     /// 字幕パケットを受信した際に呼ばれる。
     fn on_caption(&mut self, services: &ServiceMap, pid: Pid, caption: &Caption);
 
+    /// 文字スーパーのパケットを受信した際に呼ばれる。
+    fn on_superimpose(&mut self, services: &ServiceMap, pid: Pid, caption: &Caption);
+
     /// PCRが更新された際に呼ばれる。
     ///
     /// PCRが更新された全サービス識別が`service_ids`で渡される。
@@ -119,8 +122,10 @@ pub struct Service {
     video_streams: Vec<Stream>,
     /// 音声ストリーム一覧。component_tagにより昇順に並ぶ
     audio_streams: Vec<Stream>,
-    /// 字幕ストリーム一覧。component_tagにより昇順に並ぶ
-    caption_streams: Vec<Stream>,
+    /// 字幕ストリーム
+    caption_stream: Option<Stream>,
+    /// 文字スーパーのストリーム
+    superimpose_stream: Option<Stream>,
 
     provider_name: AribString,
     service_name: AribString,
@@ -171,10 +176,25 @@ impl Service {
         &*self.audio_streams
     }
 
-    /// 字幕ストリーム一覧。
+    /// 字幕ストリーム。
     #[inline]
-    pub fn caption_streams(&self) -> &[Stream] {
-        &*self.caption_streams
+    pub fn caption_stream(&self) -> Option<&Stream> {
+        self.caption_stream.as_ref()
+    }
+
+    /// 文字スーパーのストリーム。
+    #[inline]
+    pub fn superimpose_stream(&self) -> Option<&Stream> {
+        self.superimpose_stream.as_ref()
+    }
+
+    #[inline]
+    fn all_streams(&self) -> impl Iterator<Item = &Stream> {
+        std::iter::empty()
+            .chain(&*self.video_streams)
+            .chain(&*self.audio_streams)
+            .chain(&self.caption_stream)
+            .chain(&self.superimpose_stream)
     }
 
     /// 事業者名。
@@ -380,6 +400,7 @@ mod sealed {
         Video,
         Audio,
         Caption,
+        Superimpose,
     }
 }
 
@@ -414,7 +435,8 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                         pmt_filled: false,
                         video_streams: Vec::new(),
                         audio_streams: Vec::new(),
-                        caption_streams: Vec::new(),
+                        caption_stream: None,
+                        superimpose_stream: None,
                         provider_name: AribString::new(),
                         service_name: AribString::new(),
                         present_event: None,
@@ -432,14 +454,9 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                     ctx.table().unset(service.pmt_pid);
                     ctx.table().unset(service.pcr_pid);
 
-                    let mut unset_streams = |streams: &[Stream]| {
-                        for stream in streams {
-                            ctx.table().unset(stream.pid);
-                        }
-                    };
-                    unset_streams(&*service.video_streams);
-                    unset_streams(&*service.audio_streams);
-                    unset_streams(&*service.caption_streams);
+                    for stream in service.all_streams() {
+                        ctx.table().unset(stream.pid);
+                    }
                 }
 
                 self.shooter.on_pat_updated(&self.services);
@@ -463,16 +480,12 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                     service.pcr_pid = pmt.pcr_pid;
                 }
 
-                let mut lost_pids: FxHashSet<Pid> = std::iter::empty()
-                    .chain(&*service.video_streams)
-                    .chain(&*service.audio_streams)
-                    .chain(&*service.caption_streams)
-                    .map(|s| s.pid)
-                    .collect();
+                let mut lost_pids: FxHashSet<Pid> = service.all_streams().map(|s| s.pid).collect();
 
                 service.video_streams.clear();
                 service.audio_streams.clear();
-                service.caption_streams.clear();
+                service.caption_stream = None;
+                service.superimpose_stream = None;
 
                 for stream in &*pmt.streams {
                     let video_encode_format = stream
@@ -483,41 +496,46 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                         .descriptors
                         .get::<psi::desc::StreamIdDescriptor>()
                         .map(|sid| sid.component_tag);
+                    let make_stream = || Stream {
+                        pid: stream.elementary_pid,
+                        stream_type: stream.stream_type,
+                        component_tag,
+                        video_encode_format,
+                    };
 
-                    let streams = match stream.stream_type {
-                        t if t.is_video() => {
-                            if !ctx.table().is_pes(stream.elementary_pid) {
-                                ctx.table().set_as_pes(stream.elementary_pid, Tag::Video);
-                            }
-
-                            &mut service.video_streams
+                    let tag = match (stream.stream_type, component_tag) {
+                        (t, _) if t.is_video() => {
+                            service.video_streams.push(make_stream());
+                            Tag::Video
                         }
 
-                        t if t.is_audio() => {
-                            if !ctx.table().is_pes(stream.elementary_pid) {
-                                ctx.table().set_as_pes(stream.elementary_pid, Tag::Audio);
-                            }
-
-                            &mut service.audio_streams
+                        (t, _) if t.is_audio() => {
+                            service.audio_streams.push(make_stream());
+                            Tag::Audio
                         }
 
-                        psi::desc::StreamType::CAPTION => {
-                            if !ctx.table().is_pes(stream.elementary_pid) {
-                                ctx.table().set_as_pes(stream.elementary_pid, Tag::Caption);
-                            }
+                        (psi::desc::StreamType::CAPTION, Some(0x30 | 0x87))
+                            if service.caption_stream.is_none() =>
+                        {
+                            // 字幕のデフォルトES
+                            service.caption_stream = Some(make_stream());
+                            Tag::Caption
+                        }
 
-                            &mut service.caption_streams
+                        (psi::desc::StreamType::CAPTION, Some(0x38 | 0x88))
+                            if service.superimpose_stream.is_none() =>
+                        {
+                            // 文字スーパーのデフォルトES
+                            service.superimpose_stream = Some(make_stream());
+                            Tag::Superimpose
                         }
 
                         _ => continue,
                     };
 
-                    streams.push(Stream {
-                        pid: stream.elementary_pid,
-                        stream_type: stream.stream_type,
-                        component_tag,
-                        video_encode_format,
-                    });
+                    if !ctx.table().is_pes(stream.elementary_pid) {
+                        ctx.table().set_as_pes(stream.elementary_pid, tag);
+                    }
                     lost_pids.remove(&stream.elementary_pid);
                 }
 
@@ -525,7 +543,6 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                 let f = |s: &Stream| s.component_tag;
                 service.video_streams.sort_unstable_by_key(f);
                 service.audio_streams.sort_unstable_by_key(f);
-                service.caption_streams.sort_unstable_by_key(f);
                 service.pmt_filled = true;
 
                 // 消えたPIDを設定解除
@@ -666,7 +683,7 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                     pes.data,
                 );
             }
-            Tag::Caption => {
+            tag @ (Tag::Caption | Tag::Superimpose) => {
                 let Some(pes) = pes::IndependentPes::read(pes.data) else {
                     return;
                 };
@@ -691,8 +708,13 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                     Caption::Data(caption)
                 };
 
-                self.shooter
-                    .on_caption(&self.services, ctx.packet().pid(), &caption);
+                if matches!(tag, Tag::Caption) {
+                    self.shooter
+                        .on_caption(&self.services, ctx.packet().pid(), &caption);
+                } else {
+                    self.shooter
+                        .on_superimpose(&self.services, ctx.packet().pid(), &caption);
+                }
             }
             tag @ _ => {
                 log::debug!("invalid tag: {:?}", tag);
