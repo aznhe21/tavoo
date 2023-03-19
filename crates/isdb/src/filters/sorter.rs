@@ -6,7 +6,6 @@ use fxhash::FxHashSet;
 
 use crate::demux;
 use crate::lang;
-use crate::packet;
 use crate::pes;
 use crate::pid::Pid;
 use crate::psi;
@@ -114,7 +113,7 @@ pub struct Service {
     service_id: ServiceId,
     pmt_pid: Pid,
     pcr_pid: Pid,
-    pcr: Option<packet::Pcr>,
+    pcr: Option<time::Timestamp>,
     pmt_filled: bool,
     /// 映像ストリーム一覧。component_tagにより昇順に並ぶ
     video_streams: Vec<Stream>,
@@ -150,7 +149,7 @@ impl Service {
 
     /// サービスにおける現在のPCR。
     #[inline]
-    pub fn pcr(&self) -> Option<packet::Pcr> {
+    pub fn pcr(&self) -> Option<time::Timestamp> {
         self.pcr
     }
 

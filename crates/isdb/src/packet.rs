@@ -2,10 +2,9 @@
 
 use std::fmt;
 use std::io::{self, Read};
-use std::time::Duration;
 
 use crate::pid::Pid;
-use crate::utils::BytesExt;
+use crate::time::Timestamp;
 
 const SYNC_BYTE: u8 = 0x47;
 const PACKET_SIZE: usize = 188;
@@ -266,57 +265,6 @@ impl fmt::Debug for Packet {
     }
 }
 
-/// プログラムクロックリファレンス（PCR）。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Pcr {
-    /// PCRにおける90kHzの部分。
-    pub base: u64,
-
-    /// PCRにおける27MHzの部分。
-    pub extension: u16,
-}
-
-impl Pcr {
-    fn read(data: &[u8; 6]) -> Pcr {
-        let base =
-            ((data[0..=3].read_be_32() as u64) << 1) | (((data[4] & 0b10000000) >> 7) as u64);
-        let extension = data[4..=5].read_be_16() & 0b0000_0001_1111_1111;
-        Pcr { base, extension }
-    }
-
-    /// 90kHzの`base`と27MHzの`extension`から`Pcr`を生成する。
-    #[inline]
-    pub fn new(base: u64, extension: u16) -> Pcr {
-        Pcr { base, extension }
-    }
-
-    /// `base`と`extension`から27MHzのPCRを取得する。
-    #[inline]
-    pub fn full(&self) -> u64 {
-        self.base * 300 + self.extension as u64
-    }
-
-    /// PCRを秒に変換する。
-    #[inline]
-    pub fn as_secs(&self) -> u64 {
-        self.full() / 27_000_000
-    }
-
-    /// PCRを秒成分を含むナノ秒に変換する。
-    #[inline]
-    pub fn as_nanos(&self) -> u64 {
-        self.full() * 1_000 / 27
-    }
-
-    /// PCRを[`Duration`]に変換する。
-    pub fn to_duration(&self) -> Duration {
-        let pcr = self.full();
-        let secs = pcr / 27_000_000;
-        let nanos = (pcr % 27_000_000 * 1000 / 27) as u32;
-        Duration::new(secs, nanos)
-    }
-}
-
 /// TSパケット内のアダプテーションフィールド。
 #[derive(Debug)]
 pub struct AdaptationField<'a>(&'a [u8]);
@@ -446,19 +394,19 @@ impl<'a> AdaptationField<'a> {
     }
 
     /// PCRを返す。
-    pub fn pcr(&self) -> Option<Pcr> {
+    pub fn pcr(&self) -> Option<Timestamp> {
         self.pcr_offset()
             .and_then(|offset| self.0.get(offset..offset + 6))
             .map(|slice| slice.try_into().unwrap())
-            .map(Pcr::read)
+            .map(Timestamp::read_pcr)
     }
 
     /// オリジナルPCRを返す。
-    pub fn original_pcr(&self) -> Option<Pcr> {
+    pub fn original_pcr(&self) -> Option<Timestamp> {
         self.opcr_offset()
             .and_then(|offset| self.0.get(offset..offset + 6))
             .map(|slice| slice.try_into().unwrap())
-            .map(Pcr::read)
+            .map(Timestamp::read_pcr)
     }
 
     /// スプライスカウントダウンを返す。
@@ -566,13 +514,6 @@ FF FF FF FF FF FF FF FF FF FF FF FF
                 Some(packet.clone()),
             );
         }
-    }
-
-    #[test]
-    fn test_pcr() {
-        let pcr = Pcr::new(7052388613, 249);
-        assert_eq!(pcr.full(), 2115716584149);
-        assert_eq!(pcr.to_duration(), Duration::new(78359, 873487 * 1000));
     }
 
     #[test]
@@ -698,13 +639,7 @@ FF FF FF FF FF FF FF FF FF FF FF FF
         assert!(!af.discontinuity_indicator());
         assert!(!af.random_access_indicator());
         assert!(!af.es_priority_indicator());
-        assert_eq!(
-            af.pcr(),
-            Some(Pcr {
-                base: 7052388613,
-                extension: 249
-            })
-        );
+        assert_eq!(af.pcr(), Some(Timestamp::new(7052388613, 249)));
         assert!(af.original_pcr().is_none());
         assert!(af.private_data().is_none());
 

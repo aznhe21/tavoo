@@ -204,96 +204,182 @@ impl fmt::Debug for DateTime {
     }
 }
 
-/// PESのPTS・DTSを表すタイムスタンプ。
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Timestamp(pub u64);
+/// PCRやPTS等を表すタイムスタンプ。時間は27MHz単位で表現される。
+#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Timestamp(u64);
 
 impl Timestamp {
-    /// [`Duration`]から`Timestamp`を生成する。
+    /// ゼロを表すタイムスタンプ。
+    pub const ZERO: Timestamp = Timestamp::new(0, 0);
+
+    /// 90kHZの`base`と27MHzの`extension`から`Timestamp`を生成する。
+    #[inline]
+    pub const fn new(base: u64, extension: u16) -> Timestamp {
+        assert!(base < 2u64.pow(33), "baseがオーバーフロー");
+        assert!(extension < 300, "extensionがオーバーフロー");
+        Timestamp(base * 300 + extension as u64)
+    }
+
+    /// 27MHz単位で表現されるタイムスタンプから`Timestamp`を生成する。
+    ///
+    /// # サンプル
+    ///
+    /// ```
+    /// use isdb::time::Timestamp;
+    ///
+    /// assert_eq!(Timestamp::from_full(123456789), Timestamp::new(411522, 189));
+    /// assert_eq!(Timestamp::from_full(Timestamp::ZERO.full()), Timestamp::ZERO);
+    /// ```
+    #[inline]
+    pub const fn from_full(full: u64) -> Timestamp {
+        Timestamp(full)
+    }
+
+    /// [`Duration`]から`Timestamp`を生成する。この変換により誤差が生じる場合がある。
+    ///
+    /// # サンプル
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// use isdb::time::Timestamp;
+    ///
+    /// assert_eq!(Timestamp::from_duration(Duration::ZERO), Timestamp::ZERO);
+    /// assert_eq!(
+    ///     Timestamp::from_duration(Duration::new(123, 456789000)),
+    ///     Timestamp::from_full((123.456789 * 27_000_000.) as u64),
+    /// );
+    /// ```
     #[inline]
     pub const fn from_duration(dur: Duration) -> Timestamp {
         let secs = dur.as_secs();
         let nanos = dur.subsec_nanos();
         Timestamp(
-            secs.saturating_mul(90_000)
-                .saturating_add(nanos as u64 * 90 / 1_000_000),
+            secs.saturating_mul(27_000_000)
+                .saturating_add(nanos as u64 * 27 / 1_000),
         )
     }
 
-    /// `data`から`Timestamp`を読み取る。
-    pub fn read(data: &[u8; 5]) -> Timestamp {
+    /// PCRを格納する`data`から`Timestamp`を読み取る。
+    #[inline]
+    pub fn read_pcr(data: &[u8; 6]) -> Timestamp {
+        let base =
+            ((data[0..=3].read_be_32() as u64) << 1) | (((data[4] & 0b10000000) >> 7) as u64);
+        let extension = data[4..=5].read_be_16() & 0b0000_0001_1111_1111;
+        Timestamp::new(base, extension)
+    }
+
+    /// PTS・DTSを格納する`data`から`Timestamp`を読み取る。
+    #[inline]
+    pub fn read_pts(data: &[u8; 5]) -> Timestamp {
         let timestamp = ((data[0] & 0b00001110) as u64) << 29
             | (((data[1..=2].read_be_16() & 0b11111111_11111110) as u64) << 14)
             | ((data[3..=4].read_be_16() >> 1) as u64);
-        Timestamp(timestamp)
+        Timestamp::new(timestamp, 0)
     }
 
-    /// PTS・DTSを秒に変換する。
+    /// 27MHz単位で表現されるタイムスタンプを取得する。
+    ///
+    /// この値は42ビットに収まる。
+    ///
+    /// # サンプル
+    ///
+    /// ```
+    /// use isdb::time::Timestamp;
+    ///
+    /// assert_eq!(Timestamp::new(411522, 189).full(), 123456789);
+    /// assert_eq!(Timestamp::ZERO.full(), 0);
+    /// ```
+    #[inline]
+    pub const fn full(&self) -> u64 {
+        self.0
+    }
+
+    /// タイムスタンプの90kHz部分を取得する。
+    ///
+    /// この値は33ビットに収まる。
+    ///
+    /// # サンプル
+    ///
+    /// ```
+    /// use isdb::time::Timestamp;
+    ///
+    /// assert_eq!(Timestamp::new(100, 10).base(), 100);
+    /// assert_eq!(Timestamp::ZERO.base(), 0);
+    /// ```
+    #[inline]
+    pub const fn base(&self) -> u64 {
+        self.0 / 300
+    }
+
+    /// タイムスタンプの27MHz部分を取得する。
+    ///
+    /// この値は`0..300`の範囲であり9ビットに収まる。
+    ///
+    /// # サンプル
+    ///
+    /// ```
+    /// use isdb::time::Timestamp;
+    ///
+    /// assert_eq!(Timestamp::new(100, 10).extension(), 10);
+    /// assert_eq!(Timestamp::ZERO.extension(), 0);
+    /// ```
+    #[inline]
+    pub const fn extension(&self) -> u16 {
+        (self.0 % 300) as u16
+    }
+
+    /// タイムスタンプを秒に変換する。
+    ///
+    /// # サンプル
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// use isdb::time::Timestamp;
+    ///
+    /// assert_eq!(Timestamp::new(500_000, 10).as_secs(), 5);
+    /// assert_eq!(Timestamp::ZERO.as_secs(), 0);
+    /// assert_eq!(Timestamp::from(Duration::from_secs_f32(123.456789)).as_secs(), 123);
+    /// ```
     #[inline]
     pub const fn as_secs(&self) -> u64 {
-        self.0 / 90_000
+        self.0 / 27_000_000
     }
 
-    /// PTS・DTSを秒成分を含むナノ秒に変換する。
+    /// タイムスタンプを秒成分を含むナノ秒に変換する。
+    ///
+    /// # サンプル
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// use isdb::time::Timestamp;
+    ///
+    /// assert_eq!(Timestamp::new(500_000, 10).as_nanos(), 5555555925);
+    /// assert_eq!(Timestamp::ZERO.as_nanos(), 0);
+    ///
+    /// // `Duration::new(100, 50).as_nanos()`は100000000050だが、
+    /// // `Timestamp`への変換により誤差が生じる
+    /// assert_eq!(Timestamp::from(Duration::new(100, 50)).as_nanos(), 100000000037);
+    /// ```
     #[inline]
     pub const fn as_nanos(&self) -> u64 {
-        // (v * 1_000_000 / 90)と(v / 90 * 1_000_000)からできるだけオーバーフローしない方を選択
-        match self.0.checked_mul(1_000_000) {
-            Some(v) => v / 90,
-            None => (self.0 / 90).saturating_mul(1_000_000),
-        }
+        self.0 * 1_000 / 27
     }
 
-    /// PTS・DTSを[`Duration`]に変換する。
+    /// タイムスタンプを[`Duration`]に変換する。
+    ///
+    /// # サンプル
+    ///
+    /// ```
+    /// use std::time::Duration;
+    /// use isdb::time::Timestamp;
+    ///
+    /// assert_eq!(Timestamp::new(100, 10).to_duration(), Duration::from_nanos(1111481));
+    /// ```
     #[inline]
     pub const fn to_duration(&self) -> Duration {
-        let secs = self.0 / 90_000;
-        let nanos = (self.0 % 90_000 * 1_000_000 / 90) as u32;
+        let secs = self.0 / 27_000_000;
+        let nanos = (self.0 % 27_000_000 * 1_000 / 27) as u32;
         Duration::new(secs, nanos)
-    }
-
-    /// 検査付きの加算。`self + rhs`を計算し、オーバーフローが発生すれば`None`を返す。
-    #[inline]
-    pub const fn checked_add(&self, rhs: Timestamp) -> Option<Timestamp> {
-        // Option::mapはconst fnではない
-        match self.0.checked_add(rhs.0) {
-            Some(x) => Some(Timestamp(x)),
-            None => None,
-        }
-    }
-
-    /// 検査付きの減算。`self - rhs`を計算し、オーバーフローが発生すれば`None`を返す。
-    #[inline]
-    pub const fn checked_sub(&self, rhs: Timestamp) -> Option<Timestamp> {
-        // Option::mapはconst fnではない
-        match self.0.checked_sub(rhs.0) {
-            Some(x) => Some(Timestamp(x)),
-            None => None,
-        }
-    }
-
-    /// 飽和する加算。`self + rhs`を計算し、オーバーフローする代わりに数値の境界で飽和する。
-    #[inline]
-    pub const fn saturating_add(&self, rhs: Timestamp) -> Timestamp {
-        Timestamp(self.0.saturating_add(rhs.0))
-    }
-
-    /// 飽和する減算。`self - rhs`を計算し、オーバーフローする代わりに数値の境界で飽和する。
-    #[inline]
-    pub const fn saturating_sub(&self, rhs: Timestamp) -> Timestamp {
-        Timestamp(self.0.saturating_sub(rhs.0))
-    }
-
-    /// 折り返す加算。`self + rhs`を計算し、型の境界で回り込み（ラップアラウンド）が起きる。
-    #[inline]
-    pub const fn wrapping_add(&self, rhs: Timestamp) -> Timestamp {
-        Timestamp(self.0.wrapping_add(rhs.0))
-    }
-
-    /// 折り返す減算。`self - rhs`を計算し、型の境界で回り込み（ラップアラウンド）が起きる。
-    #[inline]
-    pub const fn wrapping_sub(&self, rhs: Timestamp) -> Timestamp {
-        Timestamp(self.0.wrapping_sub(rhs.0))
     }
 }
 
@@ -304,7 +390,14 @@ impl From<Duration> for Timestamp {
     }
 }
 
-impl ops::Add<Timestamp> for Timestamp {
+impl From<Timestamp> for Duration {
+    #[inline]
+    fn from(value: Timestamp) -> Duration {
+        value.to_duration()
+    }
+}
+
+impl ops::Add for Timestamp {
     type Output = Timestamp;
 
     #[inline]
@@ -313,14 +406,14 @@ impl ops::Add<Timestamp> for Timestamp {
     }
 }
 
-impl ops::AddAssign<Timestamp> for Timestamp {
+impl ops::AddAssign for Timestamp {
     #[inline]
     fn add_assign(&mut self, rhs: Timestamp) {
         self.0 += rhs.0;
     }
 }
 
-impl ops::Sub<Timestamp> for Timestamp {
+impl ops::Sub for Timestamp {
     type Output = Timestamp;
 
     #[inline]
@@ -329,7 +422,7 @@ impl ops::Sub<Timestamp> for Timestamp {
     }
 }
 
-impl ops::SubAssign<Timestamp> for Timestamp {
+impl ops::SubAssign for Timestamp {
     #[inline]
     fn sub_assign(&mut self, rhs: Timestamp) {
         self.0 -= rhs.0;
@@ -388,36 +481,5 @@ mod tests {
         assert_eq!(dt.second, 56);
         assert_eq!(dt.to_string(), "1982-09-06 12:34:56");
         assert_eq!(format!("{:?}", dt), "1982-09-06 (Mon) 12:34:56");
-    }
-
-    #[test]
-    fn test_timestamp() {
-        assert_eq!(Timestamp::from(Duration::ZERO), Timestamp(0));
-        assert_eq!(
-            Timestamp::from(Duration::new(123, 456789000)),
-            Timestamp((123.456789 * 90_000.) as u64)
-        );
-
-        assert_eq!(
-            Timestamp::from(Duration::new(123, 456789000)).as_secs(),
-            123
-        );
-        assert_eq!(
-            Timestamp::from(Duration::new(123, 456789000)).as_nanos(),
-            123456788888
-        );
-        assert_eq!(
-            Timestamp::from(Duration::new(123, 456789000)).to_duration(),
-            Duration::new(123, 456788888)
-        );
-
-        assert_eq!(
-            format!("{:?}", Timestamp::from(Duration::from_secs(0))),
-            "0ns"
-        );
-        assert_eq!(
-            format!("{:?}", Timestamp::from(Duration::from_secs_f32(123.45))),
-            "123.449988888s"
-        );
     }
 }
