@@ -633,11 +633,11 @@ impl Inner {
                 let pts = {
                     let mut first_pts = self.first_pts.lock();
                     if let Some(first_pts) = &*first_pts {
-                        // TODO: ラップアラウンドを考慮する
-                        pts.wrapping_sub(*first_pts)
+                        // TODO: 2回目以降のラップアラウンドを考慮する？
+                        pts - *first_pts
                     } else {
                         *first_pts = Some(pts);
-                        isdb::time::Timestamp(0)
+                        isdb::time::Timestamp::ZERO
                     }
                 };
                 sample.SetSampleTime((pts.as_nanos() / 100) as i64)?;

@@ -286,7 +286,7 @@ impl ExtractHandler {
     pub fn set_position(&self, pos: Timestamp) {
         self.commands
             .set_position
-            .store(pos.0 + 1, Ordering::SeqCst);
+            .store(pos.full() + 1, Ordering::SeqCst);
         self.commands.has_any.store(true, Ordering::SeqCst);
         self.unparker.unpark();
     }
@@ -379,13 +379,15 @@ impl SeekCache {
 
         if !self.0.is_empty()
             && index > 0
-            && pos.timestamp - self.0[index - 1].timestamp < Self::DISTANCE
+            && (pos.timestamp - self.0[index - 1].timestamp).full() < Self::DISTANCE.full()
         {
             // 直前のキャッシュと位置が近すぎる
             return;
         }
 
-        if index < self.0.len() && self.0[index].timestamp - pos.timestamp < Self::DISTANCE {
+        if index < self.0.len()
+            && (self.0[index].timestamp - pos.timestamp).full() < Self::DISTANCE.full()
+        {
             // 直後のキャッシュと位置が近すぎる
             return;
         }
@@ -394,7 +396,7 @@ impl SeekCache {
     }
 
     pub fn find(&self, timestamp: Timestamp) -> Option<&SeekPos> {
-        match self.0.binary_search_by_key(&timestamp, |ts| ts.timestamp) {
+        match self.0.binary_search_by_key(&timestamp, |sp| sp.timestamp) {
             // キャッシュがない、またはシーク対象より前のキャッシュがない
             // つまり最初からシーク対象を検索する必要がある
             Err(0) => None,
@@ -441,7 +443,7 @@ impl<R: Read + Seek, T: Sink> Selector<R, T> {
             sink,
 
             state,
-            cur_pos: Timestamp(0),
+            cur_pos: Timestamp::ZERO,
             seek_info: None,
             seek_cache: SeekCache::new(),
         }
@@ -946,12 +948,10 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
             }
 
             if let Some(last_pcr) = last_pcr {
-                // TODO: ラップアラウンドを考慮する
-                if let Some(duration) = last_pcr.to_duration().checked_sub(first_pcr.to_duration())
-                {
-                    log::trace!("ストリーム長：{:?}", duration);
-                    self.selector().state.write().duration = Some(duration);
-                }
+                // TODO: 2回以上のラップアラウンドを考慮する？
+                let duration = (last_pcr - first_pcr).to_duration();
+                log::trace!("ストリーム長：{:?}", duration);
+                self.selector().state.write().duration = Some(duration);
             }
         }
 
@@ -1080,7 +1080,7 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
 
         let set_position = self.commands.set_position.swap(0, Ordering::SeqCst);
         if set_position > 0 {
-            if !self.set_position(Timestamp(set_position - 1)) {
+            if !self.set_position(Timestamp::from_full(set_position - 1)) {
                 return false;
             }
         }
