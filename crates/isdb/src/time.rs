@@ -1,5 +1,6 @@
 //! ARIB STD-B10で規定される日付時刻。
 
+use std::cmp::Ordering;
 use std::fmt::{self, Write};
 use std::ops;
 use std::time::Duration;
@@ -205,12 +206,43 @@ impl fmt::Debug for DateTime {
 }
 
 /// PCRやPTS等を表すタイムスタンプ。時間は27MHz単位で表現される。
-#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+///
+/// 演算・比較はラップアラウンドを考慮して行われ、自動でオーバーフローする。
+///
+/// # サンプル
+///
+/// ```
+/// use isdb::time::Timestamp;
+///
+/// assert_eq!(Timestamp::new(100, 10) + Timestamp::new(200, 20), Timestamp::new(300, 30));
+/// assert_eq!(Timestamp::new(10, 100) + Timestamp::new(20, 200), Timestamp::new(31, 0));
+/// assert_eq!(Timestamp::new(300, 30) - Timestamp::new(200, 20), Timestamp::new(100, 10));
+/// assert_eq!(Timestamp::new(31, 0) - Timestamp::new(20, 200), Timestamp::new(10, 100));
+/// assert!(Timestamp::new(100, 10) < Timestamp::new(100, 11));
+/// assert!(Timestamp::new(100, 11) > Timestamp::new(100, 10));
+///
+/// // ラップアラウンドを考慮した演算
+/// assert_eq!(Timestamp::MAX + Timestamp::new(0, 1), Timestamp::ZERO);
+/// assert_eq!(Timestamp::MAX + Timestamp::MAX, Timestamp::new(2u64.pow(33) - 1, 298));
+/// assert_eq!(Timestamp::ZERO - Timestamp::new(0, 1), Timestamp::MAX);
+/// assert_eq!(Timestamp::new(1, 0) - Timestamp::new(2, 0), Timestamp::new(2u64.pow(33) - 1, 0));
+///
+/// // ラップアラウンドを考慮した比較
+/// assert!(Timestamp::new(2u64.pow(33) - 100, 299) < Timestamp::ZERO);
+/// assert!(Timestamp::ZERO > Timestamp::new(2u64.pow(33) - 100, 0));
+/// ```
+#[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Timestamp(u64);
 
 impl Timestamp {
     /// ゼロを表すタイムスタンプ。
     pub const ZERO: Timestamp = Timestamp::new(0, 0);
+
+    /// 最大のタイムスタンプ。
+    pub const MAX: Timestamp = Timestamp::new(2u64.pow(33) - 1, 299);
+
+    // ラップアラウンドがあると見做す差分値。
+    const WRAP_THRESH: u64 = Self::MAX.0 / 2;
 
     /// 90kHZの`base`と27MHzの`extension`から`Timestamp`を生成する。
     #[inline]
@@ -222,6 +254,11 @@ impl Timestamp {
 
     /// 27MHz単位で表現されるタイムスタンプから`Timestamp`を生成する。
     ///
+    /// # パニック
+    ///
+    /// このメソッドは[`Timestamp::full`]の戻り値から`Timestamp`を再構築するためのものであり、
+    /// 最大のタイムスタンプを超える値が渡された場合はパニックする。
+    ///
     /// # サンプル
     ///
     /// ```
@@ -229,13 +266,17 @@ impl Timestamp {
     ///
     /// assert_eq!(Timestamp::from_full(123456789), Timestamp::new(411522, 189));
     /// assert_eq!(Timestamp::from_full(Timestamp::ZERO.full()), Timestamp::ZERO);
+    /// assert_eq!(Timestamp::from_full(Timestamp::MAX.full()), Timestamp::MAX);
     /// ```
     #[inline]
     pub const fn from_full(full: u64) -> Timestamp {
+        assert!(full <= Self::MAX.0, "Timestamp::from_fullでオーバーフロー");
         Timestamp(full)
     }
 
     /// [`Duration`]から`Timestamp`を生成する。この変換により誤差が生じる場合がある。
+    ///
+    /// `dur`の値が`Timestamp`の最大値を超える場合は`Timestamp::MAX`が返る。
     ///
     /// # サンプル
     ///
@@ -248,15 +289,25 @@ impl Timestamp {
     ///     Timestamp::from_duration(Duration::new(123, 456789000)),
     ///     Timestamp::from_full((123.456789 * 27_000_000.) as u64),
     /// );
+    /// assert_eq!(
+    ///     Timestamp::from_duration(Duration::new(u64::MAX, 999_999_999)),
+    ///     Timestamp::MAX,
+    /// );
     /// ```
     #[inline]
     pub const fn from_duration(dur: Duration) -> Timestamp {
         let secs = dur.as_secs();
         let nanos = dur.subsec_nanos();
-        Timestamp(
-            secs.saturating_mul(27_000_000)
-                .saturating_add(nanos as u64 * 27 / 1_000),
-        )
+
+        // Option::and_thenはconst fnではない
+        let x = match secs.checked_mul(27_000_000) {
+            Some(x) => x.checked_add(nanos as u64 * 27 / 1_000),
+            None => None,
+        };
+        match x {
+            Some(x) if x <= Self::MAX.0 => Timestamp(x),
+            _ => Self::MAX,
+        }
     }
 
     /// PCRを格納する`data`から`Timestamp`を読み取る。
@@ -288,6 +339,7 @@ impl Timestamp {
     ///
     /// assert_eq!(Timestamp::new(411522, 189).full(), 123456789);
     /// assert_eq!(Timestamp::ZERO.full(), 0);
+    /// assert_eq!(Timestamp::MAX.full(), 2576980377599);
     /// ```
     #[inline]
     pub const fn full(&self) -> u64 {
@@ -305,6 +357,7 @@ impl Timestamp {
     ///
     /// assert_eq!(Timestamp::new(100, 10).base(), 100);
     /// assert_eq!(Timestamp::ZERO.base(), 0);
+    /// assert_eq!(Timestamp::MAX.base(), 2u64.pow(33) - 1);
     /// ```
     #[inline]
     pub const fn base(&self) -> u64 {
@@ -322,6 +375,7 @@ impl Timestamp {
     ///
     /// assert_eq!(Timestamp::new(100, 10).extension(), 10);
     /// assert_eq!(Timestamp::ZERO.extension(), 0);
+    /// assert_eq!(Timestamp::MAX.extension(), 299);
     /// ```
     #[inline]
     pub const fn extension(&self) -> u16 {
@@ -338,6 +392,7 @@ impl Timestamp {
     ///
     /// assert_eq!(Timestamp::new(500_000, 10).as_secs(), 5);
     /// assert_eq!(Timestamp::ZERO.as_secs(), 0);
+    /// assert_eq!(Timestamp::MAX.as_secs(), 95443);
     /// assert_eq!(Timestamp::from(Duration::from_secs_f32(123.456789)).as_secs(), 123);
     /// ```
     #[inline]
@@ -355,6 +410,7 @@ impl Timestamp {
     ///
     /// assert_eq!(Timestamp::new(500_000, 10).as_nanos(), 5555555925);
     /// assert_eq!(Timestamp::ZERO.as_nanos(), 0);
+    /// assert_eq!(Timestamp::MAX.as_nanos(), 95443717688851);
     ///
     /// // `Duration::new(100, 50).as_nanos()`は100000000050だが、
     /// // `Timestamp`への変換により誤差が生じる
@@ -374,6 +430,7 @@ impl Timestamp {
     /// use isdb::time::Timestamp;
     ///
     /// assert_eq!(Timestamp::new(100, 10).to_duration(), Duration::from_nanos(1111481));
+    /// assert_eq!(Timestamp::MAX.to_duration(), Duration::new(95443, 717688851));
     /// ```
     #[inline]
     pub const fn to_duration(&self) -> Duration {
@@ -402,14 +459,17 @@ impl ops::Add for Timestamp {
 
     #[inline]
     fn add(self, rhs: Timestamp) -> Timestamp {
-        Timestamp(self.0 + rhs.0)
+        match self.0 + rhs.0 {
+            x if x > Self::MAX.0 => Timestamp(x - Self::MAX.0 - 1),
+            x => Timestamp(x),
+        }
     }
 }
 
 impl ops::AddAssign for Timestamp {
     #[inline]
     fn add_assign(&mut self, rhs: Timestamp) {
-        self.0 += rhs.0;
+        *self = *self + rhs;
     }
 }
 
@@ -418,20 +478,53 @@ impl ops::Sub for Timestamp {
 
     #[inline]
     fn sub(self, rhs: Timestamp) -> Timestamp {
-        Timestamp(self.0 - rhs.0)
+        match self.0.checked_sub(rhs.0) {
+            Some(x) => Timestamp(x),
+            None => Timestamp((self.0 + Self::MAX.0 + 1) - rhs.0),
+        }
     }
 }
 
 impl ops::SubAssign for Timestamp {
     #[inline]
     fn sub_assign(&mut self, rhs: Timestamp) {
-        self.0 -= rhs.0;
+        *self = *self - rhs;
     }
 }
 
 impl fmt::Debug for Timestamp {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         self.to_duration().fmt(f)
+    }
+}
+
+impl PartialOrd for Timestamp {
+    #[inline]
+    fn partial_cmp(&self, rhs: &Timestamp) -> Option<Ordering> {
+        Some(self.cmp(rhs))
+    }
+}
+
+impl Ord for Timestamp {
+    fn cmp(&self, rhs: &Timestamp) -> Ordering {
+        // 二値の差がWRAP_THRESH以上であればラップアラウンドしたものとし結果を逆転させる
+        if self.0 > rhs.0 {
+            let diff = self.0 - rhs.0;
+            if diff < Self::WRAP_THRESH {
+                Ordering::Greater
+            } else {
+                Ordering::Less
+            }
+        } else if self.0 < rhs.0 {
+            let diff = rhs.0 - self.0;
+            if diff < Self::WRAP_THRESH {
+                Ordering::Less
+            } else {
+                Ordering::Greater
+            }
+        } else {
+            Ordering::Equal
+        }
     }
 }
 
