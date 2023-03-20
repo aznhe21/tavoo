@@ -456,13 +456,8 @@ impl Inner {
                 log::trace!("TransportStream::do_start");
 
                 let start_pos = if let Some(start_pos) = start_pos {
-                    // ExtractHandlerに指定する開始時刻はPTS基準
-                    let mut pos = (start_pos as u64) * 100;
-                    let first_pts = *this.first_pts.lock();
-                    if let Some(first_pts) = first_pts {
-                        pos += first_pts.as_nanos();
-                    }
-                    this.handler.set_position(Duration::from_nanos(pos).into());
+                    this.handler
+                        .set_position(Duration::from_nanos((start_pos as u64) * 100));
 
                     PropVariant::I64(start_pos)
                 } else {

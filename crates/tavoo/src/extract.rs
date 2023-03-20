@@ -109,9 +109,12 @@ struct Commands {
     /// 音声ストリームを選択する。
     // 0は指示無し、1～は`Some(u8)`
     select_audio_stream: AtomicU16,
-    /// 再生位置を設定する。
-    // 0は指示無し、1～は`Some(Timestamp)`
-    set_position: AtomicU64,
+    /// 再生位置の秒成分を設定する。
+    // 0は指示無し、1～は`Some(秒)`
+    set_position_secs: AtomicU64,
+    /// 再生位置のナノ秒成分を設定する。
+    // 指示の有無はset_position_secsで指定する
+    set_position_nanos: AtomicU32,
     /// TSをリセットして最初から再生する。
     reset: AtomicBool,
     /// TSの読み取りを終了する。
@@ -285,10 +288,14 @@ impl ExtractHandler {
     }
 
     /// 再生位置の設定を指示する。
-    pub fn set_position(&self, pos: Timestamp) {
+    pub fn set_position(&self, pos: Duration) {
+        // 秒が`u64::MAX`になるようなシークはしないと思われ
         self.commands
-            .set_position
-            .store(pos.full() + 1, Ordering::SeqCst);
+            .set_position_secs
+            .store(pos.as_secs().saturating_add(1), Ordering::SeqCst);
+        self.commands
+            .set_position_nanos
+            .store(pos.subsec_nanos(), Ordering::SeqCst);
         self.commands.has_any.store(true, Ordering::SeqCst);
         self.unparker.unpark();
     }
@@ -355,11 +362,38 @@ pub struct SelectedStream {
     pub superimpose_pid: Option<isdb::Pid>,
 }
 
+/// 再生時間。
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+struct PlaybackTime {
+    prev_ts: Option<Timestamp>,
+    duration: Duration,
+}
+
+impl PlaybackTime {
+    /// 現在の再生時間を更新する。
+    ///
+    /// 前パケットとの差分を積分していくことでラップアラウンドを回避する。
+    pub fn update(&mut self, new_ts: Timestamp) {
+        if let Some(prev_ts) = self.prev_ts.replace(new_ts) {
+            if new_ts >= prev_ts {
+                self.duration += (new_ts - prev_ts).to_duration();
+            } else {
+                // PTSが遡るパケット
+                self.duration = self
+                    .duration
+                    .saturating_sub((prev_ts - new_ts).to_duration());
+            }
+        } else {
+            // シークでは`position`は非ゼロだが`prev_ts`が`None`の場合がある
+        }
+    }
+}
+
 /// ファイル上の位置とTSのタイムスタンプ。
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct SeekPos {
     stream_pos: u64,
-    timestamp: Timestamp,
+    duration: Duration,
 }
 
 /// TSのタイムスタンプからファイル上の位置を検索するためのキャッシュ。
@@ -368,39 +402,37 @@ struct SeekCache(Vec<SeekPos>);
 
 impl SeekCache {
     /// 前後のキャッシュと離す最低限の時間間隔。
-    const DISTANCE: Timestamp = Timestamp::from_duration(Duration::from_secs(15));
+    const DISTANCE: Duration = Duration::from_secs(15);
 
     #[inline]
     pub const fn new() -> SeekCache {
         SeekCache(Vec::new())
     }
 
-    pub fn add(&mut self, pos: SeekPos) {
-        let Err(index) = self.0.binary_search_by_key(&pos.timestamp, |sp| sp.timestamp) else {
+    pub fn add(&mut self, seek_pos: SeekPos) {
+        let Err(index) = self.0.binary_search_by_key(&seek_pos.duration, |sp| sp.duration) else {
             // 同じタイムスタンプ
             return;
         };
 
         if !self.0.is_empty()
             && index > 0
-            && (pos.timestamp - self.0[index - 1].timestamp).full() < Self::DISTANCE.full()
+            && seek_pos.duration - self.0[index - 1].duration < Self::DISTANCE
         {
             // 直前のキャッシュと位置が近すぎる
             return;
         }
 
-        if index < self.0.len()
-            && (self.0[index].timestamp - pos.timestamp).full() < Self::DISTANCE.full()
-        {
+        if index < self.0.len() && self.0[index].duration - seek_pos.duration < Self::DISTANCE {
             // 直後のキャッシュと位置が近すぎる
             return;
         }
 
-        self.0.insert(index, pos);
+        self.0.insert(index, seek_pos);
     }
 
-    pub fn find(&self, timestamp: Timestamp) -> Option<&SeekPos> {
-        match self.0.binary_search_by_key(&timestamp, |sp| sp.timestamp) {
+    pub fn find(&self, pos: Duration) -> Option<&SeekPos> {
+        match self.0.binary_search_by_key(&pos, |sp| sp.duration) {
             // キャッシュがない、またはシーク対象より前のキャッシュがない
             // つまり最初からシーク対象を検索する必要がある
             Err(0) => None,
@@ -415,7 +447,7 @@ impl SeekCache {
 #[derive(Debug)]
 struct SeekInfo {
     /// シーク先の位置。
-    target_pos: Timestamp,
+    target_pos: Duration,
 
     /// シーク開始時に選択されていたストリーム。
     orig_stream: Option<SelectedStream>,
@@ -432,8 +464,8 @@ struct Selector<R, T> {
     sink: T,
 
     state: Arc<RwLock<State>>,
-    /// 最後に処理したESの時間。
-    cur_pos: Timestamp,
+    /// 既定サービスのPCRを元にした再生時間。
+    pcr_time: PlaybackTime,
     /// シーク中の情報。シークが完了したら`None`が設定される。
     seek_info: Option<SeekInfo>,
     seek_cache: SeekCache,
@@ -447,7 +479,7 @@ impl<R: Read + Seek, T: Sink> Selector<R, T> {
             sink,
 
             state,
-            cur_pos: Timestamp::ZERO,
+            pcr_time: PlaybackTime::default(),
             seek_info: None,
             seek_cache: SeekCache::new(),
         }
@@ -627,26 +659,21 @@ impl<R: Read + Seek, T: Sink> Selector<R, T> {
         }
     }
 
-    /// シーク中、`pts`がシーク対象以降であればシークを完了させる。
+    /// 再生時間がシーク対象以降であればシークを完了させる。
     ///
-    /// シーク中でない、またはシークが完了できた場合は`true`を、
-    /// まだシークが完了できない場合は`false`を返す。
-    ///
-    /// また、シークが完了した場合には保留していたイベントを発生させる。
-    fn complete_seek(&mut self, pts: Option<Timestamp>) -> bool {
-        let (seek_info, pts) = match (&mut self.seek_info, pts) {
-            (None, _) => return true,
-
+    /// シークが完了した場合には保留していたイベントを発生させる。
+    fn complete_seek(&mut self) {
+        let seek_info = match &mut self.seek_info {
             // target_posまでは何も処理しない
-            (Some(seek_info), Some(pts)) if pts >= seek_info.target_pos => (seek_info, pts),
-            _ => return false,
+            Some(seek_info) if self.pcr_time.duration >= seek_info.target_pos => seek_info,
+            _ => return,
         };
 
         // シーク位置を記録
         if let Ok(stream_pos) = self.read.stream_position() {
             self.seek_cache.add(SeekPos {
                 stream_pos: stream_pos - 188,
-                timestamp: pts,
+                duration: self.pcr_time.duration,
             });
         }
 
@@ -688,7 +715,6 @@ impl<R: Read + Seek, T: Sink> Selector<R, T> {
         }
 
         self.seek_info = None;
-        true
     }
 }
 
@@ -756,11 +782,8 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
         dts: Option<Timestamp>,
         payload: &[u8],
     ) {
-        // シーク中にシーク指示があった場合に基準がずれないようcur_posは常に更新
-        if let Some(pts) = pts {
-            self.cur_pos = pts;
-        }
-        if !self.complete_seek(pts) {
+        // シーク中はパケットを処理しない
+        if self.seek_info.is_some() {
             return;
         }
 
@@ -781,11 +804,8 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
         dts: Option<Timestamp>,
         payload: &[u8],
     ) {
-        // シーク中にシーク指示があった場合に基準がずれないようcur_posは常に更新
-        if let Some(pts) = pts {
-            self.cur_pos = pts;
-        }
-        if !self.complete_seek(pts) {
+        // シーク中はパケットを処理しない
+        if self.seek_info.is_some() {
             return;
         }
 
@@ -840,8 +860,18 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
         self.sink.on_superimpose(caption);
     }
 
-    fn on_pcr(&mut self, services: &ServiceMap, _: &[ServiceId]) {
+    fn on_pcr(&mut self, services: &ServiceMap, service_ids: &[ServiceId]) {
         self.state.write().services.clone_from(services);
+
+        let Some((_, service)) = services.first() else {
+            return;
+        };
+        if !service_ids.contains(&service.service_id()) {
+            return;
+        }
+
+        self.pcr_time.update(service.pcr().expect("PCRは更新済み"));
+        self.complete_seek();
     }
 }
 
@@ -1028,30 +1058,37 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
         shooter.select_audio_stream(services, component_tag);
     }
 
-    fn set_position(&mut self, pos: Timestamp) -> bool {
+    fn set_position(&mut self, pos: Duration) -> bool {
+        // TODO: ビットレートを元にシーク位置を決める
         match self.selector().seek_cache.find(pos).cloned() {
             Some(sp) => {
-                if pos < self.selector().cur_pos || sp.timestamp > self.selector().cur_pos {
+                if pos < self.selector().pcr_time.duration
+                    || sp.duration > self.selector().pcr_time.duration
+                {
                     // 巻き戻しの場合は常にキャッシュを利用
                     // 早送りの場合はキャッシュが先にある場合のみキャッシュを利用
-                    log::trace!("キャッシュ：{:?} -> {:?}", sp.timestamp, pos);
+                    log::trace!("キャッシュ使用：{:?} -> {:?}", sp.duration, pos);
                     if let Err(e) = self.selector().read.seek(SeekFrom::Start(sp.stream_pos)) {
                         self.selector().sink.on_stream_error(e);
                         return false;
                     }
 
+                    self.selector().pcr_time = PlaybackTime {
+                        prev_ts: None,
+                        duration: sp.duration,
+                    };
                     self.demuxer.reset_packets();
                 } else {
                     log::trace!(
                         "キャッシュ非使用：{:?} -> {:?}",
-                        self.selector().cur_pos,
-                        sp.timestamp,
+                        self.selector().pcr_time.duration,
+                        sp.duration,
                     );
                 }
             }
             None => {
-                if pos < self.selector().cur_pos {
-                    log::trace!("シークキャッシュなし：頭出し");
+                if pos < self.selector().pcr_time.duration {
+                    log::trace!("キャッシュなし：頭出し");
                     if !self.reset() {
                         return false;
                     }
@@ -1073,6 +1110,7 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
     fn reset(&mut self) -> bool {
         match self.selector().read.rewind() {
             Ok(_) => {
+                self.selector().pcr_time = PlaybackTime::default();
                 self.demuxer.reset_packets();
                 true
             }
@@ -1111,9 +1149,11 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
             self.select_audio_stream((select_audio_stream - 1) as u8);
         }
 
-        let set_position = self.commands.set_position.swap(0, Ordering::SeqCst);
-        if set_position > 0 {
-            if !self.set_position(Timestamp::from_full(set_position - 1)) {
+        let set_position_secs = self.commands.set_position_secs.swap(0, Ordering::SeqCst);
+        if set_position_secs > 0 {
+            let set_position_nanos = self.commands.set_position_nanos.load(Ordering::SeqCst);
+            let pos = Duration::new(set_position_secs - 1, set_position_nanos);
+            if !self.set_position(pos) {
                 return false;
             }
         }
@@ -1161,112 +1201,149 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_playback_time() {
+        const INIT_DUR: Duration = Duration::from_secs(100);
+        const INIT_PT: PlaybackTime = PlaybackTime {
+            prev_ts: None,
+            duration: INIT_DUR,
+        };
+
+        // 普通のパターン
+        let mut pt = INIT_PT;
+        pt.update(Duration::from_millis(100).into());
+        assert_eq!(pt.duration - INIT_DUR, Duration::ZERO);
+        pt.update(Duration::from_millis(200).into());
+        assert_eq!(pt.duration - INIT_DUR, Duration::from_millis(100));
+
+        // ラップアラウンド
+        let mut pt = INIT_PT;
+        pt.update(Timestamp::new(8589906560, 0));
+        assert_eq!(pt.duration - INIT_DUR, Duration::ZERO);
+        pt.update(Timestamp::new(7473, 0));
+        assert_eq!(pt.duration - INIT_DUR, Duration::from_secs_f64(0.3945));
+
+        // 遡るパターン
+        let mut pt = INIT_PT;
+        pt.update(Duration::from_millis(200).into());
+        assert_eq!(INIT_DUR - pt.duration, Duration::ZERO);
+        pt.update(Duration::from_millis(100).into());
+        assert_eq!(INIT_DUR - pt.duration, Duration::from_millis(100));
+
+        // ラップアラウンドで遡るパターン
+        let mut pt = INIT_PT;
+        pt.update(Timestamp::new(1467, 0));
+        assert_eq!(INIT_DUR - pt.duration, Duration::ZERO);
+        pt.update(Timestamp::new(8589910400, 0));
+        assert_eq!(INIT_DUR - pt.duration, Duration::from_secs_f64(0.2851));
+    }
+
+    #[test]
     fn test_seek_cache() {
         let mut cache = SeekCache::new();
         cache.add(SeekPos {
             stream_pos: 120,
-            timestamp: Duration::from_secs(120).into(),
+            duration: Duration::from_secs(120),
         });
         cache.add(SeekPos {
             stream_pos: 60,
-            timestamp: Duration::from_secs(60).into(),
+            duration: Duration::from_secs(60),
         });
         assert_eq!(
             &cache.0,
             &vec![
                 SeekPos {
                     stream_pos: 60,
-                    timestamp: Duration::from_secs(60).into(),
+                    duration: Duration::from_secs(60),
                 },
                 SeekPos {
                     stream_pos: 120,
-                    timestamp: Duration::from_secs(120).into(),
+                    duration: Duration::from_secs(120),
                 },
             ],
         );
 
         cache.add(SeekPos {
             stream_pos: 60,
-            timestamp: Duration::from_secs(60).into(),
+            duration: Duration::from_secs(60),
         });
         assert_eq!(
             &cache.0,
             &vec![
                 SeekPos {
                     stream_pos: 60,
-                    timestamp: Duration::from_secs(60).into(),
+                    duration: Duration::from_secs(60),
                 },
                 SeekPos {
                     stream_pos: 120,
-                    timestamp: Duration::from_secs(120).into(),
+                    duration: Duration::from_secs(120),
                 },
             ],
         );
 
         cache.add(SeekPos {
             stream_pos: 70,
-            timestamp: Duration::from_secs(70).into(),
+            duration: Duration::from_secs(70),
         });
         assert_eq!(
             &cache.0,
             &vec![
                 SeekPos {
                     stream_pos: 60,
-                    timestamp: Duration::from_secs(60).into(),
+                    duration: Duration::from_secs(60),
                 },
                 SeekPos {
                     stream_pos: 120,
-                    timestamp: Duration::from_secs(120).into(),
+                    duration: Duration::from_secs(120),
                 },
             ],
         );
 
         cache.add(SeekPos {
             stream_pos: 110,
-            timestamp: Duration::from_secs(110).into(),
+            duration: Duration::from_secs(110),
         });
         assert_eq!(
             &cache.0,
             &vec![
                 SeekPos {
                     stream_pos: 60,
-                    timestamp: Duration::from_secs(60).into(),
+                    duration: Duration::from_secs(60),
                 },
                 SeekPos {
                     stream_pos: 120,
-                    timestamp: Duration::from_secs(120).into(),
+                    duration: Duration::from_secs(120),
                 },
             ],
         );
 
-        assert_eq!(cache.find(Duration::from_secs(10).into()), None);
-        assert_eq!(cache.find(Duration::from_secs(50).into()), None);
+        assert_eq!(cache.find(Duration::from_secs(10)), None);
+        assert_eq!(cache.find(Duration::from_secs(50)), None);
         assert_eq!(
-            cache.find(Duration::from_secs(60).into()),
+            cache.find(Duration::from_secs(60)),
             Some(&SeekPos {
                 stream_pos: 60,
-                timestamp: Duration::from_secs(60).into(),
+                duration: Duration::from_secs(60),
             }),
         );
         assert_eq!(
-            cache.find(Duration::from_secs(80).into()),
+            cache.find(Duration::from_secs(80)),
             Some(&SeekPos {
                 stream_pos: 60,
-                timestamp: Duration::from_secs(60).into(),
+                duration: Duration::from_secs(60),
             }),
         );
         assert_eq!(
-            cache.find(Duration::from_secs(119).into()),
+            cache.find(Duration::from_secs(119)),
             Some(&SeekPos {
                 stream_pos: 60,
-                timestamp: Duration::from_secs(60).into(),
+                duration: Duration::from_secs(60),
             }),
         );
         assert_eq!(
-            cache.find(Duration::from_secs(120).into()),
+            cache.find(Duration::from_secs(120)),
             Some(&SeekPos {
                 stream_pos: 120,
-                timestamp: Duration::from_secs(120).into(),
+                duration: Duration::from_secs(120),
             }),
         );
     }
