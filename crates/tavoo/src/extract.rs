@@ -894,13 +894,13 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
     /// ストリームが見つからなかった場合は`false`を返す。
     fn probe_stream(&mut self) -> bool {
         let mut limit = self.probe_size;
-        let service_id = loop {
+        loop {
             match isdb::Packet::read(Limit::new(&mut self.selector().read, &mut limit)) {
                 Ok(Some(packet)) => {
                     self.demuxer.feed(&packet);
 
-                    if let Some(ss) = &self.selector().state.read().selected_stream {
-                        break ss.service_id;
+                    if self.selector().state.read().selected_stream.is_some() {
+                        break;
                     }
                 }
                 Ok(None) => return false,
@@ -909,7 +909,7 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
                     return false;
                 }
             }
-        };
+        }
 
         let Ok(start_pos) = self.selector().read.stream_position() else {
             // 確定位置が取得できなくてもエラーにはしない
@@ -917,14 +917,14 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
         };
 
         let (pcr_pid, pcr) = {
-            let service = &self.demuxer.filter_mut().services()[&service_id];
+            let service = self.demuxer.filter_mut().services().first().unwrap().1;
             (service.pcr_pid(), service.pcr())
         };
 
         let first_pcr = if let Some(pcr) = pcr {
             pcr
         } else {
-            // 選択中サービスにおける最初のPCRを、probe_sizeの範囲内で探す
+            // 既定サービスにおける最初のPCRをprobe_sizeの範囲内で探す
             loop {
                 match isdb::Packet::read(Limit::new(&mut self.selector().read, &mut limit)) {
                     Ok(Some(packet)) => {
@@ -963,7 +963,7 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
                 break 'probe;
             }
 
-            // 選択中サービスにおける最後のPCRを探す
+            // 既定サービスにおける最後のPCRを探す
             let mut last_pcr = None;
             while let Ok(Some(packet)) = isdb::Packet::read(&mut self.selector().read) {
                 if packet.pid() == pcr_pid {
