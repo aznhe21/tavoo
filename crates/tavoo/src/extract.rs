@@ -3,6 +3,7 @@ use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
+use fxhash::FxHashMap;
 use isdb::filters::sorter::{Service, ServiceMap, Stream};
 use isdb::psi::table::ServiceId;
 use isdb::time::Timestamp;
@@ -69,10 +70,10 @@ pub trait Sink {
     fn on_stream_changed(&mut self, changed: StreamChanged);
 
     /// 選択中サービスで映像パケットを受信した際に呼ばれる。
-    fn on_video_packet(&mut self, pts: Option<Timestamp>, dts: Option<Timestamp>, payload: &[u8]);
+    fn on_video_packet(&mut self, pos: Option<Duration>, payload: &[u8]);
 
     /// 選択中サービスで音声パケットを受信した際に呼ばれる。
-    fn on_audio_packet(&mut self, pts: Option<Timestamp>, dts: Option<Timestamp>, payload: &[u8]);
+    fn on_audio_packet(&mut self, pos: Option<Duration>, payload: &[u8]);
 
     /// 選択中サービスで字幕パケットを受信した際に呼ばれる。
     fn on_caption(&mut self, caption: &isdb::filters::sorter::Caption);
@@ -464,8 +465,12 @@ struct Selector<R, T> {
     sink: T,
 
     state: Arc<RwLock<State>>,
+    /// ESのPIDからサービス識別を得るテーブル。
+    es2svc: isdb::pid::PidTable<Option<ServiceId>>,
     /// 既定サービスのPCRを元にした再生時間。
     pcr_time: PlaybackTime,
+    /// 各サービスのPTSを元にした再生時間。
+    pts_times: FxHashMap<ServiceId, PlaybackTime>,
     /// シーク中の情報。シークが完了したら`None`が設定される。
     seek_info: Option<SeekInfo>,
     seek_cache: SeekCache,
@@ -479,7 +484,9 @@ impl<R: Read + Seek, T: Sink> Selector<R, T> {
             sink,
 
             state,
+            es2svc: isdb::pid::PidTable::from_fn(|_| None),
             pcr_time: PlaybackTime::default(),
+            pts_times: FxHashMap::default(),
             seek_info: None,
             seek_cache: SeekCache::new(),
         }
@@ -743,6 +750,14 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
     fn on_pmt_updated(&mut self, services: &ServiceMap, service: &Service) {
         self.state.write().services.clone_from(services);
 
+        self.es2svc.fill(None);
+        for service in services.values().rev() {
+            std::iter::empty()
+                .chain(service.video_streams())
+                .chain(service.audio_streams())
+                .for_each(|stream| self.es2svc[stream.pid()] = Some(service.service_id()));
+        }
+
         // シーク中はイベント発生を保留
         if let Some(seek_info) = &mut self.seek_info {
             seek_info.pmt_updated.insert(service.service_id());
@@ -779,9 +794,20 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
         _: &ServiceMap,
         pid: isdb::Pid,
         pts: Option<Timestamp>,
-        dts: Option<Timestamp>,
+        _: Option<Timestamp>,
         payload: &[u8],
     ) {
+        let Some(service_id) = self.es2svc[pid] else { return };
+
+        // シーク中も再生時間は更新
+        let pos = if let Some(pts) = pts {
+            let time = self.pts_times.entry(service_id).or_default();
+            time.update(pts);
+            Some(time.duration)
+        } else {
+            None
+        };
+
         // シーク中はパケットを処理しない
         if self.seek_info.is_some() {
             return;
@@ -793,7 +819,7 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
                 return;
             }
         }
-        self.sink.on_video_packet(pts, dts, payload);
+        self.sink.on_video_packet(pos, payload);
     }
 
     fn on_audio_packet(
@@ -801,9 +827,20 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
         _: &ServiceMap,
         pid: isdb::Pid,
         pts: Option<Timestamp>,
-        dts: Option<Timestamp>,
+        _: Option<Timestamp>,
         payload: &[u8],
     ) {
+        let Some(service_id) = self.es2svc[pid] else { return };
+
+        // シーク中も再生時間は更新
+        let pos = if let Some(pts) = pts {
+            let time = self.pts_times.entry(service_id).or_default();
+            time.update(pts);
+            Some(time.duration)
+        } else {
+            None
+        };
+
         // シーク中はパケットを処理しない
         if self.seek_info.is_some() {
             return;
@@ -815,7 +852,7 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
                 return;
             }
         }
-        self.sink.on_audio_packet(pts, dts, payload);
+        self.sink.on_audio_packet(pos, payload);
     }
 
     fn on_caption(

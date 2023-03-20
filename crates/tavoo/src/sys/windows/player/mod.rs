@@ -45,7 +45,6 @@ struct Session<Event: 'static> {
     event_loop: winit::event_loop::EventLoopProxy<Event>,
     handler: ExtractHandler,
     state: Arc<Mutex<State>>,
-    first_pts: Arc<Mutex<Option<isdb::time::Timestamp>>>,
 }
 
 impl<Event> Clone for Session<Event> {
@@ -55,7 +54,6 @@ impl<Event> Clone for Session<Event> {
             event_loop: self.event_loop.clone(),
             handler: self.handler.clone(),
             state: self.state.clone(),
-            first_pts: self.first_pts.clone(),
         }
     }
 }
@@ -102,7 +100,6 @@ impl<Event> Player<Event> {
             event_loop: self.event_loop.clone(),
             handler: extractor.handler(),
             state: Arc::new(Mutex::new(State::default())),
-            first_pts: Arc::new(Mutex::new(None)),
         };
         let file = std::fs::File::open(path)?;
         let thread_handle = extractor.spawn(file, session.clone());
@@ -327,7 +324,6 @@ where
         let selected_stream = selected_stream.as_ref().expect("サービス未選択");
         let source = TransportStream::new(
             self.handler.clone(),
-            self.first_pts.clone(),
             &selected_stream.video_stream,
             &selected_stream.audio_stream,
         )?;
@@ -392,27 +388,17 @@ where
         }
     }
 
-    fn on_video_packet(
-        &mut self,
-        pts: Option<isdb::time::Timestamp>,
-        _: Option<isdb::time::Timestamp>,
-        payload: &[u8],
-    ) {
+    fn on_video_packet(&mut self, pos: Option<Duration>, payload: &[u8]) {
         let source = self.state.lock().session.as_ref().map(|s| s.source());
         if let Some(source) = source {
-            source.deliver_video_packet(pts, payload);
+            source.deliver_video_packet(pos, payload);
         }
     }
 
-    fn on_audio_packet(
-        &mut self,
-        pts: Option<isdb::time::Timestamp>,
-        _: Option<isdb::time::Timestamp>,
-        payload: &[u8],
-    ) {
+    fn on_audio_packet(&mut self, pos: Option<Duration>, payload: &[u8]) {
         let source = self.state.lock().session.as_ref().map(|s| s.source());
         if let Some(source) = source {
-            source.deliver_audio_packet(pts, payload);
+            source.deliver_audio_packet(pos, payload);
         }
     }
 

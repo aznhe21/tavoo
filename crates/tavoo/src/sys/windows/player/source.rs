@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use std::time::Duration;
 
 use parking_lot::{Mutex, MutexGuard};
@@ -200,7 +199,6 @@ unsafe impl Send for TransportStream {}
 impl TransportStream {
     pub fn new(
         handler: ExtractHandler,
-        first_pts: Arc<Mutex<Option<isdb::time::Timestamp>>>,
         video_stream: &isdb::filters::sorter::Stream,
         audio_stream: &isdb::filters::sorter::Stream,
     ) -> WinResult<TransportStream> {
@@ -230,7 +228,6 @@ impl TransportStream {
                 audio_stream: dummy_stream,
 
                 rate: 1.,
-                first_pts,
                 pending_eos: 0,
             });
             let this = TransportStream(
@@ -274,18 +271,18 @@ impl TransportStream {
         self.outer().inner.lock()
     }
 
-    pub fn deliver_video_packet(&self, pts: Option<isdb::time::Timestamp>, payload: &[u8]) {
+    pub fn deliver_video_packet(&self, pos: Option<Duration>, payload: &[u8]) {
         let outer = self.outer();
-        let r = Inner::deliver_video_packet(&mut outer.inner.lock(), pts, payload);
+        let r = Inner::deliver_video_packet(&mut outer.inner.lock(), pos, payload);
         if let Err(e) = r {
             log::debug!("error[deliver_video_packet]: {}", e);
             outer.streaming_error(e);
         }
     }
 
-    pub fn deliver_audio_packet(&self, pts: Option<isdb::time::Timestamp>, payload: &[u8]) {
+    pub fn deliver_audio_packet(&self, pos: Option<Duration>, payload: &[u8]) {
         let outer = self.outer();
-        let r = Inner::deliver_audio_packet(&mut outer.inner.lock(), pts, payload);
+        let r = Inner::deliver_audio_packet(&mut outer.inner.lock(), pos, payload);
         if let Err(e) = r {
             log::debug!("error[deliver_audio_packet]: {}", e);
             outer.streaming_error(e);
@@ -343,7 +340,6 @@ struct Inner {
     audio_stream: MF::IMFMediaStream,
 
     rate: f32,
-    first_pts: Arc<Mutex<Option<isdb::time::Timestamp>>>,
     pending_eos: usize,
 }
 
@@ -608,11 +604,7 @@ impl Inner {
         Ok(())
     }
 
-    fn create_sample(
-        &self,
-        payload: &[u8],
-        pts: Option<isdb::time::Timestamp>,
-    ) -> WinResult<MF::IMFSample> {
+    fn create_sample(&self, payload: &[u8], pos: Option<Duration>) -> WinResult<MF::IMFSample> {
         unsafe {
             let buffer = MF::MFCreateMemoryBuffer(payload.len() as u32)?;
             let mut data = std::ptr::null_mut();
@@ -624,18 +616,8 @@ impl Inner {
             let sample = MF::MFCreateSample()?;
             sample.AddBuffer(&buffer)?;
 
-            if let Some(pts) = pts {
-                let pts = {
-                    let mut first_pts = self.first_pts.lock();
-                    if let Some(first_pts) = &*first_pts {
-                        // TODO: 2回目以降のラップアラウンドを考慮する？
-                        pts - *first_pts
-                    } else {
-                        *first_pts = Some(pts);
-                        isdb::time::Timestamp::ZERO
-                    }
-                };
-                sample.SetSampleTime((pts.as_nanos() / 100) as i64)?;
+            if let Some(pos) = pos {
+                sample.SetSampleTime((pos.as_nanos() / 100) as i64)?;
             }
 
             Ok(sample)
@@ -644,19 +626,19 @@ impl Inner {
 
     fn deliver_video_packet(
         this: &mut MutexGuard<Self>,
-        pts: Option<isdb::time::Timestamp>,
+        pos: Option<Duration>,
         payload: &[u8],
     ) -> WinResult<()> {
-        let sample = this.create_sample(payload, pts)?;
+        let sample = this.create_sample(payload, pos)?;
         Inner::video_stream_unlocked(this, |es| es.deliver_payload(sample))
     }
 
     fn deliver_audio_packet(
         this: &mut MutexGuard<Self>,
-        pts: Option<isdb::time::Timestamp>,
+        pos: Option<Duration>,
         payload: &[u8],
     ) -> WinResult<()> {
-        let sample = this.create_sample(payload, pts)?;
+        let sample = this.create_sample(payload, pos)?;
         Inner::audio_stream_unlocked(this, |es| es.deliver_payload(sample))
     }
 }
