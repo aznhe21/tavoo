@@ -1031,15 +1031,22 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
     fn set_position(&mut self, pos: Timestamp) -> bool {
         match self.selector().seek_cache.find(pos).cloned() {
             Some(sp) => {
-                // 巻き戻し、または（早送りなので）キャッシュが先にある
-                if pos < self.selector().cur_pos || sp.timestamp > pos {
-                    log::trace!("シークキャッシュ：{:?} -> {:?}", sp.timestamp, pos);
+                if pos < self.selector().cur_pos || sp.timestamp > self.selector().cur_pos {
+                    // 巻き戻しの場合は常にキャッシュを利用
+                    // 早送りの場合はキャッシュが先にある場合のみキャッシュを利用
+                    log::trace!("キャッシュ：{:?} -> {:?}", sp.timestamp, pos);
                     if let Err(e) = self.selector().read.seek(SeekFrom::Start(sp.stream_pos)) {
                         self.selector().sink.on_stream_error(e);
                         return false;
                     }
 
                     self.demuxer.reset_packets();
+                } else {
+                    log::trace!(
+                        "キャッシュ非使用：{:?} -> {:?}",
+                        self.selector().cur_pos,
+                        sp.timestamp,
+                    );
                 }
             }
             None => {
