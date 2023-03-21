@@ -317,6 +317,8 @@ pub struct EitEvent<'a> {
 pub struct EitCommon<'a> {
     /// サービス識別。
     pub service_id: ServiceId,
+    /// セクション番号。
+    pub section_number: u8,
     /// トランスポートストリーム識別。
     pub transport_stream_id: TransportStreamId,
     /// オリジナルネットワーク識別。
@@ -347,6 +349,7 @@ impl<'a> EitCommon<'a> {
             log::debug!("invalid EitCommon::table_id_extension");
             return None;
         };
+        let section_number = syntax.section_number;
         let Some(transport_stream_id) = TransportStreamId::new(data[0..=1].read_be_16()) else {
             log::debug!("invalid EitCommon::transport_stream_id");
             return None;
@@ -392,6 +395,7 @@ impl<'a> EitCommon<'a> {
 
         Some(EitCommon {
             service_id,
+            section_number,
             transport_stream_id,
             original_network_id,
             segment_last_section_number,

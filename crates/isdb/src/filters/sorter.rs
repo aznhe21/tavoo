@@ -597,13 +597,13 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                 }
             }
             Tag::Eit => {
-                let is_present = match &psi.syntax {
-                    Some(syntax) if syntax.section_number == 0 => true,
-                    Some(syntax) if syntax.section_number == 1 => false,
-                    _ => return,
-                };
                 let Some(psi::table::Eit::ActualPf(eit)) = self.repo.read(psi) else {
                     return;
+                };
+                let is_present = match eit.section_number {
+                    0 => true,
+                    1 => false,
+                    _ => return,
                 };
                 // TODO: transport_stream_idやoriginal_network_idもチェックすべき？
                 let Some(service) = self.services.get_mut(&eit.service_id) else {
