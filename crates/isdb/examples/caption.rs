@@ -61,8 +61,8 @@ struct Filter {
     superimpose_pid: Option<Pid>,
 
     pcr_pid: Pid,
-    last_pcr: Option<chrono::Duration>,
-    base_pcr: Option<chrono::Duration>,
+    last_pcr: Option<isdb::time::Timestamp>,
+    base_pcr: Option<isdb::time::Timestamp>,
     current_time: Option<chrono::NaiveDateTime>,
 }
 
@@ -87,9 +87,10 @@ impl Filter {
 
     pub fn current(&self) -> Option<chrono::NaiveDateTime> {
         match (self.last_pcr, self.base_pcr, self.current_time) {
-            (Some(last_pcr), Some(base_pcr), Some(current_time)) => {
-                Some(current_time + (last_pcr - base_pcr))
-            }
+            (Some(last_pcr), Some(base_pcr), Some(current_time)) => Some(
+                current_time
+                    + chrono::Duration::nanoseconds((last_pcr - base_pcr).as_nanos() as i64),
+            ),
             _ => None,
         }
     }
@@ -299,7 +300,7 @@ impl isdb::demux::Filter for Filter {
         let Some(af) = ctx.packet().adaptation_field() else { return };
         let Some(pcr) = af.pcr() else { return };
 
-        self.last_pcr = Some(chrono::Duration::nanoseconds(pcr.as_nanos() as i64));
+        self.last_pcr = Some(pcr);
     }
 }
 
