@@ -450,7 +450,7 @@ where
             };
 
             if !caption.is_empty() {
-                log::info!("superimpose: {:?}", caption.debug(decode_opts));
+                log::info!("superimpose: {:?}", caption.display(decode_opts));
             }
         }
     }

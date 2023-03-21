@@ -96,15 +96,11 @@ impl AribStr {
         buf
     }
 
-    /// `opts`に従い文字符号をデバッグ形式で表示するための、
-    /// [`Debug`][`fmt::Debug`]を実装したオブジェクトを返す。
-    #[inline]
-    pub fn debug(&self, opts: decode::Options) -> Debug {
-        Debug { inner: self, opts }
-    }
-
     /// `opts`に従い文字符号を安全に表示するための、
-    /// [`Display`][`fmt::Display`]を実装したオブジェクトを返す。
+    /// [`Display`]及び[`Debug`]を実装したオブジェクトを返す。
+    ///
+    /// [`Display`]: fmt::Display
+    /// [`Debug`]: fmt::Debug
     #[inline]
     pub fn display(&self, opts: decode::Options) -> Display {
         Display { inner: self, opts }
@@ -131,7 +127,7 @@ impl Default for &AribStr {
 /// ワンセグでは正しくない文字列が出力される可能性がある。
 impl fmt::Debug for AribStr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.debug(Default::default()).fmt(f)
+        self.display(Default::default()).fmt(f)
     }
 }
 
@@ -384,13 +380,39 @@ impl<'a> fmt::Debug for AribChars<'a> {
     }
 }
 
-/// [`AribStr`]をデバッグ形式で表示するための構造体。
-pub struct Debug<'a> {
+/// [`AribStr`]をUTF-8として表示するための構造体。
+pub struct Display<'a> {
     inner: &'a AribStr,
     opts: decode::Options,
 }
 
-impl<'a> fmt::Debug for Debug<'a> {
+impl<'a> fmt::Display for Display<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        const REPLACEMENT_STR: &str = "\u{FFFD}";
+
+        let mut decoder = Decoder::new(self.inner.as_bytes(), self.opts);
+        let mut char_size = CharSize::default();
+
+        while let Some(c) = decoder.next_graphic() {
+            match c {
+                GraphicChar::ActivePositionReturn => f.write_str("\n")?,
+                GraphicChar::Space => {
+                    f.write_str(if char_size.is_small() { " " } else { "　" })?
+                }
+                GraphicChar::Generic(c) => {
+                    let c = c.to_char(char_size).unwrap_or(char::REPLACEMENT_CHARACTER);
+                    f.write_char(c)?;
+                }
+                GraphicChar::Mosaic(_) | GraphicChar::Drcs(_) => f.write_str(REPLACEMENT_STR)?,
+                GraphicChar::CharSize(size) => char_size = size,
+            }
+        }
+
+        Ok(())
+    }
+}
+
+impl<'a> fmt::Debug for Display<'a> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         if self.inner.is_empty() {
             return f.debug_tuple("AribStr").field(&"").finish();
@@ -460,43 +482,5 @@ impl<'a> fmt::Debug for Debug<'a> {
             }
         }
         debug.finish()
-    }
-}
-
-/// [`AribStr`]をUTF-8として表示するための構造体。
-pub struct Display<'a> {
-    inner: &'a AribStr,
-    opts: decode::Options,
-}
-
-impl<'a> fmt::Display for Display<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        const REPLACEMENT_STR: &str = "\u{FFFD}";
-
-        let mut decoder = Decoder::new(self.inner.as_bytes(), self.opts);
-        let mut char_size = CharSize::default();
-
-        while let Some(c) = decoder.next_graphic() {
-            match c {
-                GraphicChar::ActivePositionReturn => f.write_str("\n")?,
-                GraphicChar::Space => {
-                    f.write_str(if char_size.is_small() { " " } else { "　" })?
-                }
-                GraphicChar::Generic(c) => {
-                    let c = c.to_char(char_size).unwrap_or(char::REPLACEMENT_CHARACTER);
-                    f.write_char(c)?;
-                }
-                GraphicChar::Mosaic(_) | GraphicChar::Drcs(_) => f.write_str(REPLACEMENT_STR)?,
-                GraphicChar::CharSize(size) => char_size = size,
-            }
-        }
-
-        Ok(())
-    }
-}
-
-impl<'a> fmt::Debug for Display<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Debug::fmt(self.inner, f)
     }
 }
