@@ -237,7 +237,7 @@ const HELP: &str = "\
 パケットを数えるコマンド
 
 USAGE:
-  count [PATH]
+  tspid [PATH]
 
 FLAGS:
   -h, --help このヘルプを表示する
