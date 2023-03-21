@@ -152,6 +152,10 @@ impl isdb::demux::Filter for Filter {
                     Some(isdb::psi::table::Eit::ActualPf(eit)) => eit,
                     _ => return,
                 };
+                // 現在のイベントのみ
+                if eit.section_number != 0 {
+                    return;
+                }
                 let Some(service) = self.find_service(eit.service_id) else {
                     return;
                 };
