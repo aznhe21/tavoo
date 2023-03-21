@@ -18,7 +18,7 @@ impl From<player::PlayerEvent> for UserEvent {
     }
 }
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     env_logger::init();
 
     #[cfg(feature = "deadlock_detection")]
@@ -45,10 +45,9 @@ fn main() {
 
     let window = WindowBuilder::new()
         .with_title("TaVoo")
-        .build(&event_loop)
-        .unwrap();
+        .build(&event_loop)?;
 
-    let mut player = player::Player::new(&window, event_loop.create_proxy()).unwrap();
+    let mut player = player::Player::new(&window, event_loop.create_proxy())?;
 
     let mut modifiers = winit::event::ModifiersState::empty();
     event_loop.run(move |event, _, control_flow| {
@@ -268,10 +267,12 @@ fn main() {
             }
 
             Event::LoopDestroyed => {
-                player.close().unwrap();
+                if let Err(e) = player.close() {
+                    log::error!("close: {}", e);
+                }
             }
 
             _ => {}
         }
-    });
+    })
 }
