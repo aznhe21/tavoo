@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 
+use arrayvec::ArrayVec;
 use fxhash::FxHashSet;
 
 use crate::demux;
@@ -394,13 +395,15 @@ mod sealed {
         Pmt,
         Sdt,
         Eit,
-        Pcr,
 
         // PES
         Video,
         Audio,
         Caption,
         Superimpose,
+
+        // on_packet_storing用
+        Pcr,
     }
 }
 
@@ -413,6 +416,26 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
         table.set_as_psi(Pid::PAT, Tag::Pat);
         table.set_as_psi(Pid::SDT, Tag::Sdt);
         table.set_as_psi(Pid::H_EIT, Tag::Eit);
+    }
+
+    fn on_packet_storing(&mut self, ctx: &mut demux::Context<Self::Tag>) {
+        // PMTのpcr_pidとESのPIDが共有される場合があるのでon_custom_packetではなくこちらで処理する
+        let Some(pcr) = ctx.packet().adaptation_field().and_then(|af| af.pcr()) else {
+            return;
+        };
+
+        let pid = ctx.packet().pid();
+        // PCRに同一のPIDを割り当てるサービスが8個なんてことはないはず
+        let mut service_ids = ArrayVec::<_, 8>::new();
+        for service in self.services.values_mut() {
+            if service.pcr_pid == pid {
+                service.pcr = Some(pcr);
+                service_ids.push(service.service_id);
+            }
+        }
+        if !service_ids.is_empty() {
+            self.shooter.on_pcr(&self.services, &*service_ids);
+        }
     }
 
     fn on_psi_section(&mut self, ctx: &mut demux::Context<Self::Tag>, psi: &psi::PsiSection) {
@@ -715,29 +738,6 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                     self.shooter
                         .on_superimpose(&self.services, ctx.packet().pid(), &caption);
                 }
-            }
-            tag @ _ => {
-                log::debug!("invalid tag: {:?}", tag);
-            }
-        }
-    }
-
-    fn on_custom_packet(&mut self, ctx: &mut demux::Context<Self::Tag>, _: bool) {
-        match ctx.tag() {
-            Tag::Pcr => {
-                let Some(pcr) = ctx.packet().adaptation_field().and_then(|af| af.pcr()) else {
-                    return;
-                };
-
-                let pid = ctx.packet().pid();
-                let mut service_ids = Vec::new();
-                for service in self.services.values_mut() {
-                    if service.pcr_pid == pid {
-                        service.pcr = Some(pcr);
-                        service_ids.push(service.service_id);
-                    }
-                }
-                self.shooter.on_pcr(&self.services, &*service_ids);
             }
             tag @ _ => {
                 log::debug!("invalid tag: {:?}", tag);
