@@ -155,6 +155,11 @@ pub trait Filter {
         let _ = packet;
     }
 
+    /// パケットを分離・処理用に保管する前に呼ばれる。
+    fn on_packet_storing(&mut self, ctx: &mut Context<Self::Tag>) {
+        let _ = ctx;
+    }
+
     /// PSIセクションを分離した際に呼ばれる。
     fn on_psi_section(&mut self, ctx: &mut Context<Self::Tag>, psi: &PsiSection);
 
@@ -183,6 +188,11 @@ impl<T: Filter + ?Sized> Filter for &mut T {
     }
 
     #[inline]
+    fn on_packet_storing(&mut self, ctx: &mut Context<Self::Tag>) {
+        (**self).on_packet_storing(ctx)
+    }
+
+    #[inline]
     fn on_psi_section(&mut self, ctx: &mut Context<Self::Tag>, psi: &PsiSection) {
         (**self).on_psi_section(ctx, psi)
     }
@@ -194,7 +204,7 @@ impl<T: Filter + ?Sized> Filter for &mut T {
 
     #[inline]
     fn on_custom_packet(&mut self, ctx: &mut Context<Self::Tag>, cc_ok: bool) {
-        (**self).on_custom_packet(ctx, cc_ok);
+        (**self).on_custom_packet(ctx, cc_ok)
     }
 }
 
@@ -235,25 +245,26 @@ impl<T: Filter + ?Sized> Filter for &mut T {
 /// # フィルターのメソッド
 ///
 /// `Filter`に実装するメソッドは以下の通りである。
+/// なお、一部メソッドに渡される<code>context: &mut [`Context`]</code>を通して
+/// `Table`を取得することで、処理中にPIDの処理内容を設定・設定解除することができる。
 ///
 /// - `on_setup`：初期化時に一度だけ呼ばれ、PIDごとに処理する内容を設定した[`Table`]を返す。
 ///   `Table`ではPIDごとにPSIかPES、あるいは独自に処理するかを指定すると共に、
 ///   そのPIDのパケットが分離された際に渡されるタグも指定する。
 /// - `on_discontinued`：パケットのドロップが検知された際に呼ばれる。
 ///   このメソッドの実装は任意であるが、実装することでドロップ数を計測することができる。
+/// - `on_store_packet`：パケットを保管してPSIやPES等に分離する前に呼ばれる。
+///   ただし[`Table`]で処理するよう指定されていないPIDでは呼ばれないことに注意されたい。
+///   このメソッドの実装は任意である。
 /// - `on_psi_section`：[`Table`]でPSIと指定されたPIDのパケットを分離した際に呼ばれる。
-///   PATやPMTなど、TSにおけるメタデータのようなものがPSIとして送られるため、このメソッドは頻繁に呼び出される。
-///   またメソッドに渡される[`Context`]を通して`Table`を取得することで、
-///   PSI処理中にPIDの処理内容を設定・設定解除することもできる。
+///   PATやPMTなど、TSにおけるメタデータのようなものがPSIとして送られるため、
+///   このメソッドは頻繁に呼び出される。
 /// - `on_pes_packet`：[`Table`]でPESと指定されたPIDのパケットを分離した際に呼ばれる。
 ///   動画や音声のデータ、さらには字幕データなどがPESとして送られる。
-///   このメソッドにも[`Context`]が渡される。
 /// - `on_custom_packet`：[`Table`]で独自に処理すると指定されたPIDのパケットで呼ばれる。
 ///   この場合、パケットは分離されることなくそのままメソッドに渡される。
-///   このメソッドにも他のメソッドと同じ[`Context`]に加え、`cc_ok`という引数も渡される。
-///   これはパケットがドロップしていないかどうかを示す真偽値で、パケットが不連続の場合には
-///   処理を行わないといったことが可能である。
-///   このメソッドの実装は任意である。
+///   引数`cc_ok`はパケットがドロップしていないかどうかを示す真偽値で、パケットが不連続の場合には
+///   処理を行わないといったことが可能である。このメソッドの実装は任意である。
 ///
 /// # サンプル
 ///
@@ -393,6 +404,7 @@ impl<T: Filter> Demuxer<T> {
             tag,
             table: &mut self.table,
         };
+        self.filter.on_packet_storing(&mut ctx);
 
         match store {
             PacketStore::Pes(pes) => {
