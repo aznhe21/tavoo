@@ -57,7 +57,7 @@ impl MF::IMFAsyncCallback_Impl for Inner {
         Err(F::E_NOTIMPL.into())
     }
 
-    fn Invoke(&self, _: &Option<MF::IMFAsyncResult>) -> WinResult<()> {
+    fn Invoke(&self, _: Option<&MF::IMFAsyncResult>) -> WinResult<()> {
         let f = self.queue.lock().pop_front();
         if let Some(f) = f {
             f();

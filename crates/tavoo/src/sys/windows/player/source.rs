@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use parking_lot::{Mutex, MutexGuard};
-use windows::core::{self as C, implement, AsImpl, Interface};
+use windows::core::{self as C, implement, AsImpl, ComInterface};
 use windows::Win32::Foundation as F;
 use windows::Win32::Media::KernelStreaming::GUID_NULL;
 use windows::Win32::Media::MediaFoundation as MF;
@@ -72,7 +72,8 @@ fn create_video_sd(stream: &isdb::filters::sorter::Stream) -> WinResult<MF::IMFS
             _ => return Err(F::E_INVALIDARG.into()),
         }
 
-        let stream_descriptor = MF::MFCreateStreamDescriptor(SID_VIDEO, &[media_type.clone()])?;
+        let stream_descriptor =
+            MF::MFCreateStreamDescriptor(SID_VIDEO, &[Some(media_type.clone())])?;
 
         let handler = stream_descriptor.GetMediaTypeHandler()?;
         handler.SetCurrentMediaType(&media_type)?;
@@ -173,7 +174,8 @@ fn create_audio_sd(stream: &isdb::filters::sorter::Stream) -> WinResult<MF::IMFS
             _ => return Err(F::E_INVALIDARG.into()),
         }
 
-        let stream_descriptor = MF::MFCreateStreamDescriptor(SID_AUDIO, &[media_type.clone()])?;
+        let stream_descriptor =
+            MF::MFCreateStreamDescriptor(SID_AUDIO, &[Some(media_type.clone())])?;
 
         let handler = stream_descriptor.GetMediaTypeHandler()?;
         handler.SetCurrentMediaType(&media_type)?;
@@ -205,8 +207,10 @@ impl TransportStream {
         unsafe {
             let video_sd = create_video_sd(video_stream)?;
             let audio_sd = create_audio_sd(audio_stream)?;
-            let presentation_descriptor =
-                MF::MFCreatePresentationDescriptor(Some(&[video_sd.clone(), audio_sd.clone()]))?;
+            let presentation_descriptor = MF::MFCreatePresentationDescriptor(Some(&[
+                Some(video_sd.clone()),
+                Some(audio_sd.clone()),
+            ]))?;
             presentation_descriptor.SelectStream(SID_VIDEO)?;
             presentation_descriptor.SelectStream(SID_AUDIO)?;
             if let Some(duration) = handler.duration() {
@@ -652,7 +656,7 @@ impl MF::IMFGetService_Impl for Outer {
         ppv: *mut *mut core::ffi::c_void,
     ) -> WinResult<()> {
         unsafe {
-            use windows::core::Vtable;
+            use windows::core::Interface;
 
             match (*sid, *iid) {
                 (MF::MF_RATE_CONTROL_SERVICE, MF::IMFRateControl::IID) => {
@@ -692,27 +696,25 @@ impl MF::IMFMediaEventGenerator_Impl for Outer {
 
     fn BeginGetEvent(
         &self,
-        pcallback: &Option<MF::IMFAsyncCallback>,
-        punkstate: &Option<C::IUnknown>,
+        pcallback: Option<&MF::IMFAsyncCallback>,
+        punkstate: Option<&C::IUnknown>,
     ) -> WinResult<()> {
         unsafe {
             log::trace!("TransportStream::BeginGetEvent");
 
             let inner = self.inner.lock();
             inner.check_shutdown()?;
-            inner
-                .event_queue
-                .BeginGetEvent(pcallback.as_ref(), punkstate.as_ref())
+            inner.event_queue.BeginGetEvent(pcallback, punkstate)
         }
     }
 
-    fn EndGetEvent(&self, presult: &Option<MF::IMFAsyncResult>) -> WinResult<MF::IMFMediaEvent> {
+    fn EndGetEvent(&self, presult: Option<&MF::IMFAsyncResult>) -> WinResult<MF::IMFMediaEvent> {
         unsafe {
             log::trace!("TransportStream::EndGetEvent");
 
             let inner = self.inner.lock();
             inner.check_shutdown()?;
-            inner.event_queue.EndGetEvent(presult.as_ref())
+            inner.event_queue.EndGetEvent(presult)
         }
     }
 
@@ -761,7 +763,7 @@ impl MF::IMFMediaSource_Impl for Outer {
 
     fn Start(
         &self,
-        pd: &Option<MF::IMFPresentationDescriptor>,
+        pd: Option<&MF::IMFPresentationDescriptor>,
         time_format: *const C::GUID,
         start_pos: *const windows::Win32::System::Com::StructuredStorage::PROPVARIANT,
     ) -> WinResult<()> {
@@ -775,7 +777,7 @@ impl MF::IMFMediaSource_Impl for Outer {
 
             let inner = self.inner.lock();
 
-            let pd = pd.as_ref().ok_or(F::E_INVALIDARG)?;
+            let pd = pd.ok_or(F::E_INVALIDARG)?;
             let Some(start_pos) = start_pos.as_ref() else {
                 return Err(F::E_INVALIDARG.into());
             };

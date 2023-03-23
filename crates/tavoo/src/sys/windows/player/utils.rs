@@ -2,7 +2,6 @@ use std::fmt;
 use std::mem::ManuallyDrop;
 
 use windows::core as C;
-use windows::Win32::Foundation as F;
 use windows::Win32::Media::MediaFoundation as MF;
 use windows::Win32::System::Com;
 
@@ -61,7 +60,7 @@ impl PropVariant {
             let v = &value.Anonymous.Anonymous;
             match v.vt {
                 Com::VT_EMPTY => Some(PropVariant::Empty),
-                Com::VT_I1 => Some(PropVariant::I8(v.Anonymous.cVal.0 as i8)),
+                Com::VT_I1 => Some(PropVariant::I8(v.Anonymous.cVal as i8)),
                 Com::VT_UI1 => Some(PropVariant::U8(v.Anonymous.bVal)),
                 Com::VT_I2 => Some(PropVariant::I16(v.Anonymous.iVal)),
                 Com::VT_UI2 => Some(PropVariant::U16(v.Anonymous.uiVal)),
@@ -85,12 +84,7 @@ impl PropVariant {
 
         let (vt, val) = match *self {
             PropVariant::Empty => (Com::VT_EMPTY, V::default()),
-            PropVariant::I8(v) => (
-                Com::VT_I1,
-                V {
-                    cVal: F::CHAR(v as u8),
-                },
-            ),
+            PropVariant::I8(v) => (Com::VT_I1, V { cVal: v as u8 }),
             PropVariant::U8(v) => (Com::VT_UI1, V { bVal: v }),
             PropVariant::I16(v) => (Com::VT_I2, V { iVal: v }),
             PropVariant::U16(v) => (Com::VT_UI2, V { uiVal: v }),
@@ -135,7 +129,7 @@ impl TryFrom<Com::StructuredStorage::PROPVARIANT> for PropVariant {
             let v = &mut value.Anonymous.Anonymous;
             match v.vt {
                 Com::VT_EMPTY => Ok(PropVariant::Empty),
-                Com::VT_I1 => Ok(PropVariant::I8(v.Anonymous.cVal.0 as i8)),
+                Com::VT_I1 => Ok(PropVariant::I8(v.Anonymous.cVal as i8)),
                 Com::VT_UI1 => Ok(PropVariant::U8(v.Anonymous.bVal)),
                 Com::VT_I2 => Ok(PropVariant::I16(v.Anonymous.iVal)),
                 Com::VT_UI2 => Ok(PropVariant::U16(v.Anonymous.uiVal)),

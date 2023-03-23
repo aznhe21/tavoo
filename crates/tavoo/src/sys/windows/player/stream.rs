@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
 use parking_lot::{Mutex, MutexGuard};
-use windows::core::{self as C, implement, AsImpl, Interface};
+use windows::core::{self as C, implement, AsImpl, ComInterface};
 use windows::Win32::Foundation as F;
 use windows::Win32::Media::KernelStreaming::GUID_NULL;
 use windows::Win32::Media::MediaFoundation as MF;
@@ -334,8 +334,8 @@ impl MF::IMFMediaEventGenerator_Impl for Outer {
 
     fn BeginGetEvent(
         &self,
-        pcallback: &Option<MF::IMFAsyncCallback>,
-        punkstate: &Option<C::IUnknown>,
+        pcallback: Option<&MF::IMFAsyncCallback>,
+        punkstate: Option<&C::IUnknown>,
     ) -> WinResult<()> {
         unsafe {
             log::trace!("ElementaryStream::BeginGetEvent");
@@ -343,20 +343,18 @@ impl MF::IMFMediaEventGenerator_Impl for Outer {
             let inner = self.inner.lock();
             inner.check_shutdown()?;
 
-            inner
-                .event_queue
-                .BeginGetEvent(pcallback.as_ref(), punkstate.as_ref())
+            inner.event_queue.BeginGetEvent(pcallback, punkstate)
         }
     }
 
-    fn EndGetEvent(&self, presult: &Option<MF::IMFAsyncResult>) -> WinResult<MF::IMFMediaEvent> {
+    fn EndGetEvent(&self, presult: Option<&MF::IMFAsyncResult>) -> WinResult<MF::IMFMediaEvent> {
         unsafe {
             log::trace!("ElementaryStream::EndGetEvent");
 
             let inner = self.inner.lock();
             inner.check_shutdown()?;
 
-            inner.event_queue.EndGetEvent(presult.as_ref())
+            inner.event_queue.EndGetEvent(presult)
         }
     }
 
@@ -395,10 +393,10 @@ impl MF::IMFMediaStream_Impl for Outer {
         Ok(inner.stream_descriptor.clone())
     }
 
-    fn RequestSample(&self, ptoken: &Option<C::IUnknown>) -> WinResult<()> {
+    fn RequestSample(&self, ptoken: Option<&C::IUnknown>) -> WinResult<()> {
         fn request_sample(
             inner: &mut MutexGuard<Inner>,
-            ptoken: &Option<C::IUnknown>,
+            ptoken: Option<&C::IUnknown>,
         ) -> WinResult<()> {
             inner.check_shutdown()?;
             if inner.state == State::Stopped || !inner.is_active {
@@ -408,7 +406,7 @@ impl MF::IMFMediaStream_Impl for Outer {
                 return Err(MF::MF_E_END_OF_STREAM.into());
             }
 
-            inner.requests.push_back(ptoken.clone());
+            inner.requests.push_back(ptoken.cloned());
             Inner::dispatch_samples(inner)?;
 
             Ok(())

@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use parking_lot::lock_api::{RawMutex, RawMutexTimed};
 use parking_lot::{Mutex, MutexGuard};
-use windows::core::{self as C, implement, AsImpl, Interface};
+use windows::core::{self as C, implement, AsImpl, ComInterface};
 use windows::Win32::Foundation as F;
 use windows::Win32::Media::KernelStreaming::GUID_NULL;
 use windows::Win32::Media::MediaFoundation as MF;
@@ -493,7 +493,7 @@ impl Inner {
         }
     }
 
-    unsafe fn get_service<T: Interface>(&self, guid: &C::GUID) -> WinResult<T> {
+    unsafe fn get_service<T: ComInterface>(&self, guid: &C::GUID) -> WinResult<T> {
         let mut ptr = std::ptr::null_mut();
         MF::MFGetService(&self.session, guid, &T::IID, &mut ptr)?;
         debug_assert!(!ptr.is_null());
@@ -550,7 +550,7 @@ impl Inner {
         status: C::HRESULT,
         event: &MF::IMFMediaEvent,
     ) -> WinResult<()> {
-        unsafe fn get_event_object<T: C::Interface>(event: &MF::IMFMediaEvent) -> WinResult<T> {
+        unsafe fn get_event_object<T: ComInterface>(event: &MF::IMFMediaEvent) -> WinResult<T> {
             let Ok(PropVariant::IUnknown(unk)) = PropVariant::try_from(event.GetValue()?) else {
                 return Err(MF::MF_E_INVALIDTYPE.into());
             };
@@ -785,12 +785,12 @@ impl MF::IMFAsyncCallback_Impl for Outer {
         Err(F::E_NOTIMPL.into())
     }
 
-    fn Invoke(&self, presult: &Option<MF::IMFAsyncResult>) -> WinResult<()> {
+    fn Invoke(&self, presult: Option<&MF::IMFAsyncResult>) -> WinResult<()> {
         log::trace!("Session::Invoke");
         unsafe {
             let inner = self.inner.lock();
 
-            let event = inner.session.EndGetEvent(presult.as_ref())?;
+            let event = inner.session.EndGetEvent(presult)?;
             let me_type = event.GetType()?;
             if me_type == MF::MESessionClosed.0 as u32 {
                 inner.close_mutex.unlock();

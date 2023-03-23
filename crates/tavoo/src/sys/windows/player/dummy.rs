@@ -18,13 +18,13 @@ impl MF::IMFMediaEventGenerator_Impl for DummyStream {
 
     fn BeginGetEvent(
         &self,
-        _: &Option<MF::IMFAsyncCallback>,
-        _: &Option<C::IUnknown>,
+        _: Option<&MF::IMFAsyncCallback>,
+        _: Option<&C::IUnknown>,
     ) -> WinResult<()> {
         Err(F::E_NOTIMPL.into())
     }
 
-    fn EndGetEvent(&self, _: &Option<MF::IMFAsyncResult>) -> WinResult<MF::IMFMediaEvent> {
+    fn EndGetEvent(&self, _: Option<&MF::IMFAsyncResult>) -> WinResult<MF::IMFMediaEvent> {
         Err(F::E_NOTIMPL.into())
     }
 
@@ -49,7 +49,7 @@ impl MF::IMFMediaStream_Impl for DummyStream {
         Err(F::E_NOTIMPL.into())
     }
 
-    fn RequestSample(&self, _: &Option<C::IUnknown>) -> WinResult<()> {
+    fn RequestSample(&self, _: Option<&C::IUnknown>) -> WinResult<()> {
         Err(F::E_NOTIMPL.into())
     }
 }
