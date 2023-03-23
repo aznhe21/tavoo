@@ -9,15 +9,15 @@ rust-version.workspace = true
 [dependencies]
 arrayvec = "0.7.2"
 fxhash = "0.2.1"
-indexmap = "1.9.2"
+indexmap = "1.9.3"
 log = "0.4.17"
 memchr = "2.5.0"
-thiserror = "1.0.38"
+thiserror = "1.0.40"
 
 [dev-dependencies]
 assert_matches = "1.5.0"
-chrono = "0.4.23"
+chrono = "0.4.24"
 env_logger = "0.10.0"
-hex-literal = "0.3.4"
+hex-literal = "0.4.0"
 image = { version = "0.24.6", default-features = false, features = ["png"] }
 pico-args = "0.5.0"
