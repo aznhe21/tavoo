@@ -368,10 +368,10 @@ pub enum DataUnit<'a> {
     SynthesizedSound(&'a [u8]),
 
     /// 1バイトDRCS。
-    DrcsSb(&'a [u8]),
+    DrcsSb(Drcs<'a>),
 
     /// 2バイトDRCS。
-    DrcsDb(&'a [u8]),
+    DrcsDb(Drcs<'a>),
 
     /// カラーマップ。
     Colormap(&'a [u8]),
@@ -430,9 +430,9 @@ impl<'a> DataUnit<'a> {
                 // 付加音
                 0x2C => DataUnit::SynthesizedSound(data_unit_data),
                 // 1バイトDRCS
-                0x30 => DataUnit::DrcsSb(data_unit_data),
+                0x30 => DataUnit::DrcsSb(Drcs::read(data_unit_data)?),
                 // 2バイトDRCS
-                0x31 => DataUnit::DrcsDb(data_unit_data),
+                0x31 => DataUnit::DrcsDb(Drcs::read(data_unit_data)?),
                 // カラーマップ
                 0x34 => DataUnit::Colormap(data_unit_data),
                 // ビットマップ
@@ -443,5 +443,361 @@ impl<'a> DataUnit<'a> {
         }
 
         Some((data_units, rem))
+    }
+}
+
+/// DRCS図形の符号化。
+#[derive(Debug, PartialEq, Eq)]
+pub struct Drcs<'a> {
+    /// DRCSにおける各符号。
+    pub codes: Vec<DrcsCode<'a>>,
+}
+
+impl<'a> Drcs<'a> {
+    /// `data`から`Drcs`を読み取る。
+    pub fn read(data: &'a [u8]) -> Option<Drcs<'a>> {
+        let [number_of_code, ref rem @ ..] = *data else {
+            log::debug!("invalid Drcs::number_of_code");
+            return None;
+        };
+
+        let mut data = rem;
+        let mut codes = Vec::with_capacity(number_of_code as usize);
+        for _ in 0..number_of_code {
+            if data.len() < 3 {
+                log::debug!("invalid Drcs::character_code");
+                return None;
+            }
+
+            let character_code = data[0..=1].read_be_16();
+            let number_of_font = data[2];
+            data = &data[3..];
+
+            let mut fonts = Vec::with_capacity(number_of_font as usize);
+            for _ in 0..number_of_font {
+                if data.len() < 1 {
+                    log::debug!("invalid DrcsFont::font_id");
+                    return None;
+                }
+
+                let font_id = (data[0] & 0b11110000) >> 4;
+                let mode = data[0] & 0b00001111;
+                data = &data[1..];
+
+                let font_data = match mode {
+                    0b0000 | 0b0001 => {
+                        let [depth, width, height, ref rem @ ..] = *data else {
+                            log::debug!("invalid DrcsUncompressedData");
+                            return None;
+                        };
+
+                        // bits per pixel
+                        let bpp = ((depth + 2) as f32).log2().ceil() as u32;
+                        let size = (width as u32) * (height as u32);
+                        // let len = (size * bpp).div_ceil(8) as usize;
+                        let len = ((size * bpp + 7) / 8) as usize;
+                        let Some((pattern_data, rem)) = rem.split_at_checked(len) else {
+                            log::debug!("invalid DrcsUncompressedData::pattern_data");
+                            return None;
+                        };
+                        data = rem;
+
+                        let drcs_data = DrcsUncompressedData {
+                            depth,
+                            width,
+                            height,
+                            pattern_data,
+                        };
+                        if mode == 0b0000 {
+                            DrcsFontData::UncompressedTwotone(drcs_data)
+                        } else {
+                            DrcsFontData::UncompressedMultitone(drcs_data)
+                        }
+                    }
+
+                    0b0010 | 0b0011 => {
+                        if data.len() < 4 {
+                            log::debug!("invalid DrcsCompressedData");
+                            return None;
+                        }
+
+                        let region_x = data[0];
+                        let region_y = data[1];
+                        let geometric_data_len = data[2..=3].read_be_16();
+                        let Some((geometric_data, rem)) = data[4..]
+                            .split_at_checked(geometric_data_len as usize)
+                        else {
+                            log::debug!("invalid DrcsCompressedData::geometric_data");
+                            return None;
+                        };
+                        data = rem;
+
+                        let drcs_data = DrcsCompressedData {
+                            region_x,
+                            region_y,
+                            geometric_data,
+                        };
+                        if mode == 0b0010 {
+                            DrcsFontData::CompressedMonochrome(drcs_data)
+                        } else {
+                            DrcsFontData::CompressedMulticolor(drcs_data)
+                        }
+                    }
+                    _ => DrcsFontData::Unknown,
+                };
+
+                fonts.push(DrcsFont {
+                    font_id,
+                    data: font_data,
+                });
+            }
+
+            codes.push(DrcsCode {
+                character_code,
+                fonts,
+            });
+        }
+
+        Some(Drcs { codes })
+    }
+}
+
+/// DRCSにおける符号。
+#[derive(Debug, PartialEq, Eq)]
+pub struct DrcsCode<'a> {
+    /// 外字符号。
+    pub character_code: u16,
+    /// 符号における各フォント。
+    pub fonts: Vec<DrcsFont<'a>>,
+}
+
+/// DRCSにおけるフォント。
+#[derive(Debug, PartialEq, Eq)]
+pub struct DrcsFont<'a> {
+    /// フォント識別（4ビット）。
+    pub font_id: u8,
+    /// 伝送モードごとのデータ。
+    pub data: DrcsFontData<'a>,
+}
+
+/// DRCSにおける伝送モードごとのデータ。
+#[derive(Debug, PartialEq, Eq)]
+pub enum DrcsFontData<'a> {
+    /// 2階調、圧縮なし。
+    UncompressedTwotone(DrcsUncompressedData<'a>),
+    /// 多階調、圧縮なし。
+    UncompressedMultitone(DrcsUncompressedData<'a>),
+    /// 2色、圧縮あり。
+    CompressedMonochrome(DrcsCompressedData<'a>),
+    /// 多色、圧縮あり。
+    CompressedMulticolor(DrcsCompressedData<'a>),
+    /// 不明な伝送モード。
+    Unknown,
+}
+
+impl<'a> DrcsFontData<'a> {
+    /// 圧縮なしのデータであれば内包する`DrcsUncompressedData`を`Some`で包んで返す。
+    #[inline]
+    pub fn uncompressed(&self) -> Option<&DrcsUncompressedData> {
+        match self {
+            DrcsFontData::UncompressedTwotone(data) | DrcsFontData::UncompressedMultitone(data) => {
+                Some(data)
+            }
+            _ => None,
+        }
+    }
+
+    /// 圧縮ありのデータであれば内包する`DrcsCompressedData`を`Some`で包んで返す。
+    #[inline]
+    pub fn compressed(&self) -> Option<&DrcsCompressedData> {
+        match self {
+            DrcsFontData::CompressedMonochrome(data) | DrcsFontData::CompressedMulticolor(data) => {
+                Some(data)
+            }
+            _ => None,
+        }
+    }
+}
+
+/// 圧縮なしのフォントデータ。
+#[derive(Debug, PartialEq, Eq)]
+pub struct DrcsUncompressedData<'a> {
+    /// 階層深さ。
+    pub depth: u8,
+    /// 横方向サイズ。
+    pub width: u8,
+    /// 縦方向サイズ。
+    pub height: u8,
+    /// パターンデータ。
+    pub pattern_data: &'a [u8],
+}
+
+/// 圧縮ありのフォントデータ。
+#[derive(Debug, PartialEq, Eq)]
+pub struct DrcsCompressedData<'a> {
+    /// 縦の論理画素領域。
+    pub region_x: u8,
+    /// 横の。論理画素領域。
+    pub region_y: u8,
+    /// ジオメトリックデータ。
+    pub geometric_data: &'a [u8],
+}
+
+#[cfg(test)]
+mod tests {
+    use assert_matches::assert_matches;
+
+    use super::*;
+
+    #[test]
+    fn test_drcs() {
+        /// ■と□からなる文字列を、1を■、0を□としたビット列としてパースする。
+        fn parse_pattern(bits: &str) -> Vec<u8> {
+            let bits: Vec<bool> = bits
+                .chars()
+                .filter_map(|c| match c {
+                    '■' => Some(true),
+                    '□' => Some(false),
+                    _ => None,
+                })
+                .collect();
+            bits.chunks_exact(8)
+                .map(|chunk| chunk.iter().fold(0, |n, &b| (n << 1) | u8::from(b)))
+                .collect()
+        }
+
+        const DRCS1: &[u8] = &hex_literal::hex!(
+            "
+01 41 21 01 01 02 24 24 00 0F 00 00 00 00 0F 00
+00 00 0F 00 00 00 00 0F 00 00 00 F0 0F 00 00 F0
+00 F0 00 00 F0 0F 00 00 F0 00 F0 00 00 F0 0F 00
+00 F0 00 F0 00 00 F0 0F 00 00 F0 00 F0 00 00 F0
+FF F0 00 F0 00 F0 00 00 F0 FF F0 00 F0 00 F0 00
+00 F0 00 F0 FF FF F0 F0 00 00 F0 00 F0 FF FF F0
+F0 00 0F 00 00 F0 00 F0 00 0F 00 0F 00 00 F0 00
+F0 00 0F 00 0F 00 00 F0 00 F0 00 0F 00 0F 00 00
+F0 00 F0 00 0F 00 0F 00 0F 00 00 F0 00 0F 00 0F
+00 0F 00 00 F0 00 0F 00 0F 00 FF F0 00 F0 00 0F
+00 0F 00 FF F0 00 F0 00 0F 00 0F 0F 0F 0F 00 F0
+00 0F 00 0F 0F 0F 0F 00 F0 00 0F 00 0F 0F 0F 0F
+00 F0 00 0F 00 0F 0F 0F 0F 00 F0 00 0F 00 0F 00
+0F 00 00 F0 00 0F 00 0F 00 0F 00 00 F0 00 0F 00
+0F 00 0F 00 00 F0 00 0F 00 0F 00 0F 00 00 F0 00
+0F 00 00 F0 0F 00 00 F0 00 F0 00 00 F0 0F 00 00
+F0 00 F0 00 00 F0 0F 00 00 F0 00 F0 00 00 F0 0F
+00 00 F0 00 F0 00 00 F0 0F 00 00 F0 00 F0 00 00
+F0 0F 00 00 F0 00 F0 00 00 F0 0F 0F FF FF FF F0
+00 00 F0 0F 0F FF FF FF F0 00 00 0F 00 00 00 00
+0F 00 00 00 0F 00 00 00 00 0F 00 00
+"
+        );
+
+        let drcs = Drcs::read(DRCS1).unwrap();
+        assert_eq!(drcs.codes.len(), 1);
+
+        let code = &drcs.codes[0];
+        assert_eq!(code.character_code, 0x4121);
+        assert_eq!(code.fonts.len(), 1);
+
+        let font = &code.fonts[0];
+        assert_eq!(font.font_id, 0);
+        assert_matches!(font.data, DrcsFontData::UncompressedMultitone(_));
+
+        let DrcsFontData::UncompressedMultitone(data) = &font.data else { unreachable!() };
+        assert_eq!(data.depth, 2);
+        assert_eq!(data.width, 36);
+        assert_eq!(data.height, 36);
+        assert_eq!(
+            data.pattern_data,
+            parse_pattern(
+                "
+□□□□□□□□□□□□■■■■□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□■■■■□□□□□□□□□□□□□□□□
+□□□□□□□□□□□□■■■■□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□■■■■□□□□□□□□□□□□□□□□
+□□□□□□□□■■■■□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□□□□□■■■■□□□□□□□□□□□□
+□□□□□□□□■■■■□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□□□□□■■■■□□□□□□□□□□□□
+□□□□□□□□■■■■□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□□□□□■■■■□□□□□□□□□□□□
+□□□□□□□□■■■■□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□□□□□■■■■□□□□□□□□□□□□
+□□□□□□□□■■■■□□□□■■■■■■■■■■■■□□□□□□□□□□□□■■■■□□□□□□□□□□□□■■■■□□□□□□□□□□□□
+□□□□□□□□■■■■□□□□■■■■■■■■■■■■□□□□□□□□□□□□■■■■□□□□□□□□□□□□■■■■□□□□□□□□□□□□
+□□□□□□□□■■■■□□□□□□□□□□□□■■■■□□□□■■■■■■■■■■■■■■■■■■■■□□□□■■■■□□□□□□□□□□□□
+□□□□□□□□■■■■□□□□□□□□□□□□■■■■□□□□■■■■■■■■■■■■■■■■■■■■□□□□■■■■□□□□□□□□□□□□
+□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□
+□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□
+□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□
+□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□
+□□□□■■■■□□□□□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□
+□□□□■■■■□□□□□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□
+□□□□■■■■□□□□□□□□■■■■■■■■■■■■□□□□□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□
+□□□□■■■■□□□□□□□□■■■■■■■■■■■■□□□□□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□
+□□□□■■■■□□□□■■■■□□□□■■■■□□□□■■■■□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□
+□□□□■■■■□□□□■■■■□□□□■■■■□□□□■■■■□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□
+□□□□■■■■□□□□■■■■□□□□■■■■□□□□■■■■□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□
+□□□□■■■■□□□□■■■■□□□□■■■■□□□□■■■■□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□
+□□□□■■■■□□□□□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□
+□□□□■■■■□□□□□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□
+□□□□■■■■□□□□□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□
+□□□□■■■■□□□□□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□
+□□□□□□□□■■■■□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□□□□□■■■■□□□□□□□□□□□□
+□□□□□□□□■■■■□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□□□□□■■■■□□□□□□□□□□□□
+□□□□□□□□■■■■□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□□□□□■■■■□□□□□□□□□□□□
+□□□□□□□□■■■■□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□□□□□■■■■□□□□□□□□□□□□
+□□□□□□□□■■■■□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□□□□□■■■■□□□□□□□□□□□□
+□□□□□□□□■■■■□□□□□□□□■■■■□□□□□□□□□□□□□□□□■■■■□□□□□□□□□□□□■■■■□□□□□□□□□□□□
+□□□□□□□□■■■■□□□□□□□□■■■■□□□□■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■□□□□□□□□□□□□
+□□□□□□□□■■■■□□□□□□□□■■■■□□□□■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■■□□□□□□□□□□□□
+□□□□□□□□□□□□■■■■□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□■■■■□□□□□□□□□□□□□□□□
+□□□□□□□□□□□□■■■■□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□□■■■■□□□□□□□□□□□□□□□□
+                "
+            )
+        );
+
+        const DRCS2: &[u8] = &hex_literal::hex!(
+            "
+01 41 21 01 00 00 10 12 10 04 24 22 24 22 2E 22
+22 FA 42 21 42 21 44 21 4E 21 55 21 55 21 44 21
+44 21 24 22 24 22 24 22 25 FE 10 04
+            "
+        );
+
+        let drcs = Drcs::read(DRCS2).unwrap();
+        assert_eq!(drcs.codes.len(), 1);
+
+        let code = &drcs.codes[0];
+        assert_eq!(code.character_code, 0x4121);
+        assert_eq!(code.fonts.len(), 1);
+
+        let font = &code.fonts[0];
+        assert_eq!(font.font_id, 0);
+        assert_matches!(font.data, DrcsFontData::UncompressedTwotone(_));
+
+        let DrcsFontData::UncompressedTwotone(data) = &font.data else { unreachable!() };
+        assert_eq!(data.depth, 0);
+        assert_eq!(data.width, 16);
+        assert_eq!(data.height, 18);
+        assert_eq!(
+            data.pattern_data,
+            parse_pattern(
+                "
+□□□■□□□□□□□□□■□□
+□□■□□■□□□□■□□□■□
+□□■□□■□□□□■□□□■□
+□□■□■■■□□□■□□□■□
+□□■□□□■□■■■■■□■□
+□■□□□□■□□□■□□□□■
+□■□□□□■□□□■□□□□■
+□■□□□■□□□□■□□□□■
+□■□□■■■□□□■□□□□■
+□■□■□■□■□□■□□□□■
+□■□■□■□■□□■□□□□■
+□■□□□■□□□□■□□□□■
+□■□□□■□□□□■□□□□■
+□□■□□■□□□□■□□□■□
+□□■□□■□□□□■□□□■□
+□□■□□■□□□□■□□□■□
+□□■□□■□■■■■■■■■□
+□□□■□□□□□□□□□■□□
+                "
+            )
+        );
     }
 }
