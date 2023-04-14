@@ -1,9 +1,6 @@
-mod extract;
-mod player;
-mod sys;
-
 use std::time::Duration;
 
+use tavoo_components::player;
 use winit::event::{Event, WindowEvent};
 use winit::window::WindowBuilder;
 

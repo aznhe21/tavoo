@@ -1054,9 +1054,20 @@ name = "tavoo"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "env_logger",
+ "isdb",
+ "log",
+ "tavoo-components",
+ "winit",
+]
+
+[[package]]
+name = "tavoo-components"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
  "cfg-if",
  "crossbeam-utils",
- "env_logger",
  "fxhash",
  "isdb",
  "log",
