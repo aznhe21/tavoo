@@ -1,11 +1,9 @@
 use std::collections::VecDeque;
 
 use parking_lot::Mutex;
-use windows::core::{implement, AsImpl};
+use windows::core::{implement, AsImpl, Result as WinResult};
 use windows::Win32::Foundation as F;
 use windows::Win32::Media::MediaFoundation as MF;
-
-use super::utils::WinResult;
 
 #[derive(Debug, Clone)]
 pub struct AsyncQueue(MF::IMFAsyncCallback);

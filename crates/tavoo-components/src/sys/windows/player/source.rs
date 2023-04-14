@@ -1,17 +1,18 @@
 use std::time::Duration;
 
 use parking_lot::{Mutex, MutexGuard};
-use windows::core::{self as C, implement, AsImpl, ComInterface};
+use windows::core::{self as C, implement, AsImpl, ComInterface, Result as WinResult};
 use windows::Win32::Foundation as F;
 use windows::Win32::Media::KernelStreaming::GUID_NULL;
 use windows::Win32::Media::MediaFoundation as MF;
 
 use crate::extract::ExtractHandler;
+use crate::sys::com::PropVariant;
+use crate::sys::wrap;
 
 use super::dummy;
 use super::queue::AsyncQueue;
 use super::stream::ElementaryStream;
-use super::utils::{get_stream_descriptor_by_index, PropVariant, WinResult};
 
 struct PresentationDescriptor(MF::IMFPresentationDescriptor);
 // Safety: C++のサンプルではスレッドをまたいで使っているので安全なはず
@@ -432,8 +433,8 @@ impl Inner {
                 return Err(F::E_INVALIDARG.into());
             }
 
-            let all_selected = get_stream_descriptor_by_index(pd, 0)?.0
-                && get_stream_descriptor_by_index(pd, 1)?.0;
+            let all_selected = wrap::wrap2(|a, b| pd.GetStreamDescriptorByIndex(0, a, b))?.0
+                && wrap::wrap2(|a, b| pd.GetStreamDescriptorByIndex(1, a, b))?.0;
             if !all_selected {
                 return Err(F::E_INVALIDARG.into());
             }

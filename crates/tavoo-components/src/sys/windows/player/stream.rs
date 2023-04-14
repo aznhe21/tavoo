@@ -1,13 +1,14 @@
 use std::collections::VecDeque;
 
 use parking_lot::{Mutex, MutexGuard};
-use windows::core::{self as C, implement, AsImpl, ComInterface};
+use windows::core::{self as C, implement, AsImpl, ComInterface, Result as WinResult};
 use windows::Win32::Foundation as F;
 use windows::Win32::Media::KernelStreaming::GUID_NULL;
 use windows::Win32::Media::MediaFoundation as MF;
 
+use crate::sys::com::PropVariant;
+
 use super::source::TransportStream;
-use super::utils::{PropVariant, WinResult};
 
 const SAMPLE_QUEUE: usize = 2;
 

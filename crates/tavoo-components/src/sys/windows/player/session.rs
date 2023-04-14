@@ -3,15 +3,16 @@ use std::time::Duration;
 
 use parking_lot::lock_api::{RawMutex, RawMutexTimed};
 use parking_lot::{Mutex, MutexGuard};
-use windows::core::{self as C, implement, AsImpl, ComInterface};
+use windows::core::{self as C, implement, AsImpl, ComInterface, Result as WinResult};
 use windows::Win32::Foundation as F;
 use windows::Win32::Media::KernelStreaming::GUID_NULL;
 use windows::Win32::Media::MediaFoundation as MF;
 
 use crate::extract::ExtractHandler;
+use crate::sys::com::PropVariant;
+use crate::sys::wrap;
 
 use super::source::TransportStream;
-use super::utils::{get_stream_descriptor_by_index, PropVariant, WinResult};
 
 // ジェネリクスと#[implement]を併用できないので型消去
 pub struct EventLoopWrapper(Box<dyn EventLoop>);
@@ -123,7 +124,8 @@ fn add_branch_to_partial_topology(
     hwnd_video: F::HWND,
 ) -> WinResult<()> {
     unsafe {
-        let (selected, sd) = get_stream_descriptor_by_index(pd, i)?;
+        let (selected, sd) = wrap::wrap2(|a, b| pd.GetStreamDescriptorByIndex(i, a, b))?;
+        let sd = sd.unwrap();
 
         if selected {
             let sink_activate = create_media_sink_activate(&sd, hwnd_video)?;

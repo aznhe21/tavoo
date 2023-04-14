@@ -3,7 +3,6 @@ mod queue;
 mod session;
 mod source;
 mod stream;
-mod utils;
 
 use std::path::Path;
 use std::sync::Arc;
@@ -12,6 +11,7 @@ use std::time::Duration;
 use anyhow::Result;
 use isdb::psi::table::ServiceId;
 use parking_lot::Mutex;
+use windows::core::Result as WinResult;
 use windows::Win32::Foundation as F;
 use windows::Win32::Media::MediaFoundation as MF;
 use winit::platform::windows::WindowExtWindows;
@@ -19,7 +19,6 @@ use winit::platform::windows::WindowExtWindows;
 use crate::extract::{self, ExtractHandler};
 
 use self::source::TransportStream;
-use self::utils::WinResult;
 
 #[derive(Debug, Clone)]
 pub struct PlayerEvent(MF::IMFMediaEvent);

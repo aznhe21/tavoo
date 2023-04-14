@@ -2,20 +2,7 @@ use std::fmt;
 use std::mem::ManuallyDrop;
 
 use windows::core as C;
-use windows::Win32::Media::MediaFoundation as MF;
 use windows::Win32::System::Com;
-
-pub type WinResult<T> = windows::core::Result<T>;
-
-pub unsafe fn get_stream_descriptor_by_index(
-    pd: &MF::IMFPresentationDescriptor,
-    index: u32,
-) -> WinResult<(bool, MF::IMFStreamDescriptor)> {
-    let mut selected = false.into();
-    let mut sd = None;
-    pd.GetStreamDescriptorByIndex(index, &mut selected, &mut sd)?;
-    Ok((selected.as_bool(), sd.unwrap()))
-}
 
 #[derive(Default, Clone)]
 pub struct RawPropVariant(pub Com::StructuredStorage::PROPVARIANT);

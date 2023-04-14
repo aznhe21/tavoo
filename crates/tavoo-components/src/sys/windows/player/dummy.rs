@@ -1,8 +1,6 @@
-use windows::core::{self as C, implement};
+use windows::core::{self as C, implement, Result as WinResult};
 use windows::Win32::Foundation as F;
 use windows::Win32::Media::MediaFoundation as MF;
-
-use super::utils::WinResult;
 
 #[implement(MF::IMFMediaStream)]
 pub struct DummyStream;
