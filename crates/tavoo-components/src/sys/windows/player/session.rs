@@ -9,39 +9,11 @@ use windows::Win32::Media::KernelStreaming::GUID_NULL;
 use windows::Win32::Media::MediaFoundation as MF;
 
 use crate::extract::ExtractHandler;
+use crate::player::{EventHandler, PlayerEvent};
 use crate::sys::com::PropVariant;
 use crate::sys::wrap;
 
 use super::source::TransportStream;
-
-// ジェネリクスと#[implement]を併用できないので型消去
-pub struct EventLoopWrapper(Box<dyn EventLoop>);
-
-impl EventLoopWrapper {
-    #[inline]
-    pub fn new<E: EventLoop + 'static>(event_loop: E) -> EventLoopWrapper {
-        EventLoopWrapper(Box::new(event_loop))
-    }
-}
-
-pub trait EventLoop {
-    fn send_player_event(
-        &self,
-        event: MF::IMFMediaEvent,
-    ) -> Result<(), winit::event_loop::EventLoopClosed<()>>;
-}
-
-impl<E: From<crate::player::PlayerEvent>> EventLoop for winit::event_loop::EventLoopProxy<E> {
-    fn send_player_event(
-        &self,
-        event: MF::IMFMediaEvent,
-    ) -> Result<(), winit::event_loop::EventLoopClosed<()>> {
-        match self.send_event(crate::player::PlayerEvent(event.into()).into()) {
-            Ok(()) => Ok(()),
-            Err(_) => Err(winit::event_loop::EventLoopClosed(())),
-        }
-    }
-}
 
 fn create_media_sink_activate(
     source_sd: &MF::IMFStreamDescriptor,
@@ -163,9 +135,9 @@ pub struct Session(MF::IMFAsyncCallback);
 unsafe impl Send for Session {}
 
 impl Session {
-    pub fn new(
+    pub fn new<H: EventHandler>(
         hwnd_video: F::HWND,
-        event_loop: EventLoopWrapper,
+        event_handler: H,
         handler: ExtractHandler,
         source: TransportStream,
         initial_volume: Option<f32>,
@@ -206,7 +178,7 @@ impl Session {
                 },
 
                 hwnd_video,
-                event_loop,
+                event_handler: Box::new(event_handler),
             });
             let this = Session(Outer { inner }.into());
 
@@ -354,7 +326,8 @@ struct Inner {
     op_request: OpRequest,
 
     hwnd_video: F::HWND,
-    event_loop: EventLoopWrapper,
+    // #[implement]の制約でOuterをジェネリクスにできないのでBox化
+    event_handler: Box<dyn EventHandler>,
 }
 
 // Safety: C++のサンプルではスレッドをまたいで使っているので安全なはず
@@ -801,7 +774,9 @@ impl MF::IMFAsyncCallback_Impl for Outer {
             }
 
             if inner.state != State::Closing {
-                let _ = inner.event_loop.0.send_player_event(event);
+                inner
+                    .event_handler
+                    .on_player_event(PlayerEvent(event.into()));
             }
 
             Ok(())

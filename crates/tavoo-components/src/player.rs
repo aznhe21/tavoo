@@ -10,28 +10,61 @@ use crate::sys::player as imp;
 #[derive(Debug, Clone)]
 pub struct PlayerEvent(pub(crate) imp::PlayerEvent);
 
-/// TSを再生するためのプレイヤー。
-pub struct Player<E: 'static> {
-    inner: imp::Player<E>,
+/// [`Player`]で発生したイベントを処理する。
+///
+/// 各メソッドは原則メインスレッド以外で呼ばれる。
+pub trait EventHandler: Send + 'static {
+    /// メインスレッドで処理するためのイベントが発生した際に呼ばれる。
+    fn on_player_event(&self, event: PlayerEvent);
+
+    /// TSのサービス一覧が更新された際に呼ばれる。
+    ///
+    /// サービスの選択状態によってはこの直後にサービスが変更される可能性がある。
+    fn on_services_updated(&self, services: &isdb::filters::sorter::ServiceMap);
+
+    /// サービスのストリームが更新された際に呼ばれる。
+    fn on_streams_updated(&self, service: &isdb::filters::sorter::Service);
+
+    /// サービスのイベントが更新された際に呼ばれる。
+    fn on_event_updated(&self, service: &isdb::filters::sorter::Service, is_present: bool);
+
+    /// サービスが選択し直された際に呼ばれる。
+    fn on_service_changed(&self, service: &isdb::filters::sorter::Service);
+
+    /// 選択中サービスのストリームについて何かが変更された際に呼ばれる。
+    fn on_stream_changed(&self, changed: crate::extract::StreamChanged);
+
+    /// 選択中サービスで字幕パケットを受信した際に呼ばれる。
+    fn on_caption(&self, caption: &isdb::filters::sorter::Caption);
+
+    /// 選択中サービスで文字スーパーのパケットを受信した際に呼ばれる。
+    fn on_superimpose(&self, caption: &isdb::filters::sorter::Caption);
+
+    /// TSを終端まで読み終えた際に呼ばれる。
+    fn on_end_of_stream(&self);
+
+    /// TS読み取り中にエラーが発生した際に呼ばれる。
+    ///
+    /// TSの読み取りは終了する。
+    fn on_stream_error(&self, error: anyhow::Error);
 }
 
-impl<E> Player<E> {
+/// TSを再生するためのプレイヤー。
+pub struct Player<H> {
+    inner: imp::Player<H>,
+}
+
+impl<H: EventHandler + Clone> Player<H> {
     /// ウィンドウに描画する映像プレイヤーを生成する。
-    pub fn new(
-        window: &winit::window::Window,
-        event_loop: winit::event_loop::EventLoopProxy<E>,
-    ) -> Result<Player<E>> {
+    pub fn new(window: &winit::window::Window, handler: H) -> Result<Player<H>> {
         Ok(Player {
-            inner: imp::Player::new(window, event_loop)?,
+            inner: imp::Player::new(window, handler)?,
         })
     }
 
     /// 指定されたファイルを開き、再生を開始する。
     #[inline]
-    pub fn open<P: AsRef<Path>>(&mut self, path: P) -> Result<()>
-    where
-        E: From<PlayerEvent> + Send,
-    {
+    pub fn open<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         self.inner.open(path)
     }
 
@@ -170,3 +203,8 @@ impl<E> Player<E> {
         self.inner.select_audio_stream(component_tag)
     }
 }
+
+const _: () = {
+    const fn assert_send<T: Send>() {}
+    assert_send::<PlayerEvent>();
+};

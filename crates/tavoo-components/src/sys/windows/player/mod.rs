@@ -17,6 +17,7 @@ use windows::Win32::Media::MediaFoundation as MF;
 use winit::platform::windows::WindowExtWindows;
 
 use crate::extract::{self, ExtractHandler};
+use crate::player::EventHandler;
 
 use self::source::TransportStream;
 
@@ -39,35 +40,22 @@ struct State {
     session: Option<session::Session>,
 }
 
-struct Session<Event: 'static> {
+#[derive(Clone)]
+struct Session<H> {
     hwnd_video: F::HWND,
-    event_loop: winit::event_loop::EventLoopProxy<Event>,
-    handler: ExtractHandler,
+    event_handler: H,
+    extract_handler: ExtractHandler,
     state: Arc<Mutex<State>>,
 }
 
-impl<Event> Clone for Session<Event> {
-    fn clone(&self) -> Session<Event> {
-        Session {
-            hwnd_video: self.hwnd_video,
-            event_loop: self.event_loop.clone(),
-            handler: self.handler.clone(),
-            state: self.state.clone(),
-        }
-    }
-}
-
-pub struct Player<Event: 'static> {
+pub struct Player<H> {
     hwnd_video: F::HWND,
-    event_loop: winit::event_loop::EventLoopProxy<Event>,
-    session: Option<Session<Event>>,
+    event_handler: H,
+    session: Option<Session<H>>,
 }
 
-impl<Event> Player<Event> {
-    pub fn new(
-        window: &winit::window::Window,
-        event_loop: winit::event_loop::EventLoopProxy<Event>,
-    ) -> Result<Player<Event>> {
+impl<H: EventHandler + Clone> Player<H> {
+    pub fn new(window: &winit::window::Window, event_handler: H) -> Result<Player<H>> {
         unsafe {
             MF::MFStartup(
                 (MF::MF_SDK_VERSION << 16) | MF::MF_API_VERSION,
@@ -77,7 +65,7 @@ impl<Event> Player<Event> {
 
         Ok(Player {
             hwnd_video: F::HWND(window.hwnd()),
-            event_loop,
+            event_handler,
             session: None,
         })
     }
@@ -87,17 +75,14 @@ impl<Event> Player<Event> {
         self.session.is_some()
     }
 
-    pub fn open<P: AsRef<Path>>(&mut self, path: P) -> Result<()>
-    where
-        Event: From<crate::player::PlayerEvent> + Send,
-    {
+    pub fn open<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         let _ = self.close();
 
         let extractor = extract::Extractor::new();
         let session = Session {
             hwnd_video: self.hwnd_video,
-            event_loop: self.event_loop.clone(),
-            handler: extractor.handler(),
+            event_handler: self.event_handler.clone(),
+            extract_handler: extractor.handler(),
             state: Arc::new(Mutex::new(State::default())),
         };
         let file = std::fs::File::open(path)?;
@@ -110,7 +95,7 @@ impl<Event> Player<Event> {
 
     pub fn close(&mut self) -> Result<()> {
         if let Some(session) = self.session.take() {
-            session.handler.shutdown();
+            session.extract_handler.shutdown();
 
             let (session, thread_handle) = {
                 let mut state = session.state.lock();
@@ -145,51 +130,51 @@ impl<Event> Player<Event> {
     #[inline]
     pub fn selected_service(&self) -> Option<isdb::filters::sorter::Service> {
         let session = self.session.as_ref()?;
-        let selected_service = session.handler.selected_stream();
+        let selected_service = session.extract_handler.selected_stream();
         let selected_service = selected_service.as_ref()?;
-        let service = session.handler.services()[&selected_service.service_id].clone();
+        let service = session.extract_handler.services()[&selected_service.service_id].clone();
         Some(service)
     }
 
     #[inline]
     pub fn active_video_tag(&self) -> Option<u8> {
         let session = self.session.as_ref()?;
-        let selected_stream = session.handler.selected_stream();
+        let selected_stream = session.extract_handler.selected_stream();
         selected_stream.as_ref()?.video_stream.component_tag()
     }
 
     #[inline]
     pub fn active_audio_tag(&self) -> Option<u8> {
         let session = self.session.as_ref()?;
-        let selected_stream = session.handler.selected_stream();
+        let selected_stream = session.extract_handler.selected_stream();
         selected_stream.as_ref()?.audio_stream.component_tag()
     }
 
     #[inline]
     pub fn services(&self) -> Option<isdb::filters::sorter::ServiceMap> {
         let session = self.session.as_ref()?;
-        let services = session.handler.services();
+        let services = session.extract_handler.services();
         Some(services.clone())
     }
 
     #[inline]
     pub fn select_service(&mut self, service_id: Option<ServiceId>) -> Result<()> {
         let session = self.session.as_ref().ok_or_else(Self::no_session)?;
-        session.handler.select_service(service_id);
+        session.extract_handler.select_service(service_id);
         Ok(())
     }
 
     #[inline]
     pub fn select_video_stream(&mut self, component_tag: u8) -> Result<()> {
         let session = self.session.as_ref().ok_or_else(Self::no_session)?;
-        session.handler.select_video_stream(component_tag);
+        session.extract_handler.select_video_stream(component_tag);
         Ok(())
     }
 
     #[inline]
     pub fn select_audio_stream(&mut self, component_tag: u8) -> Result<()> {
         let session = self.session.as_ref().ok_or_else(Self::no_session)?;
-        session.handler.select_audio_stream(component_tag);
+        session.extract_handler.select_audio_stream(component_tag);
         Ok(())
     }
 
@@ -288,7 +273,7 @@ impl<Event> Player<Event> {
     }
 }
 
-impl<Event> Drop for Player<Event> {
+impl<H> Drop for Player<H> {
     fn drop(&mut self) {
         unsafe {
             let _ = MF::MFShutdown();
@@ -296,10 +281,7 @@ impl<Event> Drop for Player<Event> {
     }
 }
 
-impl<Event> Session<Event>
-where
-    Event: From<crate::player::PlayerEvent> + Send,
-{
+impl<H: EventHandler + Clone> Session<H> {
     /// サービスが未選択の場合はパニックする。
     fn reset(&self, changed: extract::StreamChanged) -> WinResult<()> {
         let mut state = self.state.lock();
@@ -319,19 +301,18 @@ where
             (None, None)
         };
 
-        let selected_stream = self.handler.selected_stream();
+        let selected_stream = self.extract_handler.selected_stream();
         let selected_stream = selected_stream.as_ref().expect("サービス未選択");
         let source = TransportStream::new(
-            self.handler.clone(),
+            self.extract_handler.clone(),
             &selected_stream.video_stream,
             &selected_stream.audio_stream,
         )?;
-        let event_loop = session::EventLoopWrapper::new(self.event_loop.clone());
 
         state.session = Some(session::Session::new(
             self.hwnd_video,
-            event_loop,
-            self.handler.clone(),
+            self.event_handler.clone(),
+            self.extract_handler.clone(),
             source,
             volume,
             rate,
@@ -340,50 +321,28 @@ where
     }
 }
 
-impl<Event> extract::Sink for Session<Event>
-where
-    Event: From<crate::player::PlayerEvent> + Send,
-{
-    fn on_services_updated(&mut self, _: &isdb::filters::sorter::ServiceMap) {
-        // TODO: UIに通知
+impl<H: EventHandler + Clone> extract::Sink for Session<H> {
+    fn on_services_updated(&mut self, services: &isdb::filters::sorter::ServiceMap) {
+        self.event_handler.on_services_updated(services);
     }
-    fn on_streams_updated(&mut self, _: &isdb::filters::sorter::Service) {
-        // TODO: UIに通知
+
+    fn on_streams_updated(&mut self, service: &isdb::filters::sorter::Service) {
+        self.event_handler.on_streams_updated(service);
     }
 
     fn on_event_updated(&mut self, service: &isdb::filters::sorter::Service, is_present: bool) {
-        // TODO: UIに通知
-        let service_id = self
-            .handler
-            .selected_stream()
-            .as_ref()
-            .map(|ss| ss.service_id);
-        if service_id != Some(service.service_id()) {
-            return;
-        }
-
-        if is_present {
-            if let Some(name) = service.present_event().and_then(|e| e.name.as_ref()) {
-                log::info!("event changed: {}", name.display(Default::default()));
-            }
-        }
+        self.event_handler.on_event_updated(service, is_present);
     }
 
     fn on_service_changed(&mut self, service: &isdb::filters::sorter::Service) {
-        // TODO: UIに通知
-        log::info!(
-            "service changed: {} ({:04X})",
-            service.service_name().display(Default::default()),
-            service.service_id()
-        );
+        self.event_handler.on_service_changed(service);
     }
 
     fn on_stream_changed(&mut self, changed: extract::StreamChanged) {
         // ストリームに変化があったということはサービスは選択されている
-        let r = self.reset(changed);
-        if let Err(e) = r {
-            // TODO: UIに通知
-            log::error!("stream error: {}", e);
+        match self.reset(changed.clone()) {
+            Ok(()) => self.event_handler.on_stream_changed(changed),
+            Err(e) => self.event_handler.on_stream_error(e.into()),
         }
     }
 
@@ -402,56 +361,11 @@ where
     }
 
     fn on_caption(&mut self, caption: &isdb::filters::sorter::Caption) {
-        // TODO: UIに通知
-        let service_id = {
-            let selected_stream = self.handler.selected_stream();
-            let Some(selected_stream) = selected_stream.as_ref() else {
-                return;
-            };
-            selected_stream.service_id
-        };
-        let decode_opts = if self.handler.services()[&service_id].is_oneseg() {
-            isdb::eight::decode::Options::ONESEG_CAPTION
-        } else {
-            isdb::eight::decode::Options::CAPTION
-        };
-
-        for data_unit in caption.data_units() {
-            let isdb::pes::caption::DataUnit::StatementBody(caption) = data_unit else {
-                continue;
-            };
-
-            let caption = caption.to_string(decode_opts);
-            if !caption.is_empty() {
-                log::info!("caption: {}", caption);
-            }
-        }
+        self.event_handler.on_caption(caption);
     }
 
     fn on_superimpose(&mut self, caption: &isdb::filters::sorter::Caption) {
-        // TODO: UIに通知
-        let service_id = {
-            let selected_stream = self.handler.selected_stream();
-            let Some(selected_stream) = selected_stream.as_ref() else {
-                return;
-            };
-            selected_stream.service_id
-        };
-        let decode_opts = if self.handler.services()[&service_id].is_oneseg() {
-            isdb::eight::decode::Options::ONESEG_CAPTION
-        } else {
-            isdb::eight::decode::Options::CAPTION
-        };
-
-        for data_unit in caption.data_units() {
-            let isdb::pes::caption::DataUnit::StatementBody(caption) = data_unit else {
-                continue;
-            };
-
-            if !caption.is_empty() {
-                log::info!("superimpose: {:?}", caption.display(decode_opts));
-            }
-        }
+        self.event_handler.on_superimpose(caption);
     }
 
     fn on_end_of_stream(&mut self) {
@@ -459,11 +373,13 @@ where
         if let Some(source) = source {
             let _ = source.end_of_mpeg_stream();
         }
+
+        self.event_handler.on_end_of_stream();
     }
 
     fn on_stream_error(&mut self, error: std::io::Error) {
         self.on_end_of_stream();
-        log::error!("stream error: {}", error);
+        self.event_handler.on_stream_error(error.into());
     }
 
     fn needs_es(&self) -> bool {

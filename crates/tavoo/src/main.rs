@@ -9,9 +9,122 @@ enum UserEvent {
     PlayerEvent(player::PlayerEvent),
 }
 
-impl From<player::PlayerEvent> for UserEvent {
-    fn from(event: player::PlayerEvent) -> Self {
-        UserEvent::PlayerEvent(event)
+#[derive(Debug, Clone)]
+struct PlayerEventHandler {
+    proxy: winit::event_loop::EventLoopProxy<UserEvent>,
+}
+
+impl PlayerEventHandler {
+    #[inline]
+    pub fn new(proxy: winit::event_loop::EventLoopProxy<UserEvent>) -> PlayerEventHandler {
+        PlayerEventHandler { proxy }
+    }
+}
+
+impl tavoo_components::player::EventHandler for PlayerEventHandler {
+    fn on_player_event(&self, event: player::PlayerEvent) {
+        let _ = self
+            .proxy
+            .send_event(UserEvent::PlayerEvent(event));
+    }
+
+    fn on_services_updated(&self, _services: &isdb::filters::sorter::ServiceMap) {
+        // TODO: UIに通知
+    }
+
+    fn on_streams_updated(&self, _service: &isdb::filters::sorter::Service) {
+        // TODO: UIに通知
+    }
+
+    fn on_event_updated(&self, _service: &isdb::filters::sorter::Service, _is_present: bool) {
+        // TODO: UIに通知
+        // let service_id = self
+        //     .handler
+        //     .selected_stream()
+        //     .as_ref()
+        //     .map(|ss| ss.service_id);
+        // if service_id != Some(service.service_id()) {
+        //     return;
+        // }
+
+        // if is_present {
+        //     if let Some(name) = service.present_event().and_then(|e| e.name.as_ref()) {
+        //         log::info!("event changed: {}", name.display(Default::default()));
+        //     }
+        // }
+    }
+
+    fn on_service_changed(&self, service: &isdb::filters::sorter::Service) {
+        // TODO: UIに通知
+        log::info!(
+            "service changed: {} ({:04X})",
+            service.service_name().display(Default::default()),
+            service.service_id()
+        );
+    }
+
+    fn on_stream_changed(&self, _: tavoo_components::extract::StreamChanged) {}
+
+    fn on_caption(&self, _caption: &isdb::filters::sorter::Caption) {
+        // TODO: UIに通知
+        // let service_id = {
+        //     let selected_stream = self.handler.selected_stream();
+        //     let Some(selected_stream) = selected_stream.as_ref() else {
+        //         return;
+        //     };
+        //     selected_stream.service_id
+        // };
+        // let decode_opts = if self.handler.services()[&service_id].is_oneseg() {
+        //     isdb::eight::decode::Options::ONESEG_CAPTION
+        // } else {
+        //     isdb::eight::decode::Options::CAPTION
+        // };
+
+        // for data_unit in caption.data_units() {
+        //     let isdb::pes::caption::DataUnit::StatementBody(caption) = data_unit else {
+        //         continue;
+        //     };
+
+        //     let caption = caption.to_string(decode_opts);
+        //     if !caption.is_empty() {
+        //         log::info!("caption: {}", caption);
+        //     }
+        // }
+    }
+
+    fn on_superimpose(&self, _caption: &isdb::filters::sorter::Caption) {
+        // TODO: UIに通知
+        // let service_id = {
+        //     let selected_stream = self.handler.selected_stream();
+        //     let Some(selected_stream) = selected_stream.as_ref() else {
+        //         return;
+        //     };
+        //     selected_stream.service_id
+        // };
+        // let decode_opts = if self.handler.services()[&service_id].is_oneseg() {
+        //     isdb::eight::decode::Options::ONESEG_CAPTION
+        // } else {
+        //     isdb::eight::decode::Options::CAPTION
+        // };
+
+        // for data_unit in caption.data_units() {
+        //     let isdb::pes::caption::DataUnit::StatementBody(caption) = data_unit else {
+        //         continue;
+        //     };
+
+        //     if !caption.is_empty() {
+        //         log::info!("superimpose: {:?}", caption.display(decode_opts));
+        //     }
+        // }
+    }
+
+    fn on_end_of_stream(&self) {
+        // TODO: UIに通知
+    }
+
+    fn on_stream_error(&self, error: anyhow::Error) {
+        // TODO: UIに通知
+        log::error!("stream error: {}", error);
     }
 }
 
@@ -24,7 +137,8 @@ fn main() -> anyhow::Result<()> {
         .with_title("TaVoo")
         .build(&event_loop)?;
 
-    let mut player = player::Player::new(&window, event_loop.create_proxy())?;
+    let mut player =
+        player::Player::new(&window, PlayerEventHandler::new(event_loop.create_proxy()))?;
 
     let mut modifiers = winit::event::ModifiersState::empty();
     event_loop.run(move |event, _, control_flow| {
