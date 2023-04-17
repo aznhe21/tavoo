@@ -1,3 +1,5 @@
+//! TSファイルを再生する。
+
 use std::path::Path;
 use std::time::Duration;
 

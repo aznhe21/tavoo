@@ -1,3 +1,5 @@
+//! TSファイルを別スレッドで順次処理する。
+
 use std::io::{self, Read, Seek, SeekFrom};
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
