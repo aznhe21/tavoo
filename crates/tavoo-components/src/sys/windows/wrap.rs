@@ -1,4 +1,4 @@
-use windows::core::Result;
+use windows::core::{Result, PWSTR};
 use windows::Win32::Foundation::{BOOL, FALSE};
 
 /// [`wrap`]等で引数として使われる、Windows側の型。
@@ -24,6 +24,20 @@ impl WrappedValue for BOOL {
     #[inline]
     fn into_native(self) -> Self::Native {
         self.as_bool()
+    }
+}
+
+impl WrappedValue for PWSTR {
+    type Native = super::com::CoString;
+
+    #[inline]
+    fn placeholder() -> Self {
+        PWSTR::null()
+    }
+
+    #[inline]
+    fn into_native(self) -> Self::Native {
+        unsafe { super::com::CoString::from_ptr(self) }
     }
 }
 

@@ -1,7 +1,12 @@
-use std::fmt;
-use std::mem::ManuallyDrop;
+#![allow(dead_code)]
 
-use windows::core as C;
+use std::fmt;
+use std::mem::{ManuallyDrop, MaybeUninit};
+use std::ops;
+use std::ptr::NonNull;
+
+use windows::core::{self as C, Result as WinResult, PCWSTR, PWSTR};
+use windows::Win32::Foundation as F;
 use windows::Win32::System::Com;
 
 #[derive(Default, Clone)]
@@ -22,7 +27,6 @@ impl Drop for RawPropVariant {
 }
 
 // 全部入れるのは面倒なので使いそうなやつだけ入れておく
-#[allow(dead_code)]
 #[derive(Debug, Default, Clone, PartialEq)]
 pub enum PropVariant {
     #[default]
@@ -151,3 +155,195 @@ impl fmt::Debug for TryFromPropVariantError {
 }
 
 impl std::error::Error for TryFromPropVariantError {}
+
+/// `CoTaskMemAlloc`・`CoTaskMemFree`によってメモリが管理されるオブジェクト。
+pub struct CoBox<T: ?Sized>(NonNull<T>);
+
+impl<T: ?Sized> CoBox<T> {
+    #[inline]
+    pub fn into_raw(b: CoBox<T>) -> *mut T {
+        let ptr = b.0.as_ptr();
+        std::mem::forget(b);
+        ptr
+    }
+
+    #[inline]
+    pub unsafe fn from_raw(raw: *mut T) -> CoBox<T> {
+        unsafe { CoBox(NonNull::new_unchecked(raw)) }
+    }
+}
+
+impl<T> CoBox<T> {
+    pub fn new(val: T) -> WinResult<CoBox<T>> {
+        let mut b = CoBox::try_new_uninit()?;
+        b.write(val);
+        // Safety: 書き込み済み
+        unsafe { Ok(b.assume_init()) }
+    }
+
+    pub fn try_new_uninit() -> WinResult<CoBox<MaybeUninit<T>>> {
+        unsafe {
+            let ptr = Com::CoTaskMemAlloc(std::mem::size_of::<T>()).cast::<MaybeUninit<T>>();
+            NonNull::new(ptr)
+                .map(CoBox)
+                .ok_or_else(C::Error::from_win32)
+        }
+    }
+}
+
+impl<T> CoBox<[T]> {
+    pub fn try_new_uninit_slice(len: usize) -> WinResult<CoBox<[MaybeUninit<T>]>> {
+        if len == 0 {
+            return Err(F::E_INVALIDARG.into());
+        }
+
+        unsafe {
+            let ptr = Com::CoTaskMemAlloc(std::mem::size_of::<T>() * len).cast::<MaybeUninit<T>>();
+            if ptr.is_null() {
+                Err(C::Error::from_win32())
+            } else {
+                let ptr = std::ptr::slice_from_raw_parts_mut(ptr, len);
+                Ok(CoBox(NonNull::new_unchecked(ptr)))
+            }
+        }
+    }
+}
+
+impl<T> CoBox<MaybeUninit<T>> {
+    pub unsafe fn assume_init(self) -> CoBox<T> {
+        let raw = CoBox::into_raw(self);
+        unsafe { CoBox::from_raw(raw as *mut T) }
+    }
+}
+
+impl<T> CoBox<[MaybeUninit<T>]> {
+    pub unsafe fn assume_init(self) -> CoBox<[T]> {
+        let raw = CoBox::into_raw(self);
+        unsafe { CoBox::from_raw(raw as *mut [T]) }
+    }
+}
+
+impl<T: ?Sized> ops::Deref for CoBox<T> {
+    type Target = T;
+
+    #[inline]
+    fn deref(&self) -> &T {
+        unsafe { self.0.as_ref() }
+    }
+}
+
+impl<T: ?Sized> ops::DerefMut for CoBox<T> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut T {
+        unsafe { self.0.as_mut() }
+    }
+}
+
+impl<T: ?Sized + fmt::Debug> fmt::Debug for CoBox<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Debug::fmt(&**self, f)
+    }
+}
+
+impl<T: ?Sized + fmt::Display> fmt::Display for CoBox<T> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        fmt::Display::fmt(&**self, f)
+    }
+}
+
+impl<T: ?Sized> Drop for CoBox<T> {
+    fn drop(&mut self) {
+        unsafe {
+            Com::CoTaskMemFree(Some(self.0.as_ptr().cast_const().cast()));
+        }
+    }
+}
+
+/// `CoTaskMemAlloc`・`CoTaskMemFree`によってメモリが管理される文字列。
+pub struct CoString(Option<CoBox<[u16]>>);
+
+impl CoString {
+    #[inline]
+    pub const fn new() -> CoString {
+        CoString(None)
+    }
+
+    pub unsafe fn from_ptr(ptr: PWSTR) -> CoString {
+        if ptr.is_null() {
+            CoString(None)
+        } else {
+            let len = ptr.as_wide().len();
+            let slice = std::ptr::slice_from_raw_parts_mut(ptr.0, len);
+            CoString(Some(CoBox::from_raw(slice)))
+        }
+    }
+
+    pub fn from_str(s: &str) -> WinResult<CoString> {
+        let len = s.encode_utf16().count();
+        if len == 0 {
+            return Ok(CoString(None));
+        }
+
+        let mut array = CoBox::try_new_uninit_slice(len + 1)?;
+        for (dst, src) in array.iter_mut().zip(s.encode_utf16()) {
+            dst.write(src);
+        }
+        array[len].write(0);
+
+        // Safety: 全要素書き込み済み
+        let array = unsafe { array.assume_init() };
+        Ok(CoString(Some(array)))
+    }
+
+    pub fn to_pwstr(&mut self) -> PWSTR {
+        match &mut self.0 {
+            None => PWSTR::null(),
+            Some(array) => PWSTR(array.as_mut_ptr()),
+        }
+    }
+
+    pub fn to_pcwstr(&self) -> PCWSTR {
+        match &self.0 {
+            None => PCWSTR::null(),
+            Some(array) => PCWSTR(array.as_ptr()),
+        }
+    }
+
+    pub fn to_string(&self) -> Result<String, std::string::FromUtf16Error> {
+        match &self.0 {
+            None => Ok(String::new()),
+            Some(array) => String::from_utf16(&**array),
+        }
+    }
+
+    pub fn into_pwstr(self) -> PWSTR {
+        match self.0 {
+            None => PWSTR::null(),
+            Some(array) => PWSTR(CoBox::into_raw(array).cast()),
+        }
+    }
+}
+
+/// `s`を`CoTaskMemAlloc`を使って`PWSTR`に変換する。
+///
+/// 戻り値を解放する責任は呼び出し側にある。
+#[inline]
+pub fn to_pwstr(s: &str) -> WinResult<PWSTR> {
+    CoString::from_str(s).map(|s| s.into_pwstr())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_to_pwstr() {
+        unsafe {
+            assert_eq!(to_pwstr(""), Ok(PWSTR::null()));
+            assert_eq!(
+                to_pwstr("hoge").unwrap().as_wide(),
+                "hoge".encode_utf16().collect::<Vec<_>>()
+            );
+        }
+    }
+}
