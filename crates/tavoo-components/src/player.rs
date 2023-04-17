@@ -62,6 +62,12 @@ impl<H: EventHandler + Clone> Player<H> {
         })
     }
 
+    /// ファイルが開かれていれば`true`を返す。
+    #[inline]
+    pub fn is_opened(&self) -> bool {
+        self.inner.is_opened()
+    }
+
     /// 指定されたファイルを開き、再生を開始する。
     #[inline]
     pub fn open<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
@@ -90,6 +96,12 @@ impl<H: EventHandler + Clone> Player<H> {
     #[inline]
     pub fn play_or_pause(&mut self) -> Result<()> {
         self.inner.play_or_pause()
+    }
+
+    /// 停止する。
+    #[inline]
+    pub fn stop(&mut self) -> Result<()> {
+        self.inner.stop()
     }
 
     /// 映像を再描画する。
