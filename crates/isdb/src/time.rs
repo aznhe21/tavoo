@@ -87,9 +87,9 @@ impl MjdDate {
 
     /// `MjdDate`から`Date`に変換する。
     ///
-    /// 無効な日付の場合は`None`が返る。
+    /// 無効な日付（1970年3月1日より前など）の場合は`None`が返る。
     pub fn to_date(&self) -> Option<Date> {
-        if self.0 == u16::MAX || self.0 < 15018 {
+        if self.0 == u16::MAX || self.0 < 15079 {
             return None;
         }
 
@@ -551,14 +551,14 @@ mod tests {
         assert_eq!(mjd_date.to_string(), "1982-09-06");
         assert_eq!(format!("{:?}", mjd_date), "1982-09-06 (Mon)");
 
-        let mjd_date = MjdDate(15018);
+        let mjd_date = MjdDate(15079);
         assert_eq!(
             mjd_date.to_date(),
             Some(Date {
                 year: 1900,
-                month: 1,
+                month: 3,
                 day: 1,
-                weekday: Weekday::Sat,
+                weekday: Weekday::Thu,
             })
         );
 
