@@ -34,7 +34,7 @@ pub enum Weekday {
 }
 
 /// [`MjdDate`]から変換された日本の日付。
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Date {
     /// 年。
     pub year: i32,
@@ -75,7 +75,7 @@ impl fmt::Debug for Date {
 }
 
 /// 修正ユリウス日。
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct MjdDate(pub u16);
 
 impl MjdDate {
@@ -149,7 +149,7 @@ impl fmt::Debug for MjdDate {
 }
 
 /// 修正ユリウス日と日本標準時からなる日付時刻。
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct DateTime {
     /// 修正ユリウス日。
     pub date: MjdDate,
