@@ -276,7 +276,7 @@ pub struct EventInfo {
     /// 番組情報。
     pub text: Option<AribString>,
     /// 拡張番組情報。
-    pub extended_items: Option<Vec<ExtendedEventItem>>,
+    pub extended_items: Vec<ExtendedEventItem>,
     /// 音声に関する情報。
     pub audio_components: Vec<AudioComponent>,
 }
@@ -618,18 +618,27 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                     } else {
                         (None, None)
                     };
-                    let extended_items = event
+
+                    let mut extended_items = Vec::new();
+                    for item in event
                         .descriptors
-                        .get::<psi::desc::ExtendedEventDescriptor>()
-                        .map(|eed| {
-                            eed.items
-                                .iter()
-                                .map(|item| ExtendedEventItem {
-                                    item: item.item.to_owned(),
+                        .get_all::<psi::desc::ExtendedEventDescriptor>()
+                        .flat_map(|eed| eed.items)
+                    {
+                        match (item.item_description.is_empty(), extended_items.last_mut()) {
+                            (false, _) | (true, None) => {
+                                // 項目名がある、または最初の項目なので新規追加
+                                extended_items.push(ExtendedEventItem {
                                     description: item.item_description.to_owned(),
-                                })
-                                .collect()
-                        });
+                                    item: item.item.to_owned(),
+                                });
+                            }
+                            (true, Some(last_item)) => {
+                                // 項目名がないので項目継続
+                                last_item.item.push_str(item.item);
+                            }
+                        }
+                    }
 
                     let audio_components = event
                         .descriptors

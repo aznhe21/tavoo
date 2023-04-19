@@ -158,7 +158,7 @@ impl isdb::demux::Filter for Filter {
                     for item in ev
                         .descriptors
                         .get_all::<isdb::psi::desc::ExtendedEventDescriptor>()
-                        .flat_map(|extended_event| extended_event.items.into_iter())
+                        .flat_map(|extended_event| extended_event.items)
                     {
                         match (item.item_description.is_empty(), items.last_mut()) {
                             (false, _) | (true, None) => {
