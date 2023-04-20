@@ -138,7 +138,7 @@ impl Session {
     pub fn new<H: EventHandler>(
         hwnd_video: F::HWND,
         event_handler: H,
-        handler: ExtractHandler,
+        extract_handler: ExtractHandler,
         source: TransportStream,
         initial_volume: Option<f32>,
         initial_rate: Option<f32>,
@@ -157,7 +157,7 @@ impl Session {
 
             let inner = Mutex::new(Inner {
                 close_mutex,
-                handler,
+                extract_handler,
 
                 session,
                 source,
@@ -304,7 +304,7 @@ struct Outer {
 struct Inner {
     // セッションが閉じられたらロック解除されるミューテックス
     close_mutex: Arc<parking_lot::RawMutex>,
-    handler: ExtractHandler,
+    extract_handler: ExtractHandler,
 
     session: MF::IMFMediaSession,
     source: TransportStream,
@@ -603,7 +603,7 @@ impl Inner {
                 self.op_request.command = Some(Command::Stop);
             } else {
                 self.session.Stop()?;
-                self.handler.reset();
+                self.extract_handler.reset();
 
                 self.state = State::Stopped;
                 self.is_pending = true;
