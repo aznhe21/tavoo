@@ -115,10 +115,17 @@ impl<H: EventHandler + Clone> Player<H> {
         self.inner.repaint()
     }
 
+    /// 映像の領域を設定する。
+    #[inline]
+    pub fn set_bounds(&mut self, left: u32, top: u32, right: u32, bottom: u32) -> Result<()> {
+        self.inner.set_bounds(left, top, right, bottom)
+    }
+
     /// 映像の大きさを設定する。
     #[inline]
+    #[deprecated = "代わりに`set_bounds(0, 0, width, height)`を使用すること"]
     pub fn resize_video(&mut self, width: u32, height: u32) -> Result<()> {
-        self.inner.resize_video(width, height)
+        self.set_bounds(0, 0, width, height)
     }
 
     /// 再生位置を取得する。

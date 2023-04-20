@@ -229,12 +229,12 @@ impl<H: EventHandler + Clone> Player<H> {
     }
 
     #[inline]
-    pub fn resize_video(&mut self, width: u32, height: u32) -> Result<()> {
+    pub fn set_bounds(&mut self, left: u32, top: u32, right: u32, bottom: u32) -> Result<()> {
         match &self.session {
             Some(session) => {
                 let state = session.state.lock();
                 if let Some(session) = &state.session {
-                    session.resize_video(width, height)?;
+                    session.set_bounds(left, top, right, bottom)?;
                 }
             }
             None => {}

@@ -237,8 +237,8 @@ impl Session {
     }
 
     #[inline]
-    pub fn resize_video(&self, width: u32, height: u32) -> WinResult<()> {
-        self.inner().resize_video(width, height)
+    pub fn set_bounds(&self, left: u32, top: u32, right: u32, bottom: u32) -> WinResult<()> {
+        self.inner().set_bounds(left, top, right, bottom)
     }
 
     #[inline]
@@ -633,29 +633,30 @@ impl Inner {
         }
     }
 
-    pub fn resize_video(&mut self, width: u32, height: u32) -> WinResult<()> {
+    pub fn set_bounds(&mut self, left: u32, top: u32, right: u32, bottom: u32) -> WinResult<()> {
+        let Some(video_display) = &self.video_display else {
+            return Ok(());
+        };
+
         unsafe {
-            if let Some(video_display) = &self.video_display {
-                let mut size = F::SIZE { cx: 0, cy: 0 };
-                video_display.GetNativeVideoSize(&mut size, std::ptr::null_mut())?;
+            let size = wrap::wrap(|a| video_display.GetNativeVideoSize(a, std::ptr::null_mut()))?;
 
-                let src = MF::MFVideoNormalizedRect {
-                    left: 0.,
-                    top: 0.,
-                    right: 1.,
-                    bottom: if size.cy == 1088 { 1080. / 1088. } else { 1. },
-                };
-                let dst = F::RECT {
-                    left: 0,
-                    top: 0,
-                    right: width as i32,
-                    bottom: height as i32,
-                };
-                video_display.SetVideoPosition(&src, &dst)?;
-            }
-
-            Ok(())
+            let src = MF::MFVideoNormalizedRect {
+                left: 0.,
+                top: 0.,
+                right: 1.,
+                bottom: if size.cy == 1088 { 1080. / 1088. } else { 1. },
+            };
+            let dst = F::RECT {
+                left: left as i32,
+                top: top as i32,
+                right: right as i32,
+                bottom: bottom as i32,
+            };
+            video_display.SetVideoPosition(&src, &dst)?;
         }
+
+        Ok(())
     }
 
     pub fn position(&self) -> WinResult<Duration> {
