@@ -432,6 +432,12 @@ impl Inner {
         log::trace!("Session::on_session_started");
         status.ok()?;
 
+        if let Some(pos) = self.seeking_pos {
+            self.event_handler.on_seek_completed(pos);
+        } else {
+            self.event_handler.on_started();
+        }
+
         self.run_pending_ops(State::Started)?;
         Ok(())
     }
@@ -443,6 +449,8 @@ impl Inner {
     ) -> WinResult<()> {
         log::trace!("Session::on_session_paused");
         status.ok()?;
+
+        self.event_handler.on_paused();
 
         self.run_pending_ops(State::Paused)?;
         Ok(())
@@ -459,10 +467,14 @@ impl Inner {
             // 速度変更が成功した場合は既に速度をキャッシュ済み
             // 失敗した場合は実際の速度に更新
             if status.is_err() {
-                if let Ok(PropVariant::F32(rate)) = event.GetValue()?.try_into() {
-                    self.current_rate = rate;
+                if let Ok(value) = event.GetValue() {
+                    if let Ok(PropVariant::F32(rate)) = value.try_into() {
+                        self.current_rate = rate;
+                    }
                 }
             }
+
+            self.event_handler.on_rate_changed(self.current_rate);
 
             Ok(())
         }
@@ -502,6 +514,8 @@ impl Inner {
                     let _ = rate_control.SetRate(F::FALSE, self.current_rate);
                 }
 
+                self.event_handler.on_ready();
+
                 self.start_playback()?;
             }
             Ok(())
@@ -517,6 +531,8 @@ impl Inner {
         status.ok()?;
 
         self.state = State::Stopped;
+        self.event_handler.on_stopped();
+
         Ok(())
     }
 
@@ -606,6 +622,8 @@ impl Inner {
                 self.extract_handler.reset();
 
                 self.state = State::Stopped;
+                self.event_handler.on_stopped();
+
                 self.is_pending = true;
             }
 

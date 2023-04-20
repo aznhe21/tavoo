@@ -19,6 +19,28 @@ pub trait EventHandler: Send + 'static {
     /// メインスレッドで処理するためのイベントが発生した際に呼ばれる。
     fn on_player_event(&self, event: PlayerEvent);
 
+    /// 再生準備が整った際に呼ばれる。
+    fn on_ready(&self);
+
+    /// 再生が開始した際に呼ばれる。
+    fn on_started(&self);
+
+    /// 再生が一時停止した際に呼ばれる。
+    fn on_paused(&self);
+
+    /// 再生が停止した際に呼ばれる。
+    fn on_stopped(&self);
+
+    /// プレイヤーのシークが完了した際に呼ばれる。
+    ///
+    /// 引数`position`はシーク先、つまり直後に再生が開始される位置である。
+    fn on_seek_completed(&self, position: Duration);
+
+    /// 再生速度の変更が完了した際に呼ばれる。
+    ///
+    /// 引数`rate`は新しい再生速度である。
+    fn on_rate_changed(&self, rate: f32);
+
     /// TSのサービス一覧が更新された際に呼ばれる。
     ///
     /// サービスの選択状態によってはこの直後にサービスが変更される可能性がある。
