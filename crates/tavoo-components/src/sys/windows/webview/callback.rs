@@ -77,6 +77,14 @@ macro_rules! completed_callback {
 }
 
 event_callback!(
+    navigation_starting_event_handler,
+    ICoreWebView2NavigationStartingEventHandler,
+    ICoreWebView2NavigationStartingEventHandler_Impl,
+    sender: ::core::option::Option<&ICoreWebView2>,
+    args: ::core::option::Option<&ICoreWebView2NavigationStartingEventArgs>,
+);
+
+event_callback!(
     navigation_completed_event_handler,
     ICoreWebView2NavigationCompletedEventHandler,
     ICoreWebView2NavigationCompletedEventHandler_Impl,

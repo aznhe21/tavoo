@@ -78,6 +78,17 @@ impl Builder {
         self
     }
 
+    /// 遷移が始まる際のハンドラーを指定する。
+    ///
+    /// ハンドラーから`false`が返った場合、遷移は取り消される。
+    pub fn navigation_starting_handler<F>(mut self, handler: F) -> Builder
+    where
+        F: FnMut(&str) -> bool + 'static,
+    {
+        self.inner.navigation_starting_handler(handler);
+        self
+    }
+
     /// コンテンツのタイトルが変更された際のハンドラーを指定する。
     pub fn document_title_changed_handler<F>(mut self, handler: F) -> Builder
     where

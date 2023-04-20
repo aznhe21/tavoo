@@ -102,6 +102,7 @@ type CreateCompleted = Once<Box<dyn FnOnce(Result<()>) -> ()>>;
 pub struct Builder {
     env_opts: options::CoreWebView2EnvironmentOptions,
     scheme_handlers: FxHashMap<String, Box<dyn Handler>>,
+    navigation_starting_handler: Option<Box<dyn FnMut(&str) -> bool>>,
     document_title_changed_handler: Option<Box<dyn FnMut(&str)>>,
     web_message_received_handler: Option<Box<dyn FnMut(&str)>>,
 }
@@ -133,6 +134,13 @@ impl Builder {
             .insert(name.to_string(), Box::new(handler));
     }
 
+    pub fn navigation_starting_handler<F>(&mut self, handler: F)
+    where
+        F: FnMut(&str) -> bool + 'static,
+    {
+        self.navigation_starting_handler = Some(Box::new(handler));
+    }
+
     pub fn document_title_changed_handler<F>(&mut self, handler: F)
     where
         F: FnMut(&str) + 'static,
@@ -155,6 +163,7 @@ impl Builder {
         let Self {
             env_opts,
             scheme_handlers,
+            navigation_starting_handler,
             document_title_changed_handler,
             web_message_received_handler,
         } = self;
@@ -175,6 +184,7 @@ impl Builder {
                     hwnd,
                     create_completed.clone(),
                     scheme_handlers,
+                    navigation_starting_handler,
                     document_title_changed_handler,
                     web_message_received_handler,
                 ),
@@ -215,6 +225,7 @@ impl Builder {
             hwnd: F::HWND,
             create_completed: CreateCompleted,
             scheme_handlers: FxHashMap<String, Box<dyn Handler>>,
+            navigation_starting_handler: Option<Box<dyn FnMut(&str) -> bool>>,
             document_title_changed_handler: Option<Box<dyn FnMut(&str)>>,
             web_message_received_handler: Option<Box<dyn FnMut(&str)>>,
         ) -> WV2::ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler {
@@ -229,6 +240,7 @@ impl Builder {
                                 hwnd,
                                 create_completed.clone(),
                                 scheme_handlers,
+                                navigation_starting_handler,
                                 document_title_changed_handler,
                                 web_message_received_handler,
                                 env.clone(),
@@ -256,6 +268,7 @@ impl Builder {
             hwnd: F::HWND,
             create_completed: CreateCompleted,
             scheme_handlers: FxHashMap<String, Box<dyn Handler>>,
+            navigation_starting_handler: Option<Box<dyn FnMut(&str) -> bool>>,
             document_title_changed_handler: Option<Box<dyn FnMut(&str)>>,
             web_message_received_handler: Option<Box<dyn FnMut(&str)>>,
             env: WV2::ICoreWebView2Environment,
@@ -312,6 +325,9 @@ impl Builder {
                             &mut token,
                         ));
 
+                        if let Some(handler) = navigation_starting_handler {
+                            tri!('r, webview.add_NavigationStarting(&WebView::navigation_starting(handler), &mut token));
+                        }
                         if let Some(handler) = document_title_changed_handler {
                             tri!('r, webview.add_DocumentTitleChanged(
                                 &WebView::title_changed_handler(handler),
@@ -519,6 +535,21 @@ impl WebView {
             });
 
             args.SetResponse(&build_response(&env, res)?)?;
+            Ok(())
+        })
+    }
+
+    fn navigation_starting(
+        mut handler: Box<dyn FnMut(&str) -> bool>,
+    ) -> WV2::ICoreWebView2NavigationStartingEventHandler {
+        callback::navigation_starting_event_handler(move |_, args| unsafe {
+            let args = args.ok_or(F::E_POINTER)?;
+
+            let uri = wrap::wrap(|a| args.Uri(a))?.to_string()?;
+            if !handler(&*uri) {
+                log::trace!("'{}'への遷移を取り消し", uri);
+                args.SetCancel(F::TRUE)?;
+            }
             Ok(())
         })
     }
