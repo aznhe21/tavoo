@@ -611,7 +611,7 @@ impl Inner {
 
     pub fn stop(&mut self) -> WinResult<()> {
         unsafe {
-            if matches!(self.state, State::Started | State::Paused) {
+            if !matches!(self.state, State::Started | State::Paused) {
                 return Err(MF::MF_E_INVALIDREQUEST.into());
             }
 
