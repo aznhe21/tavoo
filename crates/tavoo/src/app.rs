@@ -17,6 +17,30 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
         let _ = self.0.send_event(UserEvent::PlayerEvent(event));
     }
 
+    fn on_ready(&self) {
+        // TODO: UIに通知
+    }
+
+    fn on_started(&self) {
+        // TODO: UIに通知
+    }
+
+    fn on_paused(&self) {
+        // TODO: UIに通知
+    }
+
+    fn on_stopped(&self) {
+        // TODO: UIに通知
+    }
+
+    fn on_seek_completed(&self, _position: Duration) {
+        // TODO: UIに通知
+    }
+
+    fn on_rate_changed(&self, _rate: f32) {
+        // TODO: UIに通知
+    }
+
     fn on_services_updated(&self, _services: &isdb::filters::sorter::ServiceMap) {
         // TODO: UIに通知
     }
@@ -142,13 +166,13 @@ pub fn run() -> anyhow::Result<()> {
         match event {
             Event::WindowEvent { event, .. } => match event {
                 WindowEvent::Resized(size) => {
-                    let _ = app.player.resize_video(size.width, size.height);
+                    let _ = app.player.set_bounds(0, 0, size.width, size.height);
                 }
 
                 WindowEvent::DroppedFile(path) => match app.player.open(path) {
                     Ok(()) => {
                         let size = app.window.inner_size();
-                        let _ = app.player.resize_video(size.width, size.height);
+                        let _ = app.player.set_bounds(0, 0, size.width, size.height);
                     }
                     Err(e) => {
                         log::error!("{}", e);
