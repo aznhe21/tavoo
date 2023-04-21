@@ -1,7 +1,5 @@
 //! パケットを仕分けるためのフィルター。
 
-use std::time::Duration;
-
 use arrayvec::ArrayVec;
 use fxhash::FxHashSet;
 
@@ -269,8 +267,8 @@ pub struct EventInfo {
     pub event_id: EventId,
     /// 番組開始時刻。
     pub start_time: time::DateTime,
-    /// 番組の継続時間。
-    pub duration: Duration,
+    /// 番組の継続時間（秒単位）。
+    pub duration: u32,
     /// 番組名。
     pub name: Option<AribString>,
     /// 番組情報。
@@ -661,7 +659,7 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                     EventInfo {
                         event_id: event.event_id,
                         start_time: event.start_time.clone(),
-                        duration: Duration::from_secs(event.duration as u64),
+                        duration: event.duration,
                         name,
                         text,
                         extended_items,
