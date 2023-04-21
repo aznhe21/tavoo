@@ -275,8 +275,12 @@ pub struct EventInfo {
     pub text: Option<AribString>,
     /// 拡張番組情報。
     pub extended_items: Vec<ExtendedEventItem>,
+    /// 映像に関する情報。
+    pub video_components: Vec<VideoComponent>,
     /// 音声に関する情報。
     pub audio_components: Vec<AudioComponent>,
+    /// 分類。
+    pub genres: Option<Vec<psi::desc::ContentGenre>>,
 }
 
 /// 拡張番組情報の要素。
@@ -286,6 +290,21 @@ pub struct ExtendedEventItem {
     pub item: AribString,
     /// 概要。
     pub description: AribString,
+}
+
+/// 番組の映像に関する情報。
+#[derive(Debug, Clone)]
+pub struct VideoComponent {
+    /// コンポーネント内容（4ビット）。
+    pub stream_content: u8,
+    /// コンポーネント種別。
+    pub component_type: u8,
+    /// コンポーネントタグ。
+    pub component_tag: u8,
+    /// 言語コード。
+    pub lang_code: lang::LangCode,
+    /// コンポーネント記述。
+    pub text: AribString,
 }
 
 /// 番組の音声に関する情報。
@@ -638,6 +657,18 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                         }
                     }
 
+                    let video_components = event
+                        .descriptors
+                        .get_all::<psi::desc::ComponentDescriptor>()
+                        .map(|cd| VideoComponent {
+                            stream_content: cd.stream_content,
+                            component_type: cd.component_type,
+                            component_tag: cd.component_tag,
+                            lang_code: cd.lang_code,
+                            text: cd.text.to_owned(),
+                        })
+                        .collect();
+
                     let audio_components = event
                         .descriptors
                         .get_all::<psi::desc::AudioComponentDescriptor>()
@@ -656,6 +687,11 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                         })
                         .collect();
 
+                    let genres = event
+                        .descriptors
+                        .get::<psi::desc::ContentDescriptor>()
+                        .map(|cd| cd.genres);
+
                     EventInfo {
                         event_id: event.event_id,
                         start_time: event.start_time.clone(),
@@ -663,7 +699,9 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                         name,
                         text,
                         extended_items,
+                        video_components,
                         audio_components,
+                        genres,
                     }
                 });
 
