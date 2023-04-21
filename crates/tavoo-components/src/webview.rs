@@ -157,6 +157,12 @@ impl WebView {
         Self::builder().build(window, create_completed)
     }
 
+    /// 開発者ツールを開く。
+    #[inline]
+    pub fn open_dev_tools(&mut self) -> Result<()> {
+        self.inner.open_dev_tools()
+    }
+
     /// WebViewにフォーカスを移す。
     #[inline]
     pub fn focus(&mut self) -> Result<()> {

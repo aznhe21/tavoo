@@ -361,6 +361,7 @@ impl Builder {
 
 #[derive(Debug, Default)]
 struct PendingOps {
+    open_dev_tools: bool,
     focus: bool,
     notify_parent_window_moved: bool,
     resize: Option<(u32, u32)>,
@@ -407,6 +408,9 @@ impl State {
             _ => unsafe { std::hint::unreachable_unchecked() },
         };
 
+        if ops.open_dev_tools {
+            inner.open_dev_tools()?;
+        }
         if ops.focus {
             inner.focus()?;
         }
@@ -425,6 +429,11 @@ impl State {
 }
 
 impl Inner {
+    #[inline]
+    fn open_dev_tools(&self) -> WinResult<()> {
+        unsafe { self.webview.OpenDevToolsWindow() }
+    }
+
     #[inline]
     fn focus(&self) -> WinResult<()> {
         unsafe {
@@ -579,6 +588,15 @@ impl WebView {
     }
 
     const FAILED_MSG: &str = "WebViewは使用不可能";
+
+    pub fn open_dev_tools(&mut self) -> Result<()> {
+        match &mut *self.state.lock() {
+            State::Pending(ops) => ops.open_dev_tools = true,
+            State::Failed => return Err(anyhow::Error::msg(Self::FAILED_MSG)),
+            State::Ready(inner) => inner.open_dev_tools()?,
+        }
+        Ok(())
+    }
 
     pub fn focus(&mut self) -> Result<()> {
         match &mut *self.state.lock() {
