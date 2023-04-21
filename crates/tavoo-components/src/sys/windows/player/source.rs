@@ -448,11 +448,7 @@ impl Inner {
         pd: &MF::IMFPresentationDescriptor,
         start_pos: Option<i64>,
     ) -> WinResult<()> {
-        fn do_start(
-            this: &mut MutexGuard<Inner>,
-            pd: &MF::IMFPresentationDescriptor,
-            start_pos: Option<i64>,
-        ) -> WinResult<()> {
+        let r: WinResult<()> = 'r: {
             unsafe {
                 log::trace!("TransportStream::do_start");
 
@@ -465,22 +461,20 @@ impl Inner {
                     PropVariant::Empty
                 };
 
-                Inner::select_streams(this, pd, Some(&start_pos))?;
+                tri!('r, Inner::select_streams(this, pd, Some(&start_pos)));
 
                 this.state = State::Started;
 
-                this.event_queue.QueueEventParamVar(
+                tri!('r, this.event_queue.QueueEventParamVar(
                     MF::MESourceStarted.0 as u32,
                     &GUID_NULL,
                     F::S_OK,
                     &start_pos.to_raw(),
-                )?;
+                ));
 
                 Ok(())
             }
-        }
-
-        let r = do_start(this, pd, start_pos);
+        };
         if let Err(ref e) = r {
             log::debug!("error[do_start]: {}", e);
             unsafe {

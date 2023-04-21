@@ -342,10 +342,14 @@ impl Outer {
 
 impl Inner {
     fn close(this: &mut MutexGuard<Inner>) -> WinResult<()> {
-        fn shutdown(this: &mut MutexGuard<Inner>) -> WinResult<()> {
+        this.video_display.take();
+        this.audio_volume.take();
+        this.rate_control.take();
+
+        let r = 'r: {
             unsafe {
                 this.state = State::Closing;
-                this.session.Close()?;
+                tri!('r, this.session.Close());
 
                 // IMFMediaSession::Close()の呼び出しでOuter::Invokeが呼ばれるため、
                 // 閉じるのを待つ間はロックを解除する
@@ -361,13 +365,7 @@ impl Inner {
 
                 Ok(())
             }
-        }
-
-        this.video_display.take();
-        this.audio_volume.take();
-        this.rate_control.take();
-
-        let r = shutdown(this);
+        };
 
         unsafe { this.close_mutex.unlock() }
 

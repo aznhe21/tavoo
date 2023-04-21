@@ -180,10 +180,10 @@ impl Inner {
     }
 
     fn dispatch_samples(this: &mut MutexGuard<Self>) -> WinResult<()> {
-        fn dispatch_samples(this: &mut MutexGuard<Inner>) -> WinResult<()> {
+        let r: WinResult<()> = 'r: {
             unsafe {
                 if this.state != State::Started {
-                    return Ok(());
+                    break 'r Ok(());
                 }
 
                 while !this.samples.is_empty() && !this.requests.is_empty() {
@@ -191,35 +191,33 @@ impl Inner {
                     let token = this.requests.pop_front().unwrap();
 
                     if let Some(token) = token {
-                        sample.SetUnknown(&MF::MFSampleExtension_Token, &token)?;
+                        tri!('r, sample.SetUnknown(&MF::MFSampleExtension_Token, &token));
                     }
 
-                    this.event_queue.QueueEventParamUnk(
+                    tri!('r, this.event_queue.QueueEventParamUnk(
                         MF::MEMediaSample.0 as u32,
                         &GUID_NULL,
                         F::S_OK,
                         &sample,
-                    )?;
+                    ));
                 }
 
                 if this.samples.is_empty() && this.is_eos {
                     log::trace!("sample exhausted ({:p})", this);
-                    this.event_queue.QueueEventParamVar(
+                    tri!('r, this.event_queue.QueueEventParamVar(
                         MF::MEEndOfStream.0 as u32,
                         &GUID_NULL,
                         F::S_OK,
                         std::ptr::null(),
-                    )?;
-                    Inner::source_unlocked(this, |ts| ts.enqueue_end_of_stream())?;
+                    ));
+                    tri!('r, Inner::source_unlocked(this, |ts| ts.enqueue_end_of_stream()));
                 } else if this.needs_data() {
                     Inner::source_unlocked(this, |ts| ts.request_sample());
                 }
 
                 Ok(())
             }
-        }
-
-        let r = dispatch_samples(this);
+        };
         if let Err(ref e) = r {
             if this.state != State::Shutdown {
                 log::debug!("error[dispatch_samples]: {}", e);
@@ -395,29 +393,24 @@ impl MF::IMFMediaStream_Impl for Outer {
     }
 
     fn RequestSample(&self, ptoken: Option<&C::IUnknown>) -> WinResult<()> {
-        fn request_sample(
-            inner: &mut MutexGuard<Inner>,
-            ptoken: Option<&C::IUnknown>,
-        ) -> WinResult<()> {
-            inner.check_shutdown()?;
-            if inner.state == State::Stopped || !inner.is_active {
-                return Err(MF::MF_E_INVALIDREQUEST.into());
-            }
-            if inner.is_eos && inner.samples.is_empty() {
-                return Err(MF::MF_E_END_OF_STREAM.into());
-            }
-
-            inner.requests.push_back(ptoken.cloned());
-            Inner::dispatch_samples(inner)?;
-
-            Ok(())
-        }
-
         log::trace!("ElementaryStream::RequestSample {:p}", self);
 
         let mut inner = self.inner.lock();
 
-        let r = request_sample(&mut inner, ptoken);
+        let r: WinResult<()> = 'r: {
+            tri!('r, inner.check_shutdown());
+            if inner.state == State::Stopped || !inner.is_active {
+                break 'r Err(MF::MF_E_INVALIDREQUEST.into());
+            }
+            if inner.is_eos && inner.samples.is_empty() {
+                break 'r Err(MF::MF_E_END_OF_STREAM.into());
+            }
+
+            inner.requests.push_back(ptoken.cloned());
+            tri!('r, Inner::dispatch_samples(&mut inner));
+
+            Ok(())
+        };
         if let Err(ref e) = r {
             if inner.state != State::Shutdown {
                 log::debug!("error[RequestSample]: {}", e);
