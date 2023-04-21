@@ -4,17 +4,44 @@ use tavoo_components::player;
 use winit::event::{Event, WindowEvent};
 use winit::window::WindowBuilder;
 
-#[derive(Debug, Clone)]
 enum UserEvent {
-    PlayerEvent(player::PlayerEvent),
+    DispatchTask(Box<dyn FnOnce(&mut App) + Send>),
 }
 
 #[derive(Debug, Clone)]
-struct PlayerEventHandler(winit::event_loop::EventLoopProxy<UserEvent>);
+struct EventLoopProxy(winit::event_loop::EventLoopProxy<UserEvent>);
+
+impl EventLoopProxy {
+    #[inline]
+    pub fn new(event_loop: &winit::event_loop::EventLoop<UserEvent>) -> EventLoopProxy {
+        EventLoopProxy(event_loop.create_proxy())
+    }
+
+    #[inline]
+    pub fn send_event(&self, event: UserEvent) {
+        let _ = self.0.send_event(event);
+    }
+
+    /// メインスレッドで`App`を使った処理を実行する。
+    #[inline]
+    pub fn dispatch_task<F>(&self, f: F)
+    where
+        F: FnOnce(&mut App) + Send + 'static,
+    {
+        self.send_event(UserEvent::DispatchTask(Box::new(f)));
+    }
+}
+
+#[derive(Debug, Clone)]
+struct PlayerEventHandler(EventLoopProxy);
 
 impl tavoo_components::player::EventHandler for PlayerEventHandler {
     fn on_player_event(&self, event: player::PlayerEvent) {
-        let _ = self.0.send_event(UserEvent::PlayerEvent(event));
+        self.0.dispatch_task(move |app| {
+            if let Err(e) = app.player.handle_event(event) {
+                log::error!("player event: {}", e);
+            }
+        });
     }
 
     fn on_ready(&self) {
@@ -150,12 +177,13 @@ pub fn run() -> anyhow::Result<()> {
     env_logger::init();
 
     let event_loop = winit::event_loop::EventLoopBuilder::<UserEvent>::with_user_event().build();
+    let proxy = EventLoopProxy::new(&event_loop);
 
     let window = WindowBuilder::new()
         .with_title("TaVoo")
         .build(&event_loop)?;
 
-    let player = player::Player::new(&window, PlayerEventHandler(event_loop.create_proxy()))?;
+    let player = player::Player::new(&window, PlayerEventHandler(proxy))?;
 
     let mut app = App { window, player };
 
@@ -366,11 +394,7 @@ pub fn run() -> anyhow::Result<()> {
             },
 
             Event::UserEvent(event) => match event {
-                UserEvent::PlayerEvent(event) => {
-                    if let Err(e) = app.player.handle_event(event) {
-                        log::error!("player event: {}", e);
-                    }
-                }
+                UserEvent::DispatchTask(f) => f(&mut app),
             },
 
             Event::RedrawRequested(_) => {
