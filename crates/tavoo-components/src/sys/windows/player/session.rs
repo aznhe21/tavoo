@@ -457,25 +457,24 @@ impl Inner {
     fn on_session_rate_changed(
         &mut self,
         status: C::HRESULT,
-        event: &MF::IMFMediaEvent,
+        _event: &MF::IMFMediaEvent,
     ) -> WinResult<()> {
-        unsafe {
-            log::trace!("Session::on_session_rate_changed");
+        log::trace!("Session::on_session_rate_changed");
 
-            // 速度変更が成功した場合は既に速度をキャッシュ済み
-            // 失敗した場合は実際の速度に更新
-            if status.is_err() {
-                if let Ok(value) = event.GetValue() {
-                    if let Ok(PropVariant::F32(rate)) = value.try_into() {
-                        self.current_rate = rate;
-                    }
-                }
+        // 速度変更が成功した場合は既に速度をキャッシュ済み
+        // 失敗した場合は実際の速度に更新
+        if status.is_err() {
+            // ドキュメント上は`event.GetValue()`に実際の速度が入っているようだが、
+            // 実際は指定された値がそのまま入っているだけのようなので
+            // IMFRateControlから実際の速度を取得する
+            if let Ok(rate) = self.rate() {
+                self.current_rate = rate;
             }
-
-            self.event_handler.on_rate_changed(self.current_rate);
-
-            Ok(())
         }
+
+        self.event_handler.on_rate_changed(self.current_rate);
+
+        Ok(())
     }
 
     unsafe fn get_service<T: ComInterface>(&self, guid: &C::GUID) -> WinResult<T> {
