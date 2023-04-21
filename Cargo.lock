@@ -541,6 +541,7 @@ dependencies = [
  "log",
  "memchr",
  "pico-args",
+ "smallvec",
  "thiserror",
 ]
 

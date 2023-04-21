@@ -1,7 +1,7 @@
 //! パケットを仕分けるためのフィルター。
 
-use arrayvec::ArrayVec;
 use fxhash::FxHashSet;
+use smallvec::SmallVec;
 
 use crate::demux;
 use crate::lang;
@@ -280,7 +280,7 @@ pub struct EventInfo {
     /// 音声に関する情報。
     pub audio_components: Vec<AudioComponent>,
     /// 分類。
-    pub genres: Option<Vec<psi::desc::ContentGenre>>,
+    pub genres: Option<SmallVec<[psi::desc::ContentGenre; 7]>>,
 }
 
 /// 拡張番組情報の要素。
@@ -442,8 +442,8 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
         };
 
         let pid = ctx.packet().pid();
-        // PCRに同一のPIDを割り当てるサービスが8個なんてことはないはず
-        let mut service_ids = ArrayVec::<_, 8>::new();
+        // 大抵の局でサービス数は4個も無さげ
+        let mut service_ids = SmallVec::<[_; 4]>::new_const();
         for service in self.services.values_mut() {
             if service.pcr_pid == pid {
                 service.pcr = Some(pcr);
@@ -690,7 +690,7 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                     let genres = event
                         .descriptors
                         .get::<psi::desc::ContentDescriptor>()
-                        .map(|cd| cd.genres);
+                        .map(|cd| cd.genres.into());
 
                     EventInfo {
                         event_id: event.event_id,

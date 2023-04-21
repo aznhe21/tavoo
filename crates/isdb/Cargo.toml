@@ -12,6 +12,7 @@ fxhash = "0.2.1"
 indexmap = "1.9.3"
 log = "0.4.17"
 memchr = "2.5.0"
+smallvec = { version = "1.10.0", features = ["const_generics", "const_new", "union"] }
 thiserror = "1.0.40"
 
 [dev-dependencies]
