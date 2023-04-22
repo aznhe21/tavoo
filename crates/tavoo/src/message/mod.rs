@@ -86,6 +86,8 @@ pub enum Command {
     SetPosition { position: f64 },
     /// 音量の変更。
     SetVolume { volume: f64 },
+    /// ミュート状態の変更。
+    SetMuted { muted: bool },
     /// 再生速度の変更。
     SetRate { rate: f64 },
     /// サービスの選択。

@@ -164,6 +164,23 @@ const gPlayer = new class Player {
     });
   }
 
+  #muted = false;
+
+  /**
+   * ミュート状態。
+   */
+  get muted() {
+    return this.#muted;
+  }
+
+  set muted(value) {
+    this.#muted = value;
+    window.chrome.webview.postMessage({
+      command: "set-muted",
+      muted: value,
+    });
+  }
+
   #playbackRate = 1.0;
   #playbackRateRange = {
     slowest: 1.0,

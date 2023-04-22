@@ -321,6 +321,12 @@ impl App {
                         .set_volume(volume as f32)
                         .map_err(|e| format!("音量を設定できません：{}", e)));
                 }
+                Command::SetMuted { muted } => {
+                    tri!('r, self
+                        .player
+                        .set_muted(muted)
+                        .map_err(|e| format!("ミュート状態を設定できません：{}", e)));
+                }
                 Command::SetRate { rate } => {
                     tri!('r, self
                         .player
