@@ -13,6 +13,13 @@ const gPlayer = new class Player {
         this.#source = noti.path;
         break;
 
+      case "rate-range":
+        // 再生速度の範囲
+        console.log(`速度範囲：${noti.slowest}..=${noti.fastest}`);
+        this.#playbackRateRange.slowest = noti.slowest;
+        this.#playbackRateRange.fastest = noti.fastest;
+        break;
+
       case "state":
         // 再生状態が更新された
         console.log(`再生状態：${noti.state}`);
@@ -158,6 +165,10 @@ const gPlayer = new class Player {
   }
 
   #playbackRate = 1.0;
+  #playbackRateRange = {
+    slowest: 1.0,
+    fastest: 1.0,
+  }
 
   /**
    * 再生速度。
@@ -167,10 +178,24 @@ const gPlayer = new class Player {
   }
 
   set playbackRate(value) {
+    if (value < this.#playbackRateRange.slowest || value > this.#playbackRateRange.fastest) {
+      throw new Error("再生速度の範囲外");
+    }
+
     window.chrome.webview.postMessage({
       command: "set-rate",
       rate: value,
     });
+  }
+
+  /**
+   * 再生速度の範囲。
+   */
+  get playbackRateRange() {
+    return {
+      slowest: this.#playbackRateRange.slowest,
+      fastest: this.#playbackRateRange.fastest,
+    };
   }
 
   /**

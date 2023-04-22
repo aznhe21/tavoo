@@ -59,7 +59,15 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
     }
 
     fn on_ready(&self) {
-        self.0.dispatch_task(|app| app.resize_video(None));
+        self.0.dispatch_task(|app| {
+            app.resize_video(None);
+            if let Ok(range) = app.player.rate_range() {
+                app.send_notification(Notification::RateRange {
+                    slowest: *range.start() as f64,
+                    fastest: *range.end() as f64,
+                });
+            }
+        });
     }
 
     fn on_started(&self) {

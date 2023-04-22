@@ -31,6 +31,8 @@ pub enum Notification {
         /// 開かれたファイルへのパスだが、ファイルが閉じられた場合は`None`（`null`）。
         path: Option<String>,
     },
+    /// 再生速度の範囲。
+    RateRange { slowest: f64, fastest: f64 },
     /// 再生状態が更新された。
     State { state: PlaybackState },
     /// 再生位置が更新された。
