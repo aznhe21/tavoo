@@ -60,7 +60,6 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
 
     fn on_ready(&self) {
         self.0.dispatch_task(|app| {
-            app.resize_video(None);
             if let Ok(range) = app.player.rate_range() {
                 app.send_notification(Notification::RateRange {
                     slowest: *range.start() as f64,
@@ -398,10 +397,6 @@ pub fn run() -> anyhow::Result<()> {
         move |r| proxy.send_event(UserEvent::WebViewCreated(r))
     });
     webview.focus()?;
-    {
-        let size = window.inner_size();
-        webview.resize(size.width, size.height)?;
-    }
     webview.navigate("tavoo://player/content/player.html")?;
 
     let mut app = App::new(window, player, webview);
@@ -432,8 +427,6 @@ pub fn run() -> anyhow::Result<()> {
 
                 WindowEvent::DroppedFile(path) => match app.player.open(&*path) {
                     Ok(()) => {
-                        app.resize_video(None);
-
                         app.send_notification(Notification::Source {
                             path: Some(path.to_string_lossy().into_owned()),
                         });
