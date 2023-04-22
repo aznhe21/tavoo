@@ -11,7 +11,7 @@ use std::time::Duration;
 
 use anyhow::Result;
 use isdb::psi::table::ServiceId;
-use parking_lot::Mutex;
+use parking_lot::{MappedMutexGuard, Mutex, MutexGuard};
 use windows::core::Result as WinResult;
 use windows::Win32::Foundation as F;
 use windows::Win32::Media::MediaFoundation as MF;
@@ -117,15 +117,19 @@ impl<H: EventHandler + Clone> Player<H> {
         anyhow::anyhow!("セッションがありません")
     }
 
-    fn with_session_must<T, E, F>(&self, f: F) -> Result<T>
-    where
-        E: Into<anyhow::Error>,
-        F: FnOnce(&session::Session) -> Result<T, E>,
-    {
-        let session = self.session.as_ref().ok_or_else(Self::no_session)?;
-        let state = session.state.lock();
-        let session = state.session.as_ref().ok_or_else(Self::no_session)?;
-        f(session).map_err(Into::into)
+    #[inline]
+    fn session(&self) -> Option<MappedMutexGuard<session::Session>> {
+        match &self.session {
+            Some(session) => {
+                MutexGuard::try_map(session.state.lock(), |state| state.session.as_mut()).ok()
+            }
+            None => None,
+        }
+    }
+
+    #[inline]
+    fn session_must(&self) -> Result<MappedMutexGuard<session::Session>> {
+        self.session().ok_or_else(Self::no_session)
     }
 
     #[inline]
@@ -181,101 +185,92 @@ impl<H: EventHandler + Clone> Player<H> {
 
     #[inline]
     pub fn handle_event(&mut self, event: PlayerEvent) -> Result<()> {
-        match &self.session {
-            Some(session) => {
-                let state = session.state.lock();
-                if let Some(session) = &state.session {
-                    session.handle_event(event.0)?;
-                }
-            }
-            None => {}
+        if let Some(session) = self.session() {
+            session.handle_event(event.0)?;
         }
-
         Ok(())
     }
 
     #[inline]
     pub fn play(&mut self) -> Result<()> {
-        self.with_session_must(|session| session.play())
+        self.session_must()?.play()?;
+        Ok(())
     }
 
     #[inline]
     pub fn pause(&mut self) -> Result<()> {
-        self.with_session_must(|session| session.pause())
+        self.session_must()?.pause()?;
+        Ok(())
     }
 
     #[inline]
     pub fn play_or_pause(&mut self) -> Result<()> {
-        self.with_session_must(|session| session.play_or_pause())
+        self.session_must()?.play_or_pause()?;
+        Ok(())
     }
 
     #[inline]
     pub fn stop(&mut self) -> Result<()> {
-        self.with_session_must(|session| session.stop())
+        self.session_must()?.stop()?;
+        Ok(())
     }
 
     #[inline]
     pub fn repaint(&mut self) -> Result<()> {
-        match &self.session {
-            Some(session) => {
-                let state = session.state.lock();
-                if let Some(session) = &state.session {
-                    session.repaint()?;
-                }
-            }
-            None => {}
+        if let Some(session) = self.session() {
+            session.repaint()?;
         }
-
         Ok(())
     }
 
     #[inline]
     pub fn set_bounds(&mut self, left: u32, top: u32, right: u32, bottom: u32) -> Result<()> {
-        match &self.session {
-            Some(session) => {
-                let state = session.state.lock();
-                if let Some(session) = &state.session {
-                    session.set_bounds(left, top, right, bottom)?;
-                }
-            }
-            None => {}
+        if let Some(session) = self.session() {
+            session.set_bounds(left, top, right, bottom)?;
         }
         Ok(())
     }
 
     #[inline]
     pub fn position(&self) -> Result<Duration> {
-        self.with_session_must(|session| session.position())
+        let pos = self.session_must()?.position()?;
+        Ok(pos)
     }
 
     #[inline]
     pub fn set_position(&mut self, pos: Duration) -> Result<()> {
-        self.with_session_must(|session| session.set_position(pos))
+        self.session_must()?.set_position(pos)?;
+        Ok(())
     }
 
     #[inline]
     pub fn volume(&self) -> Result<f32> {
-        self.with_session_must(|session| session.volume())
+        let volume = self.session_must()?.volume()?;
+        Ok(volume)
     }
 
     #[inline]
     pub fn set_volume(&mut self, value: f32) -> Result<()> {
-        self.with_session_must(|session| session.set_volume(value))
+        self.session_must()?.set_volume(value)?;
+        Ok(())
     }
 
     #[inline]
     pub fn rate_range(&self) -> Result<RangeInclusive<f32>> {
-        self.with_session_must(|session| session.rate_range())
+        let range = self.session_must()?.rate_range()?;
+        Ok(range)
     }
 
     #[inline]
     pub fn rate(&self) -> Result<f32> {
-        self.with_session_must(|session| session.rate())
+        let rate = self.session_must()?.rate()?;
+        Ok(rate)
     }
 
     #[inline]
     pub fn set_rate(&mut self, value: f32) -> Result<()> {
-        self.with_session_must(|session| session.set_rate(value))
+        self.session_must()?.set_rate(value)?;
+        Ok(())
     }
 }
 
