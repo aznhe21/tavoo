@@ -175,6 +175,18 @@ impl<H: EventHandler + Clone> Player<H> {
         self.inner.set_volume(value)
     }
 
+    /// ミュート状態を取得する。
+    #[inline]
+    pub fn muted(&self) -> Result<bool> {
+        self.inner.muted()
+    }
+
+    /// ミュート状態を設定する。
+    #[inline]
+    pub fn set_muted(&mut self, muted: bool) -> Result<()> {
+        self.inner.set_muted(muted)
+    }
+
     /// 再生速度の範囲を取得する。
     #[inline]
     pub fn rate_range(&self) -> Result<RangeInclusive<f32>> {

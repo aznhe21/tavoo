@@ -40,6 +40,7 @@ struct PlayerState {
     pub hwnd_video: F::HWND,
     pub bounds: (u32, u32, u32, u32),
     pub volume: f32,
+    pub muted: bool,
     pub rate: f32,
 }
 
@@ -77,6 +78,7 @@ impl<H: EventHandler + Clone> Player<H> {
                 hwnd_video: F::HWND(window.hwnd()),
                 bounds: (0, 0, 0, 0),
                 volume: 1.0,
+                muted: false,
                 rate: 1.0,
             })),
             event_handler,
@@ -274,6 +276,22 @@ impl<H: EventHandler + Clone> Player<H> {
             session.set_volume(value)?;
         } else {
             self.player_state.lock().volume = value;
+        }
+        Ok(())
+    }
+
+    #[inline]
+    pub fn muted(&self) -> Result<bool> {
+        let muted = self.player_state.lock().muted;
+        Ok(muted)
+    }
+
+    #[inline]
+    pub fn set_muted(&mut self, muted: bool) -> Result<()> {
+        if let Some(session) = self.session() {
+            session.set_muted(muted)?;
+        } else {
+            self.player_state.lock().muted = muted;
         }
         Ok(())
     }

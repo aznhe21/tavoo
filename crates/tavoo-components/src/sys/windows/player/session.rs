@@ -260,6 +260,11 @@ impl Session {
     }
 
     #[inline]
+    pub fn set_muted(&self, mute: bool) -> WinResult<()> {
+        self.inner().set_muted(mute)
+    }
+
+    #[inline]
     pub fn rate_range(&self) -> WinResult<RangeInclusive<f32>> {
         self.inner().rate_range()
     }
@@ -511,6 +516,9 @@ impl Inner {
                     if let Err(e) = self.set_volume_internal(player_state.volume) {
                         log::warn!("音量を設定できない：{}", e);
                     }
+                    if let Err(e) = self.set_muted_internal(player_state.muted) {
+                        log::warn!("ミュート状態を設定できない：{}", e);
+                    }
                     if let Err(e) = self.set_rate_internal(player_state.rate) {
                         log::warn!("再生速度を設定できない：{}", e);
                     }
@@ -745,6 +753,26 @@ impl Inner {
         let r = self.set_volume_internal(value);
         if r.is_ok() {
             self.player_state.lock().volume = value;
+        }
+
+        r
+    }
+
+    fn set_muted_internal(&self, mute: bool) -> WinResult<()> {
+        unsafe {
+            let Some(audio_volume) = &self.audio_volume else {
+                return Err(MF::MF_E_INVALIDREQUEST.into());
+            };
+
+            audio_volume.SetMute(F::BOOL::from(mute))?;
+            Ok(())
+        }
+    }
+
+    pub fn set_muted(&mut self, mute: bool) -> WinResult<()> {
+        let r = self.set_muted_internal(mute);
+        if r.is_ok() {
+            self.player_state.lock().muted = mute;
         }
 
         r
