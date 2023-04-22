@@ -1,5 +1,6 @@
 //! TSファイルを再生する。
 
+use std::ops::RangeInclusive;
 use std::path::Path;
 use std::time::Duration;
 
@@ -172,6 +173,12 @@ impl<H: EventHandler + Clone> Player<H> {
     #[inline]
     pub fn set_volume(&mut self, value: f32) -> Result<()> {
         self.inner.set_volume(value)
+    }
+
+    /// 再生速度の範囲を取得する。
+    #[inline]
+    pub fn rate_range(&self) -> Result<RangeInclusive<f32>> {
+        self.inner.rate_range()
     }
 
     /// 再生速度を取得する。

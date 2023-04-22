@@ -4,6 +4,7 @@ mod session;
 mod source;
 mod stream;
 
+use std::ops::RangeInclusive;
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -260,6 +261,11 @@ impl<H: EventHandler + Clone> Player<H> {
     #[inline]
     pub fn set_volume(&mut self, value: f32) -> Result<()> {
         self.with_session_must(|session| session.set_volume(value))
+    }
+
+    #[inline]
+    pub fn rate_range(&self) -> Result<RangeInclusive<f32>> {
+        self.with_session_must(|session| session.rate_range())
     }
 
     #[inline]

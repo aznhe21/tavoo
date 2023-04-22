@@ -1,3 +1,4 @@
+use std::ops::RangeInclusive;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -165,6 +166,7 @@ impl Session {
                 video_display: None,
                 audio_volume: None,
                 rate_control: None,
+                rate_support: None,
 
                 state: State::Ready,
                 initial_volume,
@@ -262,6 +264,11 @@ impl Session {
     }
 
     #[inline]
+    pub fn rate_range(&self) -> WinResult<RangeInclusive<f32>> {
+        self.inner().rate_range()
+    }
+
+    #[inline]
     pub fn rate(&self) -> WinResult<f32> {
         self.inner().rate()
     }
@@ -312,6 +319,7 @@ struct Inner {
     video_display: Option<MF::IMFVideoDisplayControl>,
     audio_volume: Option<MF::IMFAudioStreamVolume>,
     rate_control: Option<MF::IMFRateControl>,
+    rate_support: Option<MF::IMFRateSupport>,
 
     state: State,
     /// 再生開始時の音量。
@@ -345,6 +353,7 @@ impl Inner {
         this.video_display.take();
         this.audio_volume.take();
         this.rate_control.take();
+        this.rate_support.take();
 
         let r = 'r: {
             unsafe {
@@ -499,6 +508,7 @@ impl Inner {
                 self.video_display = self.get_service(&MF::MR_VIDEO_RENDER_SERVICE).ok();
                 self.audio_volume = self.get_service(&MF::MR_STREAM_VOLUME_SERVICE).ok();
                 self.rate_control = self.get_service(&MF::MF_RATE_CONTROL_SERVICE).ok();
+                self.rate_support = self.get_service(&MF::MF_RATE_CONTROL_SERVICE).ok();
 
                 if let Some(volume) = self.initial_volume {
                     if let Some(audio_volume) = &self.audio_volume {
@@ -736,6 +746,18 @@ impl Inner {
             let nch = audio_volume.GetChannelCount()? as usize;
             audio_volume.SetAllVolumes(&*vec![value; nch])?;
             Ok(())
+        }
+    }
+
+    pub fn rate_range(&self) -> WinResult<RangeInclusive<f32>> {
+        unsafe {
+            let Some(rate_support) = &self.rate_support else {
+                return Err(MF::MF_E_INVALIDREQUEST.into());
+            };
+
+            let slowest = rate_support.GetSlowestRate(MF::MFRATE_FORWARD, F::FALSE)?;
+            let fastest = rate_support.GetFastestRate(MF::MFRATE_FORWARD, F::FALSE)?;
+            Ok(slowest..=fastest)
         }
     }
 
