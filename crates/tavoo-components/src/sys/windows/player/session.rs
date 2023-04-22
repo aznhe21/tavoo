@@ -309,7 +309,7 @@ struct Inner {
     source: TransportStream,
     presentation_clock: MF::IMFPresentationClock,
     video_display: Option<MF::IMFVideoDisplayControl>,
-    audio_volume: Option<MF::IMFAudioStreamVolume>,
+    audio_volume: Option<MF::IMFSimpleAudioVolume>,
     rate_control: Option<MF::IMFRateControl>,
     rate_support: Option<MF::IMFRateSupport>,
 
@@ -497,7 +497,7 @@ impl Inner {
                 log::trace!("Session::on_topology_ready");
 
                 self.video_display = self.get_service(&MF::MR_VIDEO_RENDER_SERVICE).ok();
-                self.audio_volume = self.get_service(&MF::MR_STREAM_VOLUME_SERVICE).ok();
+                self.audio_volume = self.get_service(&MF::MR_POLICY_VOLUME_SERVICE).ok();
                 self.rate_control = self.get_service(&MF::MF_RATE_CONTROL_SERVICE).ok();
                 self.rate_support = self.get_service(&MF::MF_RATE_CONTROL_SERVICE).ok();
 
@@ -736,8 +736,7 @@ impl Inner {
                 return Err(MF::MF_E_INVALIDREQUEST.into());
             };
 
-            let nch = audio_volume.GetChannelCount()? as usize;
-            audio_volume.SetAllVolumes(&*vec![value; nch])?;
+            audio_volume.SetMasterVolume(value)?;
             Ok(())
         }
     }
