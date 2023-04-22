@@ -267,7 +267,7 @@ impl App {
                     tri!('r, self
                         .webview
                         .open_dev_tools()
-                        .map_err(|e| format!("開発者ツールを開けません：{}", e)))
+                        .map_err(|e| format!("開発者ツールを開けません：{}", e)));
                 }
                 Command::SetVideoBounds {
                     left,
@@ -283,7 +283,7 @@ impl App {
                     tri!('r, self
                         .player
                         .play()
-                        .map_err(|e| format!("再生できません：{}", e)))
+                        .map_err(|e| format!("再生できません：{}", e)));
                 }
                 Command::Pause => {
                     tri!('r, self
@@ -301,7 +301,7 @@ impl App {
                     tri!('r, self
                         .player
                         .stop()
-                        .map_err(|e| format!("停止できません：{}", e)))
+                        .map_err(|e| format!("停止できません：{}", e)));
                 }
                 Command::Close => {
                     self.closing = true;
@@ -314,19 +314,19 @@ impl App {
                     tri!('r, self
                         .player
                         .set_position(Duration::from_secs_f64(position))
-                        .map_err(|e| format!("再生位置を設定できません：{}", e)))
+                        .map_err(|e| format!("再生位置を設定できません：{}", e)));
                 }
                 Command::SetVolume { volume } => {
                     tri!('r, self
                         .player
                         .set_volume(volume as f32)
-                        .map_err(|e| format!("音量を設定できません：{}", e)))
+                        .map_err(|e| format!("音量を設定できません：{}", e)));
                 }
                 Command::SetRate { rate } => {
                     tri!('r, self
                         .player
                         .set_rate(rate as f32)
-                        .map_err(|e| format!("再生速度を設定できません：{}", e)))
+                        .map_err(|e| format!("再生速度を設定できません：{}", e)));
                 }
                 Command::SelectService { service_id } => {
                     let service_id = service_id.and_then(ServiceId::new);
@@ -338,13 +338,13 @@ impl App {
                     tri!('r, self
                         .player
                         .select_video_stream(component_tag)
-                        .map_err(|e| format!("映像ストリームを選択できません：{}", e)))
+                        .map_err(|e| format!("映像ストリームを選択できません：{}", e)));
                 }
                 Command::SelectAudioStream { component_tag } => {
                     tri!('r, self
                         .player
                         .select_audio_stream(component_tag)
-                        .map_err(|e| format!("音声ストリームを選択できません：{}", e)))
+                        .map_err(|e| format!("音声ストリームを選択できません：{}", e)));
                 }
             }
 
