@@ -35,22 +35,30 @@ impl From<MF::IMFMediaEvent> for PlayerEvent {
 // Safety: C++のサンプルではスレッドをまたいで使っているので安全なはず
 unsafe impl Send for PlayerEvent {}
 
+#[derive(Debug, Clone)]
+struct PlayerState {
+    pub hwnd_video: F::HWND,
+    pub bounds: (u32, u32, u32, u32),
+    pub volume: f32,
+    pub rate: f32,
+}
+
 #[derive(Default)]
-struct State {
+struct SessionState {
     thread_handle: Option<std::thread::JoinHandle<()>>,
     session: Option<session::Session>,
 }
 
 #[derive(Clone)]
 struct Session<H> {
-    hwnd_video: F::HWND,
+    player_state: Arc<Mutex<PlayerState>>,
     event_handler: H,
     extract_handler: ExtractHandler,
-    state: Arc<Mutex<State>>,
+    session_state: Arc<Mutex<SessionState>>,
 }
 
 pub struct Player<H> {
-    hwnd_video: F::HWND,
+    player_state: Arc<Mutex<PlayerState>>,
     event_handler: H,
     session: Option<Session<H>>,
 }
@@ -65,7 +73,12 @@ impl<H: EventHandler + Clone> Player<H> {
         }
 
         Ok(Player {
-            hwnd_video: F::HWND(window.hwnd()),
+            player_state: Arc::new(Mutex::new(PlayerState {
+                hwnd_video: F::HWND(window.hwnd()),
+                bounds: (0, 0, 0, 0),
+                volume: 1.0,
+                rate: 1.0,
+            })),
             event_handler,
             session: None,
         })
@@ -81,14 +94,14 @@ impl<H: EventHandler + Clone> Player<H> {
 
         let extractor = extract::Extractor::new();
         let session = Session {
-            hwnd_video: self.hwnd_video,
+            player_state: self.player_state.clone(),
             event_handler: self.event_handler.clone(),
             extract_handler: extractor.handler(),
-            state: Arc::new(Mutex::new(State::default())),
+            session_state: Arc::new(Mutex::new(SessionState::default())),
         };
         let file = std::fs::File::open(path)?;
         let thread_handle = extractor.spawn(file, session.clone());
-        session.state.lock().thread_handle = Some(thread_handle);
+        session.session_state.lock().thread_handle = Some(thread_handle);
 
         self.session = Some(session);
         Ok(())
@@ -99,8 +112,11 @@ impl<H: EventHandler + Clone> Player<H> {
             session.extract_handler.shutdown();
 
             let (session, thread_handle) = {
-                let mut state = session.state.lock();
-                (state.session.take(), state.thread_handle.take())
+                let mut session_state = session.session_state.lock();
+                (
+                    session_state.session.take(),
+                    session_state.thread_handle.take(),
+                )
             };
 
             if let Some(session) = session {
@@ -121,7 +137,8 @@ impl<H: EventHandler + Clone> Player<H> {
     fn session(&self) -> Option<MappedMutexGuard<session::Session>> {
         match &self.session {
             Some(session) => {
-                MutexGuard::try_map(session.state.lock(), |state| state.session.as_mut()).ok()
+                MutexGuard::try_map(session.session_state.lock(), |state| state.session.as_mut())
+                    .ok()
             }
             None => None,
         }
@@ -227,6 +244,8 @@ impl<H: EventHandler + Clone> Player<H> {
     pub fn set_bounds(&mut self, left: u32, top: u32, right: u32, bottom: u32) -> Result<()> {
         if let Some(session) = self.session() {
             session.set_bounds(left, top, right, bottom)?;
+        } else {
+            self.player_state.lock().bounds = (left, top, right, bottom);
         }
         Ok(())
     }
@@ -245,13 +264,17 @@ impl<H: EventHandler + Clone> Player<H> {
 
     #[inline]
     pub fn volume(&self) -> Result<f32> {
-        let volume = self.session_must()?.volume()?;
+        let volume = self.player_state.lock().volume;
         Ok(volume)
     }
 
     #[inline]
     pub fn set_volume(&mut self, value: f32) -> Result<()> {
-        self.session_must()?.set_volume(value)?;
+        if let Some(session) = self.session() {
+            session.set_volume(value)?;
+        } else {
+            self.player_state.lock().volume = value;
+        }
         Ok(())
     }
 
@@ -263,13 +286,17 @@ impl<H: EventHandler + Clone> Player<H> {
 
     #[inline]
     pub fn rate(&self) -> Result<f32> {
-        let rate = self.session_must()?.rate()?;
+        let rate = self.player_state.lock().rate;
         Ok(rate)
     }
 
     #[inline]
     pub fn set_rate(&mut self, value: f32) -> Result<()> {
-        self.session_must()?.set_rate(value)?;
+        if let Some(session) = self.session() {
+            session.set_rate(value)?;
+        } else {
+            self.player_state.lock().rate = value;
+        }
         Ok(())
     }
 }
@@ -285,22 +312,15 @@ impl<H> Drop for Player<H> {
 impl<H: EventHandler + Clone> Session<H> {
     /// サービスが未選択の場合はパニックする。
     fn reset(&self, changed: extract::StreamChanged) -> WinResult<()> {
-        let mut state = self.state.lock();
-        let (volume, rate) = if let Some(session) = state.session.take() {
+        let mut session_state = self.session_state.lock();
+        if let Some(session) = session_state.session.take() {
             // 音声種別が変わらない場合は何もしない
             if !changed.video_type && !changed.video_pid && !changed.audio_type {
                 return Ok(());
             }
 
-            let volume = session.volume().ok();
-            let rate = session.rate().ok();
-
             session.close()?;
-
-            (volume, rate)
-        } else {
-            (None, None)
-        };
+        }
 
         let selected_stream = self.extract_handler.selected_stream();
         let selected_stream = selected_stream.as_ref().expect("サービス未選択");
@@ -310,13 +330,11 @@ impl<H: EventHandler + Clone> Session<H> {
             &selected_stream.audio_stream,
         )?;
 
-        state.session = Some(session::Session::new(
-            self.hwnd_video,
+        session_state.session = Some(session::Session::new(
+            self.player_state.clone(),
             self.event_handler.clone(),
             self.extract_handler.clone(),
             source,
-            volume,
-            rate,
         )?);
         Ok(())
     }
@@ -348,14 +366,24 @@ impl<H: EventHandler + Clone> extract::Sink for Session<H> {
     }
 
     fn on_video_packet(&mut self, pos: Option<Duration>, payload: &[u8]) {
-        let source = self.state.lock().session.as_ref().map(|s| s.source());
+        let source = self
+            .session_state
+            .lock()
+            .session
+            .as_ref()
+            .map(|s| s.source());
         if let Some(source) = source {
             source.deliver_video_packet(pos, payload);
         }
     }
 
     fn on_audio_packet(&mut self, pos: Option<Duration>, payload: &[u8]) {
-        let source = self.state.lock().session.as_ref().map(|s| s.source());
+        let source = self
+            .session_state
+            .lock()
+            .session
+            .as_ref()
+            .map(|s| s.source());
         if let Some(source) = source {
             source.deliver_audio_packet(pos, payload);
         }
@@ -370,7 +398,12 @@ impl<H: EventHandler + Clone> extract::Sink for Session<H> {
     }
 
     fn on_end_of_stream(&mut self) {
-        let source = self.state.lock().session.as_ref().map(|s| s.source());
+        let source = self
+            .session_state
+            .lock()
+            .session
+            .as_ref()
+            .map(|s| s.source());
         if let Some(source) = source {
             let _ = source.end_of_mpeg_stream();
         }
@@ -384,7 +417,12 @@ impl<H: EventHandler + Clone> extract::Sink for Session<H> {
     }
 
     fn needs_es(&self) -> bool {
-        let source = self.state.lock().session.as_ref().map(|s| s.source());
+        let source = self
+            .session_state
+            .lock()
+            .session
+            .as_ref()
+            .map(|s| s.source());
         if let Some(source) = source {
             source.streams_need_data()
         } else {

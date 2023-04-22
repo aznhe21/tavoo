@@ -15,6 +15,7 @@ use crate::sys::com::PropVariant;
 use crate::sys::wrap;
 
 use super::source::TransportStream;
+use super::PlayerState;
 
 fn create_media_sink_activate(
     source_sd: &MF::IMFStreamDescriptor,
@@ -136,13 +137,11 @@ pub struct Session(MF::IMFAsyncCallback);
 unsafe impl Send for Session {}
 
 impl Session {
-    pub fn new<H: EventHandler>(
-        hwnd_video: F::HWND,
+    pub(super) fn new<H: EventHandler>(
+        player_state: Arc<Mutex<PlayerState>>,
         event_handler: H,
         extract_handler: ExtractHandler,
         source: TransportStream,
-        initial_volume: Option<f32>,
-        initial_rate: Option<f32>,
     ) -> WinResult<Session> {
         unsafe {
             let close_mutex = Arc::new(parking_lot::RawMutex::INIT);
@@ -153,11 +152,16 @@ impl Session {
 
             let source_pd = source.intf().CreatePresentationDescriptor()?;
 
-            let topology = create_playback_topology(source.intf(), &source_pd, hwnd_video)?;
+            let topology = create_playback_topology(
+                source.intf(),
+                &source_pd,
+                player_state.lock().hwnd_video,
+            )?;
             session.SetTopology(0, &topology)?;
 
             let inner = Mutex::new(Inner {
                 close_mutex,
+                player_state,
                 extract_handler,
 
                 session,
@@ -169,8 +173,6 @@ impl Session {
                 rate_support: None,
 
                 state: State::Ready,
-                initial_volume,
-                current_rate: initial_rate.unwrap_or(1.),
                 seeking_pos: None,
                 is_pending: false,
                 op_request: OpRequest {
@@ -179,7 +181,6 @@ impl Session {
                     pos: None,
                 },
 
-                hwnd_video,
                 event_handler: Box::new(event_handler),
             });
             let this = Session(Outer { inner }.into());
@@ -254,11 +255,6 @@ impl Session {
     }
 
     #[inline]
-    pub fn volume(&self) -> WinResult<f32> {
-        self.inner().volume()
-    }
-
-    #[inline]
     pub fn set_volume(&self, value: f32) -> WinResult<()> {
         self.inner().set_volume(value)
     }
@@ -266,11 +262,6 @@ impl Session {
     #[inline]
     pub fn rate_range(&self) -> WinResult<RangeInclusive<f32>> {
         self.inner().rate_range()
-    }
-
-    #[inline]
-    pub fn rate(&self) -> WinResult<f32> {
-        self.inner().rate()
     }
 
     #[inline]
@@ -311,6 +302,7 @@ struct Outer {
 struct Inner {
     // セッションが閉じられたらロック解除されるミューテックス
     close_mutex: Arc<parking_lot::RawMutex>,
+    player_state: Arc<Mutex<PlayerState>>,
     extract_handler: ExtractHandler,
 
     session: MF::IMFMediaSession,
@@ -322,10 +314,6 @@ struct Inner {
     rate_support: Option<MF::IMFRateSupport>,
 
     state: State,
-    /// 再生開始時の音量。
-    initial_volume: Option<f32>,
-    /// 現在の再生速度
-    current_rate: f32,
     /// シーク待ち中のシーク位置
     seeking_pos: Option<Duration>,
     /// 再生・停止や速度変更等の処理待ち
@@ -333,7 +321,6 @@ struct Inner {
     /// 処理待ち中に受け付けた操作要求
     op_request: OpRequest,
 
-    hwnd_video: F::HWND,
     // #[implement]の制約でOuterをジェネリクスにできないのでBox化
     event_handler: Box<dyn EventHandler>,
 }
@@ -393,7 +380,7 @@ impl Inner {
             }
 
             if let Some(rate) = self.op_request.rate.take() {
-                if rate != self.current_rate {
+                if rate != self.player_state.lock().rate {
                     self.set_rate(rate)?;
                 }
             }
@@ -470,18 +457,22 @@ impl Inner {
     ) -> WinResult<()> {
         log::trace!("Session::on_session_rate_changed");
 
+        let mut player_state = self.player_state.lock();
+
         // 速度変更が成功した場合は既に速度をキャッシュ済み
         // 失敗した場合は実際の速度に更新
         if status.is_err() {
             // ドキュメント上は`event.GetValue()`に実際の速度が入っているようだが、
             // 実際は指定された値がそのまま入っているだけのようなので
             // IMFRateControlから実際の速度を取得する
-            if let Ok(rate) = self.rate() {
-                self.current_rate = rate;
+            if let Some(rate_control) = &self.rate_control {
+                unsafe {
+                    let _ = rate_control.GetRate(std::ptr::null_mut(), &mut player_state.rate);
+                }
             }
         }
 
-        self.event_handler.on_rate_changed(self.current_rate);
+        self.event_handler.on_rate_changed(player_state.rate);
 
         Ok(())
     }
@@ -510,15 +501,19 @@ impl Inner {
                 self.rate_control = self.get_service(&MF::MF_RATE_CONTROL_SERVICE).ok();
                 self.rate_support = self.get_service(&MF::MF_RATE_CONTROL_SERVICE).ok();
 
-                if let Some(volume) = self.initial_volume {
-                    if let Some(audio_volume) = &self.audio_volume {
-                        if let Ok(nch) = audio_volume.GetChannelCount() {
-                            let _ = audio_volume.SetAllVolumes(&*vec![volume; nch as usize]);
-                        }
+                {
+                    let player_state = self.player_state.lock();
+
+                    let (left, top, right, bottom) = player_state.bounds;
+                    if let Err(e) = self.set_bounds_internal(left, top, right, bottom) {
+                        log::warn!("映像領域を設定できない：{}", e);
                     }
-                }
-                if let Some(rate_control) = &self.rate_control {
-                    let _ = rate_control.SetRate(F::FALSE, self.current_rate);
+                    if let Err(e) = self.set_volume_internal(player_state.volume) {
+                        log::warn!("音量を設定できない：{}", e);
+                    }
+                    if let Err(e) = self.set_rate_internal(player_state.rate) {
+                        log::warn!("再生速度を設定できない：{}", e);
+                    }
                 }
 
                 self.event_handler.on_ready();
@@ -561,7 +556,11 @@ impl Inner {
             status.ok()?;
 
             let pd = get_event_object(event)?;
-            let topology = create_playback_topology(self.source.intf(), &pd, self.hwnd_video)?;
+            let topology = create_playback_topology(
+                self.source.intf(),
+                &pd,
+                self.player_state.lock().hwnd_video,
+            )?;
             self.session.SetTopology(0, &topology)?;
 
             self.state = State::OpenPending;
@@ -658,7 +657,7 @@ impl Inner {
         }
     }
 
-    pub fn set_bounds(&mut self, left: u32, top: u32, right: u32, bottom: u32) -> WinResult<()> {
+    fn set_bounds_internal(&self, left: u32, top: u32, right: u32, bottom: u32) -> WinResult<()> {
         let Some(video_display) = &self.video_display else {
             return Ok(());
         };
@@ -679,9 +678,18 @@ impl Inner {
                 bottom: bottom as i32,
             };
             video_display.SetVideoPosition(&src, &dst)?;
+
+            Ok(())
+        }
+    }
+
+    pub fn set_bounds(&mut self, left: u32, top: u32, right: u32, bottom: u32) -> WinResult<()> {
+        let r = self.set_bounds_internal(left, top, right, bottom);
+        if r.is_ok() {
+            self.player_state.lock().bounds = (left, top, right, bottom);
         }
 
-        Ok(())
+        r
     }
 
     pub fn position(&self) -> WinResult<Duration> {
@@ -722,22 +730,7 @@ impl Inner {
         Ok(())
     }
 
-    pub fn volume(&self) -> WinResult<f32> {
-        unsafe {
-            let Some(audio_volume) = &self.audio_volume else {
-                return Err(MF::MF_E_INVALIDREQUEST.into());
-            };
-
-            if audio_volume.GetChannelCount()? < 1 {
-                return Err(MF::MF_E_INVALIDREQUEST.into());
-            }
-
-            let value = audio_volume.GetChannelVolume(0)?;
-            Ok(value)
-        }
-    }
-
-    pub fn set_volume(&mut self, value: f32) -> WinResult<()> {
+    fn set_volume_internal(&self, value: f32) -> WinResult<()> {
         unsafe {
             let Some(audio_volume) = &self.audio_volume else {
                 return Err(MF::MF_E_INVALIDREQUEST.into());
@@ -747,6 +740,15 @@ impl Inner {
             audio_volume.SetAllVolumes(&*vec![value; nch])?;
             Ok(())
         }
+    }
+
+    pub fn set_volume(&mut self, value: f32) -> WinResult<()> {
+        let r = self.set_volume_internal(value);
+        if r.is_ok() {
+            self.player_state.lock().volume = value;
+        }
+
+        r
     }
 
     pub fn rate_range(&self) -> WinResult<RangeInclusive<f32>> {
@@ -761,33 +763,26 @@ impl Inner {
         }
     }
 
-    pub fn rate(&self) -> WinResult<f32> {
+    fn set_rate_internal(&self, value: f32) -> WinResult<()> {
         unsafe {
             let Some(rate_control) = &self.rate_control else {
                 return Err(MF::MF_E_INVALIDREQUEST.into());
             };
 
-            let mut rate = 0.;
-            rate_control.GetRate(std::ptr::null_mut(), &mut rate)?;
-            Ok(rate)
+            rate_control.SetRate(F::FALSE, value)?;
+            Ok(())
         }
     }
 
     pub fn set_rate(&mut self, value: f32) -> WinResult<()> {
-        unsafe {
-            let Some(rate_control) = &self.rate_control else {
-                return Err(MF::MF_E_INVALIDREQUEST.into());
-            };
-
-            if self.is_pending {
-                self.op_request.rate = Some(value);
-            } else {
-                rate_control.SetRate(F::FALSE, value)?;
-                self.current_rate = value;
-            }
-
-            Ok(())
+        if self.is_pending {
+            self.op_request.rate = Some(value);
+        } else {
+            self.set_rate_internal(value)?;
         }
+        self.player_state.lock().rate = value;
+
+        Ok(())
     }
 }
 
