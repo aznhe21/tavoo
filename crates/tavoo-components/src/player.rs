@@ -151,6 +151,14 @@ impl<H: EventHandler + Clone> Player<H> {
         self.set_bounds(0, 0, width, height)
     }
 
+    /// 動画の長さを取得する。
+    ///
+    /// 再生していない状態やリアルタイム視聴などで長さが不明な場合は`None`を返す。
+    #[inline]
+    pub fn duration(&self) -> Option<Duration> {
+        self.inner.duration()
+    }
+
     /// 再生位置を取得する。
     #[inline]
     pub fn position(&mut self) -> Result<Duration> {

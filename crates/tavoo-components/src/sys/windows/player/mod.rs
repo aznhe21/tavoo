@@ -253,6 +253,12 @@ impl<H: EventHandler + Clone> Player<H> {
     }
 
     #[inline]
+    pub fn duration(&self) -> Option<Duration> {
+        let session = self.session.as_ref()?;
+        session.extract_handler.duration()
+    }
+
+    #[inline]
     pub fn position(&self) -> Result<Duration> {
         let pos = self.session_must()?.position()?;
         Ok(pos)
