@@ -11,6 +11,7 @@ const gPlayer = new class Player {
         // ファイルが開かれた、または閉じられた
         console.log(`ファイル：${noti.path}`);
         this.#source = noti.path;
+        this.#duration = NaN;
         break;
 
       case "rate-range":
@@ -18,6 +19,11 @@ const gPlayer = new class Player {
         console.log(`速度範囲：${noti.slowest}..=${noti.fastest}`);
         this.#playbackRateRange.slowest = noti.slowest;
         this.#playbackRateRange.fastest = noti.fastest;
+        break;
+
+      case "duration":
+        console.log(`動画長：${noti.duration}`);
+        this.#duration = noti.duration ?? +Infinity;
         break;
 
       case "state":
@@ -119,6 +125,20 @@ const gPlayer = new class Player {
    */
   get source() {
     return this.#source;
+  }
+
+  /**
+   * 動画の長さ。
+   */
+  #duration = NaN;
+
+  /**
+   * 動画の長さ。
+   *
+   * 再生していない状態では`NaN`、リアルタイム視聴などで長さが不明な場合は`+Infinity`となる。
+   */
+  get duration() {
+    return this.#duration;
   }
 
   /**

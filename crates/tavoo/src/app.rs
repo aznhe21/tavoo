@@ -66,6 +66,10 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
                     fastest: *range.end() as f64,
                 });
             }
+
+            app.send_notification(Notification::Duration {
+                duration: app.player.duration().map(|dur| dur.as_secs_f64()),
+            });
         });
     }
 

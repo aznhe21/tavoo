@@ -33,6 +33,13 @@ pub enum Notification {
     },
     /// 再生速度の範囲。
     RateRange { slowest: f64, fastest: f64 },
+    /// 動画の長さ。
+    Duration {
+        /// 秒単位の長さ。
+        ///
+        /// 再生していない状態やリアルタイム視聴などで長さが不明な場合は`null`となる。
+        duration: Option<f64>,
+    },
     /// 再生状態が更新された。
     State { state: PlaybackState },
     /// 再生位置が更新された。
