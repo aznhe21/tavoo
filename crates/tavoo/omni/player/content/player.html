@@ -1,9 +1,13 @@
 <!doctype html>
 <html>
   <head>
+    <meta charset="utf-8">
     <title>TaVoo</title>
-    <script type="module" src="tavoo://player/content/player.js"></script>
-    <link rel="stylesheet" href="tavoo://player/content/player.css">
+    <script type="module">
+      import { startup } from "tavoo://player/content/player.js";
+      startup();
+    </script>
+    <link rel="stylesheet" href="tavoo://player/skin/player.css">
   </head>
   <body>
   </body>

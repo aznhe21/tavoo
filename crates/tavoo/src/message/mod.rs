@@ -61,7 +61,7 @@ pub enum Notification {
     /// 字幕。
     Caption { caption: caption::Caption },
     /// 文字スーパー。
-    Superimpose { superimpose: caption::Caption },
+    Superimpose { caption: caption::Caption },
     /// エラーが発生した。
     Error { message: String },
 }

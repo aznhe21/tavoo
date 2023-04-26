@@ -171,7 +171,7 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
 
     fn on_superimpose(&self, caption: &isdb::filters::sorter::Caption) {
         let noti = Notification::Superimpose {
-            superimpose: caption.into(),
+            caption: caption.into(),
         };
         self.0.dispatch_task(move |app| app.send_notification(noti));
     }

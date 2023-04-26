@@ -1,5 +1,117 @@
-const gPlayer = new class Player {
+/**
+ * プレイヤーで発生するイベント。
+ */
+export class PlayerEvent extends Event { }
+
+/**
+ * サービスが更新された際に発生するイベント。
+ */
+export class ServiceEvent extends PlayerEvent {
+  /**
+   * 更新されたサービスのサービス識別。
+   */
+  serviceId;
+
+  constructor(type, options) {
+    super(type, options);
+    this.serviceId = options.serviceId;
+  }
+}
+
+/**
+ * イベントが更新された際に発生するイベント。
+ */
+export class EventEvent extends PlayerEvent {
+  /**
+   * 更新されたイベントが属するサービスのサービス識別。
+   */
+  serviceId;
+
+  /**
+   * 更新されたイベントが現在のもの（`true`）か次のもの（`false`）かを示す。
+   */
+  isPresent;
+
+  constructor(type, options) {
+    super(type, options);
+    this.serviceId = options.serviceId;
+    this.isPresent = options.isPresent;
+  }
+}
+
+/**
+ * 字幕・文字スーパーを受信した際に発生するイベント。
+ */
+export class CaptionEvent extends PlayerEvent {
+  /**
+   * 字幕・文字スーパーのデータ。
+   */
+  caption;
+
+  constructor(type, options) {
+    super(type, options);
+    this.caption = options.caption;
+  }
+}
+
+/**
+ * 全サービスを保持するクラス。
+ *
+ * `get`により添え字で、また`getById`によりサービス識別でサービスを取得することができる。
+ */
+export class Services {
+  #services = [];
+  #indices = {};
+
+  _update(services) {
+    this.#services = services;
+
+    const indices = {};
+    for (let i = 0; i < services.length; i++) {
+      indices[services[i].service_id] = i;
+    }
+    this.#indices = indices;
+  }
+
+  _updateOne(service) {
+    const index = this.#indices[service.service_id];
+    if (index === undefined) {
+      return;
+    }
+
+    this.#services[index] = service;
+  }
+
+  /**
+   * 添え字によりサービスを取得する。
+   */
+  get(index) {
+    return this.#services[index];
+  }
+
+  /**
+   * サービス識別によりサービスを取得する。
+   */
+  getById(id) {
+    const index = this.#indices[id];
+    return index !== undefined ? this.#services[index] : undefined;
+  }
+
+  /**
+   * サービスの個数。
+   */
+  get length() {
+    return this.#services.length;
+  }
+
+  [Symbol.iterator]() {
+    return this.#services[Symbol.iterator]();
+  }
+}
+
+class Player extends EventTarget {
   constructor() {
+    super();
     window.chrome.webview.addEventListener("message", e => {
       this.#handleNotification(e.data);
     });
@@ -9,87 +121,83 @@ const gPlayer = new class Player {
     switch (noti.notification) {
       case "source":
         // ファイルが開かれた、または閉じられた
-        console.log(`ファイル：${noti.path}`);
         this.#source = noti.path;
         this.#duration = NaN;
+        this.dispatchEvent(new PlayerEvent("source"));
         break;
 
       case "rate-range":
         // 再生速度の範囲
-        console.log(`速度範囲：${noti.slowest}..=${noti.fastest}`);
         this.#playbackRateRange.slowest = noti.slowest;
         this.#playbackRateRange.fastest = noti.fastest;
+        this.dispatchEvent(new PlayerEvent("rate-range"));
         break;
 
       case "duration":
-        console.log(`動画長：${noti.duration}`);
+        // 動画の長さ
         this.#duration = noti.duration ?? +Infinity;
+        this.dispatchEvent(new PlayerEvent("duration"));
         break;
 
       case "state":
         // 再生状態が更新された
-        console.log(`再生状態：${noti.state}`);
         this.#state = noti.state;
+        this.dispatchEvent(new PlayerEvent("state"));
         break;
 
       case "position":
         // 再生位置が更新された
-        console.log(`再生位置：${noti.position}`);
         this.#lastPos = noti.position;
         this.#lastPosTime = performance.now();
+        this.dispatchEvent(new PlayerEvent("position"));
         break;
 
       case "rate":
         // 再生速度が更新された
-        console.log(`再生速度：${noti.rate}`);
         this.#playbackRate = noti.rate;
+        this.dispatchEvent(new PlayerEvent("rate"));
         break;
 
       case "services":
         // 全サービスが更新された
-        console.log("全サービス更新", noti.services);
-        this.services = noti.services;
+        this.#services._update(noti.services);
+        this.dispatchEvent(new PlayerEvent("services"));
         break;
 
       case "service": {
         // 特定のサービスが更新された
-        console.log("サービス更新", noti.service);
-
-        const idx = this.services.findIndex(svc => svc.service_id == noti.service.service_id);
-        if (idx >= 0) {
-          this.services[idx] = noti.service;
-        }
+        this.#services._updateOne(noti.service);
+        this.dispatchEvent(new ServiceEvent("service", { serviceId: noti.service.service_id }));
         break;
       }
 
       case "event": {
         // サービスのイベント情報が更新された
-        console.log(`イベント（${noti.service_id}、${noti.is_present}）`, noti.event);
-
-        const idx = this.services.findIndex(svc => svc.service_id == noti.service_id);
-        if (idx >= 0) {
+        const service = this.#services.getById(noti.service_id);
+        if (service) {
           if (noti.is_present) {
-            this.services[idx].present_event = noti.event;
+            service.present_event = noti.event;
           } else {
-            this.services[idx].following_event = noti.event;
+            service.following_event = noti.event;
           }
+          this.dispatchEvent(new EventEvent("event", { serviceId: noti.service_id, isPresent: noti.is_present }));
         }
         break;
       }
 
       case "service-changed":
         // サービスが選択し直された
-        console.log(`新サービスID：${noti.new_service_id}`);
+        this.dispatchEvent(new ServiceEvent("service-changed", { serviceId: noti.new_service_id }));
         break;
 
       case "caption":
         // 字幕
-        console.log("字幕", noti.caption);
+        this.dispatchEvent(new CaptionEvent("caption", { caption: noti.caption }));
         break;
 
       case "superimpose":
         // 文字スーパー
-        console.log("文字スーパー", noti.superimpose);
+        this.dispatchEvent(new CaptionEvent("superimpose", { caption: noti.caption }));
         break;
 
       case "error":
@@ -103,10 +211,21 @@ const gPlayer = new class Player {
     }
   }
 
+  openDevTools() {
+    window.chrome.webview.postMessage({ command: "open-dev-tools" });
+  }
+
   /**
    * サービスの一覧。
    */
-  services = [];
+  #services = new Services();
+
+  /**
+   * サービスの一覧。
+   */
+  get services() {
+    return this.#services;
+  }
 
   /**
    * 現在の再生状態。
@@ -114,6 +233,15 @@ const gPlayer = new class Player {
    * 有効な値："open-pending", "playing", "paused", "stopped", "closed"
    */
   #state = "closed";
+
+  /**
+   * 現在の再生状態。
+   *
+   * 有効な値："open-pending", "playing", "paused", "stopped", "closed"
+   */
+  get state() {
+    return this.#state;
+  }
 
   /**
    * 現在開かれているファイルのパス。
@@ -133,7 +261,7 @@ const gPlayer = new class Player {
   #duration = NaN;
 
   /**
-   * 動画の長さ。
+   * 動画の秒単位での長さ。
    *
    * 再生していない状態では`NaN`、リアルタイム視聴などで長さが不明な場合は`+Infinity`となる。
    */
@@ -293,51 +421,106 @@ const gPlayer = new class Player {
     });
   }
 };
-window.gPlayer = gPlayer;
 
-document.body.addEventListener("keydown", e => {
-  // keyは押されたキー全部を表す文字列であり、制御キーはアルファベット順で付く
-  // 例："a"、"C-a"、"C-Shift"、"A-C-M-S-a"
-  let key = e.key;
-  if (e.shiftKey && e.key.length === 1) {
-    key = e.key.toLowerCase();
-  }
-  if (e.shiftKey && e.key !== "Shift") {
-    key = "S-" + key;
-  }
-  if (e.metaKey && e.key !== "Meta") {
-    key = "M-" + key;
-  }
-  if (e.ctrlKey && e.key !== "Control") {
-    key = "C-" + key;
-  }
-  if (e.altKey && e.key !== "Alt") {
-    key = "A-" + key;
-  }
+export function startup() {
+  const gPlayer = new Player();
+  window.gPlayer = gPlayer;
 
-  switch (key) {
-    case "F3":
-    case "F5":
-    case "F7":
-    case "C-r":
-    case "C-F5":
-    case "BrowserRefresh":
-      e.preventDefault();
-      break;
+  gPlayer.addEventListener("source", () => {
+    console.log(`ファイル：${gPlayer.source}`);
+  });
 
-    case "F12":
-      e.preventDefault();
-      // TODO: そのうちメニューか何かに移す
-      window.chrome.webview.postMessage({ command: "open-dev-tools" });
-      break;
+  gPlayer.addEventListener("rate-range", () => {
+    const { slowest, fastest } = gPlayer.playbackRateRange;
+    console.log(`速度範囲：${slowest}..=${fastest}`);
+  });
 
-    default:
-      if (e.target !== document.body) {
-        return;
-      }
+  gPlayer.addEventListener("duration", () => {
+    //
+  });
 
-      // TODO: ショートカットキーとして処理
-      console.log(key, e);
-      break;
-  }
-});
+  gPlayer.addEventListener("state", () => {
+    console.log(`再生状態：${gPlayer.state}`);
+  });
+
+  gPlayer.addEventListener("position", () => {
+    console.log(`再生位置：${gPlayer.currentTime}`);
+  });
+
+  gPlayer.addEventListener("rate", () => {
+    console.log(`再生速度：${gPlayer.playbackRate}`);
+  });
+
+  gPlayer.addEventListener("services", () => {
+    console.log("全サービス更新", [...gPlayer.services]);
+  });
+
+  gPlayer.addEventListener("service", e => {
+    console.log("サービス更新", gPlayer.services.getById(e.serviceId));
+  });
+
+  gPlayer.addEventListener("event", e => {
+    const service = gPlayer.services.getById(e.serviceId);
+    const event = e.isPresent ? service.present_event : service.following_event;
+    console.log(`イベント（${e.serviceId}、${e.isPresent}）`, event);
+  });
+
+  gPlayer.addEventListener("service-changed", e => {
+    console.log(`新サービスID：${e.serviceId}`);
+  });
+
+  gPlayer.addEventListener("caption", e => {
+    console.log("字幕", e.caption);
+  });
+
+  gPlayer.addEventListener("superimpose", e => {
+    console.log("文字スーパー", e.caption);
+  });
+
+  document.body.addEventListener("keydown", e => {
+    // keyは押されたキー全部を表す文字列であり、制御キーはアルファベット順で付く
+    // 例："a"、"C-a"、"C-Shift"、"A-C-M-S-a"
+    let key = e.key;
+    if (e.shiftKey && e.key.length === 1) {
+      key = e.key.toLowerCase();
+    }
+    if (e.shiftKey && e.key !== "Shift") {
+      key = "S-" + key;
+    }
+    if (e.metaKey && e.key !== "Meta") {
+      key = "M-" + key;
+    }
+    if (e.ctrlKey && e.key !== "Control") {
+      key = "C-" + key;
+    }
+    if (e.altKey && e.key !== "Alt") {
+      key = "A-" + key;
+    }
+
+    switch (key) {
+      case "F3":
+      case "F5":
+      case "F7":
+      case "C-r":
+      case "C-F5":
+      case "BrowserRefresh":
+        e.preventDefault();
+        break;
+
+      case "F12":
+        e.preventDefault();
+        // TODO: そのうちメニューか何かに移す
+        gPlayer.openDevTools();
+        break;
+
+      default:
+        if (e.target !== document.body) {
+          return;
+        }
+
+        // TODO: ショートカットキーとして処理
+        console.log(key, e);
+        break;
+    }
+  });
+}
