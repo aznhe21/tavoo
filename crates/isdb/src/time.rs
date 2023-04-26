@@ -205,6 +205,8 @@ impl fmt::Debug for DateTime {
     }
 }
 
+const FULL_PER_SECS: u64 = 27_000_000;
+
 /// PCRやPTS等を表すタイムスタンプ。時間は27MHz単位で表現される。
 ///
 /// 演算・比較はラップアラウンドを考慮して行われ、自動でオーバーフローする。
@@ -212,6 +214,7 @@ impl fmt::Debug for DateTime {
 /// # サンプル
 ///
 /// ```
+/// use std::time::Duration;
 /// use isdb::time::Timestamp;
 ///
 /// assert_eq!(Timestamp::new(100, 10) + Timestamp::new(200, 20), Timestamp::new(300, 30));
@@ -226,6 +229,26 @@ impl fmt::Debug for DateTime {
 /// assert_eq!(Timestamp::MAX + Timestamp::MAX, Timestamp::new(2u64.pow(33) - 1, 298));
 /// assert_eq!(Timestamp::ZERO - Timestamp::new(0, 1), Timestamp::MAX);
 /// assert_eq!(Timestamp::new(1, 0) - Timestamp::new(2, 0), Timestamp::new(2u64.pow(33) - 1, 0));
+///
+/// // ラップアラウンドを考慮したDurationとの演算
+/// assert_eq!(Timestamp::ZERO + Duration::from_secs(1), Timestamp::from_full(27_000_000));
+/// assert_eq!(Timestamp::MAX + Duration::from_secs(1), Timestamp::from_full(27_000_000 - 1));
+/// assert_eq!(Timestamp::ZERO + Duration::new(95443, 717688887), Timestamp::MAX);
+/// assert_eq!(Timestamp::ZERO + Duration::new(95443, 717688888), Timestamp::ZERO);
+/// assert_eq!(Timestamp::ZERO + Duration::new(190887, 435377775), Timestamp::MAX);
+/// assert_eq!(Timestamp::ZERO + Duration::new(190887, 435377776), Timestamp::ZERO);
+/// assert_eq!(
+///     Timestamp::from_duration(Duration::from_secs(1)) - Duration::from_secs(1),
+///     Timestamp::ZERO,
+/// );
+/// assert_eq!(
+///     Timestamp::ZERO - Duration::from_secs(1),
+///     Timestamp::from_full(Timestamp::MAX.full() - (27_000_000 - 1)),
+/// );
+/// assert_eq!(Timestamp::ZERO - Duration::new(95443, 717688887), Timestamp::from_full(1));
+/// assert_eq!(Timestamp::ZERO - Duration::new(95443, 717688888), Timestamp::ZERO);
+/// assert_eq!(Timestamp::ZERO - Duration::new(190887, 435377775), Timestamp::from_full(1));
+/// assert_eq!(Timestamp::ZERO - Duration::new(190887, 435377776), Timestamp::ZERO);
 ///
 /// // ラップアラウンドを考慮した比較
 /// assert!(Timestamp::new(2u64.pow(33) - 100, 299) < Timestamp::ZERO);
@@ -300,7 +323,7 @@ impl Timestamp {
         let nanos = dur.subsec_nanos();
 
         // Option::and_thenはconst fnではない
-        let x = match secs.checked_mul(27_000_000) {
+        let x = match secs.checked_mul(FULL_PER_SECS) {
             Some(x) => x.checked_add(nanos as u64 * 27 / 1_000),
             None => None,
         };
@@ -397,7 +420,7 @@ impl Timestamp {
     /// ```
     #[inline]
     pub const fn as_secs(&self) -> u64 {
-        self.0 / 27_000_000
+        self.0 / FULL_PER_SECS
     }
 
     /// タイムスタンプを秒成分を含むナノ秒に変換する。
@@ -434,8 +457,8 @@ impl Timestamp {
     /// ```
     #[inline]
     pub const fn to_duration(&self) -> Duration {
-        let secs = self.0 / 27_000_000;
-        let nanos = (self.0 % 27_000_000 * 1_000 / 27) as u32;
+        let secs = self.0 / FULL_PER_SECS;
+        let nanos = (self.0 % FULL_PER_SECS * 1_000 / 27) as u32;
         Duration::new(secs, nanos)
     }
 }
@@ -473,6 +496,26 @@ impl ops::AddAssign for Timestamp {
     }
 }
 
+impl ops::Add<Duration> for Timestamp {
+    type Output = Timestamp;
+
+    #[inline]
+    fn add(self, mut rhs: Duration) -> Timestamp {
+        const OVER_FULL: u64 = Timestamp::MAX.0 + 1;
+        // `+`がconstでないため`saturating_add`を使っているが飽和するわけではない
+        const OVER_DUR: Duration = Timestamp::MAX
+            .to_duration()
+            .saturating_add(Timestamp(1).to_duration());
+
+        while rhs >= OVER_DUR {
+            rhs -= OVER_DUR;
+        }
+        let rhs = rhs.as_secs() * FULL_PER_SECS + rhs.subsec_nanos() as u64 * 27 / 1_000;
+
+        Timestamp((self.0 + rhs) % OVER_FULL)
+    }
+}
+
 impl ops::Sub for Timestamp {
     type Output = Timestamp;
 
@@ -489,6 +532,27 @@ impl ops::SubAssign for Timestamp {
     #[inline]
     fn sub_assign(&mut self, rhs: Timestamp) {
         *self = *self - rhs;
+    }
+}
+
+impl ops::Sub<Duration> for Timestamp {
+    type Output = Timestamp;
+
+    fn sub(self, mut rhs: Duration) -> Self::Output {
+        // `+`がconstでないため`saturating_add`を使っているが飽和するわけではない
+        const OVER_DUR: Duration = Timestamp::MAX
+            .to_duration()
+            .saturating_add(Timestamp(1).to_duration());
+
+        while rhs >= OVER_DUR {
+            rhs -= OVER_DUR;
+        }
+        let rhs = rhs.as_secs() * FULL_PER_SECS + rhs.subsec_nanos() as u64 * 27 / 1_000;
+
+        match self.0.checked_sub(rhs) {
+            Some(x) => Timestamp(x),
+            None => Timestamp((self.0 + Self::MAX.0 + 1) - rhs),
+        }
     }
 }
 
