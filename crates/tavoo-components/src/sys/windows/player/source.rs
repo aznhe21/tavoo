@@ -453,8 +453,12 @@ impl Inner {
                 log::trace!("TransportStream::do_start");
 
                 let start_pos = if let Some(start_pos) = start_pos {
-                    this.handler
-                        .set_position(Duration::from_nanos((start_pos as u64) * 100));
+                    if !this
+                        .handler
+                        .set_position(Duration::from_nanos((start_pos as u64) * 100))
+                    {
+                        break 'r Err(MF::MF_E_INVALIDREQUEST.into());
+                    }
 
                     PropVariant::I64(start_pos)
                 } else {
