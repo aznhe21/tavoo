@@ -112,7 +112,7 @@ export class Services {
 }
 
 /**
- * 動画を操作するためのカスタム要素。
+ * 動画を操作、また映像用領域を指示するためのカスタム要素。
  *
  * 複数の`tavoo-player`をHTMLに配置した際の挙動は未定義である。
  */
@@ -121,10 +121,17 @@ export class Player extends HTMLElement {
     customElements.define("tavoo-player", Player);
   }
 
+  #resizeObserver;
+
   constructor() {
     super();
+
     window.chrome.webview.addEventListener("message", e => {
       this.#handleNotification(e.data);
+    });
+
+    this.#resizeObserver = new ResizeObserver(() => {
+      this.#onResized();
     });
   }
 
@@ -220,6 +227,26 @@ export class Player extends HTMLElement {
         console.error(`不明な通知：${noti.notification}`);
         break;
     }
+  }
+
+  connectedCallback() {
+    this.#resizeObserver.observe(this);
+  }
+
+  disconnectedCallback() {
+    this.#resizeObserver.unobserve(this);
+  }
+
+  #onResized() {
+    const { offsetWidth, offsetHeight } = document.body;
+
+    window.chrome.webview.postMessage({
+      command: "set-video-bounds",
+      left: this.offsetLeft / offsetWidth,
+      top: this.offsetTop / offsetHeight,
+      right: (this.offsetLeft + this.offsetWidth) / offsetHeight,
+      bottom: (this.offsetTop + this.offsetHeight) / offsetHeight,
+    });
   }
 
   openDevTools() {
