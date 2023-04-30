@@ -1,3 +1,5 @@
+import { UI } from "tavoo://player/content/ui.js";
+
 /**
  * プレイヤーで発生するイベント。
  */
@@ -109,7 +111,16 @@ export class Services {
   }
 }
 
-class Player extends EventTarget {
+/**
+ * 動画を操作するためのカスタム要素。
+ *
+ * 複数の`tavoo-player`をHTMLに配置した際の挙動は未定義である。
+ */
+export class Player extends HTMLElement {
+  static register() {
+    customElements.define("tavoo-player", Player);
+  }
+
   constructor() {
     super();
     window.chrome.webview.addEventListener("message", e => {
@@ -423,104 +434,7 @@ class Player extends EventTarget {
 };
 
 export function startup() {
-  const gPlayer = new Player();
-  window.gPlayer = gPlayer;
+  Player.register();
 
-  gPlayer.addEventListener("source", () => {
-    console.log(`ファイル：${gPlayer.source}`);
-  });
-
-  gPlayer.addEventListener("rate-range", () => {
-    const { slowest, fastest } = gPlayer.playbackRateRange;
-    console.log(`速度範囲：${slowest}..=${fastest}`);
-  });
-
-  gPlayer.addEventListener("duration", () => {
-    //
-  });
-
-  gPlayer.addEventListener("state", () => {
-    console.log(`再生状態：${gPlayer.state}`);
-  });
-
-  gPlayer.addEventListener("position", () => {
-    console.log(`再生位置：${gPlayer.currentTime}`);
-  });
-
-  gPlayer.addEventListener("rate", () => {
-    console.log(`再生速度：${gPlayer.playbackRate}`);
-  });
-
-  gPlayer.addEventListener("services", () => {
-    console.log("全サービス更新", [...gPlayer.services]);
-  });
-
-  gPlayer.addEventListener("service", e => {
-    console.log("サービス更新", gPlayer.services.getById(e.serviceId));
-  });
-
-  gPlayer.addEventListener("event", e => {
-    const service = gPlayer.services.getById(e.serviceId);
-    const event = e.isPresent ? service.present_event : service.following_event;
-    console.log(`イベント（${e.serviceId}、${e.isPresent}）`, event);
-  });
-
-  gPlayer.addEventListener("service-changed", e => {
-    console.log(`新サービスID：${e.serviceId}`);
-  });
-
-  gPlayer.addEventListener("caption", e => {
-    console.log("字幕", e.caption);
-  });
-
-  gPlayer.addEventListener("superimpose", e => {
-    console.log("文字スーパー", e.caption);
-  });
-
-  document.body.addEventListener("keydown", e => {
-    // keyは押されたキー全部を表す文字列であり、制御キーはアルファベット順で付く
-    // 例："a"、"C-a"、"C-Shift"、"A-C-M-S-a"
-    let key = e.key;
-    if (e.shiftKey && e.key.length === 1) {
-      key = e.key.toLowerCase();
-    }
-    if (e.shiftKey && e.key !== "Shift") {
-      key = "S-" + key;
-    }
-    if (e.metaKey && e.key !== "Meta") {
-      key = "M-" + key;
-    }
-    if (e.ctrlKey && e.key !== "Control") {
-      key = "C-" + key;
-    }
-    if (e.altKey && e.key !== "Alt") {
-      key = "A-" + key;
-    }
-
-    switch (key) {
-      case "F3":
-      case "F5":
-      case "F7":
-      case "C-r":
-      case "C-F5":
-      case "BrowserRefresh":
-        e.preventDefault();
-        break;
-
-      case "F12":
-        e.preventDefault();
-        // TODO: そのうちメニューか何かに移す
-        gPlayer.openDevTools();
-        break;
-
-      default:
-        if (e.target !== document.body) {
-          return;
-        }
-
-        // TODO: ショートカットキーとして処理
-        console.log(key, e);
-        break;
-    }
-  });
+  new UI();
 }
