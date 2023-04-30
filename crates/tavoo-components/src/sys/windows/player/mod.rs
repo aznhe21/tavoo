@@ -184,21 +184,21 @@ impl<H: EventHandler + Clone> Player<H> {
     #[inline]
     pub fn select_service(&mut self, service_id: Option<ServiceId>) -> Result<()> {
         let session = self.session.as_ref().ok_or_else(Self::no_session)?;
-        session.extract_handler.select_service(service_id);
+        session.extract_handler.select_service(service_id)?;
         Ok(())
     }
 
     #[inline]
     pub fn select_video_stream(&mut self, component_tag: u8) -> Result<()> {
         let session = self.session.as_ref().ok_or_else(Self::no_session)?;
-        session.extract_handler.select_video_stream(component_tag);
+        session.extract_handler.select_video_stream(component_tag)?;
         Ok(())
     }
 
     #[inline]
     pub fn select_audio_stream(&mut self, component_tag: u8) -> Result<()> {
         let session = self.session.as_ref().ok_or_else(Self::no_session)?;
-        session.extract_handler.select_audio_stream(component_tag);
+        session.extract_handler.select_audio_stream(component_tag)?;
         Ok(())
     }
 

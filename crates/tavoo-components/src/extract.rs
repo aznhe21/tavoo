@@ -1,5 +1,6 @@
 //! TSファイルを別スレッドで順次処理する。
 
+use std::fmt;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -210,6 +211,7 @@ impl Extractor {
         let worker = Worker {
             parker: self.parker,
             commands: self.commands,
+            did_error: false,
 
             demuxer,
             probe_size: self.probe_size,
@@ -218,6 +220,27 @@ impl Extractor {
         std::thread::spawn(move || worker.run())
     }
 }
+
+/// [`ExtractHandler`]を通した`Extractor`への要求時に発生するエラー。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExtractorError {
+    /// 既にシャットダウン済み。
+    AlreadyShutdown,
+
+    /// シークできないストリーム。
+    Unseekable,
+}
+
+impl fmt::Display for ExtractorError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            ExtractorError::AlreadyShutdown => f.write_str("既にシャットダウン済み"),
+            ExtractorError::Unseekable => f.write_str("シークできないストリーム"),
+        }
+    }
+}
+
+impl std::error::Error for ExtractorError {}
 
 /// TS処理について、指示を出す、または状態を取得するためのオブジェクト。
 #[derive(Debug, Clone)]
@@ -231,6 +254,14 @@ pub struct ExtractHandler {
 }
 
 impl ExtractHandler {
+    fn check_shutdown(&self) -> Result<(), ExtractorError> {
+        if self.commands.shutdown.load(Ordering::SeqCst) {
+            Err(ExtractorError::AlreadyShutdown)
+        } else {
+            Ok(())
+        }
+    }
+
     /// ストリームの長さを返す。
     ///
     /// ストリーム長が不明な場合は`None`を返す。
@@ -241,14 +272,14 @@ impl ExtractHandler {
 
     /// 現在のサービス一覧を返す。
     ///
-    /// 戻り値はロックを保持しているため、できるだけ速く破棄すべきである。
+    /// 戻り値はロックを保持しているため、できるだけ早く破棄すべきである。
     pub fn services(&self) -> parking_lot::MappedRwLockReadGuard<ServiceMap> {
         parking_lot::RwLockReadGuard::map(self.state.read(), |s| &s.services)
     }
 
     /// 選択中のサービス・ストリームに関する情報を返す。
     ///
-    /// 戻り値はロックを保持しているため、できるだけ速く破棄すべきである。
+    /// 戻り値はロックを保持しているため、できるだけ早く破棄すべきである。
     pub fn selected_stream(&self) -> parking_lot::MappedRwLockReadGuard<Option<SelectedStream>> {
         parking_lot::RwLockReadGuard::map(self.state.read(), |s| &s.selected_stream)
     }
@@ -256,47 +287,58 @@ impl ExtractHandler {
     /// ESを要求する。
     ///
     /// このメソッドを呼び出した際、[`Sink::needs_es`]は`true`を返すべきである。
-    pub fn request_es(&self) {
+    pub fn request_es(&self) -> Result<(), ExtractorError> {
+        self.check_shutdown()?;
+
         self.unparker.unpark();
+        Ok(())
     }
 
     /// サービス選択を指示する。
     ///
     /// `service_id`に`None`を指定した場合、既定のサービスが選択される。
-    pub fn select_service(&self, service_id: Option<ServiceId>) {
+    pub fn select_service(&self, service_id: Option<ServiceId>) -> Result<(), ExtractorError> {
+        self.check_shutdown()?;
+
         let service_id = service_id.map_or(0, |id| id.get());
         self.commands
             .select_service
             .store(service_id as u32 + 1, Ordering::SeqCst);
         self.commands.has_any.store(true, Ordering::SeqCst);
         self.unparker.unpark();
+        Ok(())
     }
 
     /// 映像ストリームの選択を指示する。
-    pub fn select_video_stream(&self, component_tag: u8) {
+    pub fn select_video_stream(&self, component_tag: u8) -> Result<(), ExtractorError> {
+        self.check_shutdown()?;
+
         self.commands
             .select_video_stream
             .store(component_tag as u16 + 1, Ordering::SeqCst);
         self.commands.has_any.store(true, Ordering::SeqCst);
         self.unparker.unpark();
+        Ok(())
     }
 
     /// 音声ストリームの選択を指示する。
-    pub fn select_audio_stream(&self, component_tag: u8) {
+    pub fn select_audio_stream(&self, component_tag: u8) -> Result<(), ExtractorError> {
+        self.check_shutdown()?;
+
         self.commands
             .select_audio_stream
             .store(component_tag as u16 + 1, Ordering::SeqCst);
         self.commands.has_any.store(true, Ordering::SeqCst);
         self.unparker.unpark();
+        Ok(())
     }
 
     /// 再生位置の設定を指示する。
-    ///
-    /// 再生位置を設定できないストリームの場合は`false`を返す。
-    #[must_use]
-    pub fn set_position(&self, pos: Duration) -> bool {
+    pub fn set_position(&self, pos: Duration) -> Result<(), ExtractorError> {
+        self.check_shutdown()?;
+
         if self.state.read().length.is_none() {
-            return false;
+            return Err(ExtractorError::Unseekable);
         }
 
         // 秒が`u64::MAX`になるようなシークはしないと思われ
@@ -308,14 +350,17 @@ impl ExtractHandler {
             .store(pos.subsec_nanos(), Ordering::SeqCst);
         self.commands.has_any.store(true, Ordering::SeqCst);
         self.unparker.unpark();
-        true
+        Ok(())
     }
 
     /// TSをリセットし最初から再生しなおすことを指示する。
-    pub fn reset(&self) {
+    pub fn reset(&self) -> Result<(), ExtractorError> {
+        self.check_shutdown()?;
+
         self.commands.reset.store(true, Ordering::SeqCst);
         self.commands.has_any.store(true, Ordering::SeqCst);
         self.unparker.unpark();
+        Ok(())
     }
 
     /// 処理の終了を指示する。
@@ -965,6 +1010,7 @@ fn next_pcr<R: Read>(mut read: R, pcr_pid: isdb::Pid) -> io::Result<Option<Times
 struct Worker<R: Read + Seek, T: Sink> {
     parker: crossbeam_utils::sync::Parker,
     commands: Arc<Commands>,
+    did_error: bool,
 
     demuxer: isdb::demux::Demuxer<isdb::filters::sorter::Sorter<Selector<R, T>>>,
     probe_size: u64,
@@ -975,6 +1021,25 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
     #[inline]
     fn selector(&mut self) -> &mut Selector<R, T> {
         self.demuxer.filter_mut().shooter_mut()
+    }
+
+    /// ストリーム終端。
+    #[inline]
+    fn on_eos(&mut self) {
+        self.selector().sink.on_end_of_stream();
+    }
+
+    /// エラー発生。
+    #[inline]
+    fn on_error(&mut self, e: io::Error) {
+        self.did_error = true;
+        self.selector().sink.on_stream_error(e);
+    }
+
+    /// エラーから復帰した。
+    #[inline]
+    fn on_restored(&mut self) {
+        self.did_error = false;
     }
 
     /// ストリームを確定させる。
@@ -993,7 +1058,7 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
                 }
                 Ok(None) => return false,
                 Err(e) => {
-                    self.selector().sink.on_stream_error(e);
+                    self.on_error(e);
                     return false;
                 }
             }
@@ -1015,8 +1080,8 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
                 // 最初のPCRが見つからなくてもエラーにはしない
                 Ok(None) => return true,
                 Err(e) => {
-                    self.selector().sink.on_stream_error(e);
-                    return false;
+                    self.on_error(e);
+                    return true;
                 }
             }
         };
@@ -1054,7 +1119,7 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
 
         if let Err(e) = self.selector().read.seek(SeekFrom::Start(start_pos)) {
             // 確定位置まで戻れなかったのでエラー
-            self.selector().sink.on_stream_error(e);
+            self.on_error(e);
             return false;
         }
 
@@ -1064,20 +1129,11 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
     /// 次のパケットを処理する。
     ///
     /// `Worker`を終了する必要がある場合には`false`を返す。
-    fn next_packet(&mut self) -> bool {
+    fn next_packet(&mut self) {
         match isdb::Packet::read(&mut self.selector().read) {
-            Ok(Some(packet)) => {
-                self.demuxer.feed(&packet);
-                true
-            }
-            Ok(None) => {
-                self.selector().sink.on_end_of_stream();
-                false
-            }
-            Err(e) => {
-                self.selector().sink.on_stream_error(e);
-                false
-            }
+            Ok(Some(packet)) => self.demuxer.feed(&packet),
+            Ok(None) => self.on_eos(),
+            Err(e) => self.on_error(e),
         }
     }
 
@@ -1099,7 +1155,7 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
         shooter.select_audio_stream(services, component_tag);
     }
 
-    fn set_position(&mut self, pos: Duration) -> bool {
+    fn set_position(&mut self, pos: Duration) {
         /// 先頭へのシークと見做す最大の位置。
         const HEAD_MAX_POS: Duration = Duration::from_secs(1);
         /// シークを完了させる際に許容する最大の時間差。
@@ -1126,12 +1182,12 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
 
         let Some(mut length) = self.selector().state.read().length.clone() else {
             log::warn!("シークできないストリームへのシーク要求");
-            return true;
+            return;
         };
         let Some(pcr_pid) = self.demuxer.filter().services().first().map(|(_, svc)| svc.pcr_pid())
         else {
             log::debug!("サービスがない");
-            return true;
+            return;
         };
 
         // パケットを読み飛ばすのに必要な情報を設定
@@ -1152,7 +1208,7 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
             let diff = pos - current_pos;
             if diff <= IDLE_MAX {
                 // 近めへの早送りは読み飛ばすだけ
-                return true;
+                return;
             }
 
             // diffはIDLE_MAXより大きいためアンダーフローはしない
@@ -1191,8 +1247,8 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
                 }
             };
             if let Err(e) = self.selector().read.seek(seek_pos) {
-                self.selector().sink.on_stream_error(e);
-                return false;
+                self.on_error(e);
+                return;
             }
 
             match next_pcr(&mut self.selector().read, pcr_pid) {
@@ -1208,13 +1264,14 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
                     } else {
                         let diff = (target_pcr_max - pcr).to_duration();
                         log::trace!("シーク：確定（{:?}前）", diff);
+                        self.on_restored();
                         self.selector().pcr_time = PlaybackTime {
                             prev_ts: Some(pcr),
                             duration: pos.saturating_sub(diff),
                         };
                         self.demuxer.reset_packets();
 
-                        return true;
+                        return;
                     }
 
                     // 精度を高めるためにストリーム長を短い範囲のものに置き換え
@@ -1235,12 +1292,12 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
                     continue;
                 }
                 Ok(None) => {
-                    self.selector().sink.on_end_of_stream();
-                    return false;
+                    self.on_eos();
+                    return;
                 }
                 Err(e) => {
-                    self.selector().sink.on_stream_error(e);
-                    return false;
+                    self.on_error(e);
+                    return;
                 }
             }
         }
@@ -1248,41 +1305,33 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
         if let Direction::Forward = dir {
             // 早送りでは飛ばすだけ
             log::info!("ビットレートによるシークに失敗。読み飛ばして再検索");
-            true
+            self.on_restored();
         } else {
             // 巻き戻しでは先頭から探す
             log::info!("ビットレートによるシークに失敗。頭出しにより再検索");
-            self.reset()
+            self.reset();
         }
     }
 
-    fn reset(&mut self) -> bool {
+    fn reset(&mut self) {
         match self.selector().read.rewind() {
             Ok(_) => {
+                self.on_restored();
                 self.selector().pcr_time = PlaybackTime::default();
                 self.demuxer.reset_packets();
-                true
             }
             Err(e) => {
                 // TODO: リアルタイム視聴中はエラーではない
-                self.selector().sink.on_stream_error(e);
-                false
+                self.on_error(e);
             }
         }
     }
 
     /// コマンドを実行する。
-    ///
-    /// `Worker`を終了する必要がある場合には`false`を返す。
-    fn run_commands(&mut self) -> bool {
+    fn run_commands(&mut self) {
         // コマンドの実行の際、TSの読み取りは伴わないため処理順序に意味はない。
         // また`has_any`の変更より各コマンド用フィールドの変更が後になるが、コマンドは上書きされても構わず、
         // かつ後から`has_any`だけが`true`になっても`run_commands`が空振りするだけなので問題はない。
-        if self.commands.shutdown.load(Ordering::SeqCst) {
-            self.selector().sink.on_end_of_stream();
-            return false;
-        }
-
         let select_service = self.commands.select_service.swap(0, Ordering::SeqCst);
         if select_service > 0 {
             self.select_service(ServiceId::new((select_service - 1) as u16));
@@ -1302,19 +1351,13 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
         if set_position_secs > 0 {
             let set_position_nanos = self.commands.set_position_nanos.load(Ordering::SeqCst);
             let pos = Duration::new(set_position_secs - 1, set_position_nanos);
-            if !self.set_position(pos) {
-                return false;
-            }
+            self.set_position(pos);
         }
 
         let reset = self.commands.reset.swap(false, Ordering::SeqCst);
         if reset {
-            if !self.reset() {
-                return false;
-            }
+            self.reset();
         }
-
-        true
     }
 
     pub fn run(mut self) {
@@ -1325,23 +1368,30 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
 
         loop {
             let has_any_command = self.commands.has_any.swap(false, Ordering::SeqCst);
-            let needs_es = self.selector().sink.needs_es();
+            // エラーがある場合はパケットを処理しない
+            let needs_es = !self.did_error && self.selector().sink.needs_es();
 
             if has_any_command {
-                if !self.run_commands() {
+                if self.commands.shutdown.load(Ordering::SeqCst) {
                     break;
                 }
+
+                self.run_commands();
             }
             if needs_es {
-                if !self.next_packet() {
-                    break;
-                }
+                self.next_packet();
             }
 
             if !has_any_command && !needs_es {
                 self.parker.park();
             }
         }
+    }
+}
+
+impl<R: Read + Seek, T: Sink> Drop for Worker<R, T> {
+    fn drop(&mut self) {
+        self.commands.shutdown.store(true, Ordering::SeqCst);
     }
 }
 

@@ -201,7 +201,7 @@ unsafe impl Send for TransportStream {}
 
 impl TransportStream {
     pub fn new(
-        handler: ExtractHandler,
+        extract_handler: ExtractHandler,
         video_stream: &isdb::filters::sorter::Stream,
         audio_stream: &isdb::filters::sorter::Stream,
     ) -> WinResult<TransportStream> {
@@ -214,7 +214,7 @@ impl TransportStream {
             ]))?;
             presentation_descriptor.SelectStream(SID_VIDEO)?;
             presentation_descriptor.SelectStream(SID_AUDIO)?;
-            if let Some(duration) = handler.duration() {
+            if let Some(duration) = extract_handler.duration() {
                 presentation_descriptor
                     .SetUINT64(&MF::MF_PD_DURATION, (duration.as_nanos() / 100) as u64)?;
             }
@@ -223,7 +223,7 @@ impl TransportStream {
             let dummy_stream: MF::IMFMediaStream = dummy::DummyStream.into();
 
             let inner = Mutex::new(Inner {
-                handler,
+                extract_handler,
 
                 state: State::Stopped,
 
@@ -296,7 +296,9 @@ impl TransportStream {
 
     #[inline]
     pub fn request_sample(&self) {
-        self.inner().handler.request_es();
+        if let Err(e) = self.inner().extract_handler.request_es() {
+            log::debug!("request_sample: {}", e);
+        }
     }
 
     pub fn enqueue_end_of_stream(&self) -> WinResult<()> {
@@ -334,7 +336,7 @@ struct Outer {
 }
 
 struct Inner {
-    handler: ExtractHandler,
+    extract_handler: ExtractHandler,
 
     state: State,
 
@@ -453,9 +455,10 @@ impl Inner {
                 log::trace!("TransportStream::do_start");
 
                 let start_pos = if let Some(start_pos) = start_pos {
-                    if !this
-                        .handler
+                    if this
+                        .extract_handler
                         .set_position(Duration::from_nanos((start_pos as u64) * 100))
+                        .is_err()
                     {
                         break 'r Err(MF::MF_E_INVALIDREQUEST.into());
                     }

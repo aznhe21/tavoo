@@ -633,7 +633,9 @@ impl Inner {
                 self.op_request.command = Some(Command::Stop);
             } else {
                 self.session.Stop()?;
-                self.extract_handler.reset();
+                self.extract_handler
+                    .reset()
+                    .map_err(|_| MF::MF_E_INVALIDREQUEST)?;
 
                 self.state = State::Stopped;
                 self.event_handler.on_stopped();
