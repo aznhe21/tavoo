@@ -591,8 +591,10 @@ impl Inner {
     }
 
     pub fn play(&mut self) -> WinResult<()> {
-        if !matches!(self.state, State::Paused | State::Stopped) {
-            return Err(MF::MF_E_INVALIDREQUEST.into());
+        match self.state {
+            State::Paused | State::Stopped => {}
+            State::Started => return Ok(()),
+            _ => return Err(MF::MF_E_INVALIDREQUEST.into()),
         }
 
         if self.is_pending {
@@ -606,8 +608,10 @@ impl Inner {
 
     pub fn pause(&mut self) -> WinResult<()> {
         unsafe {
-            if self.state != State::Started {
-                return Err(MF::MF_E_INVALIDREQUEST.into());
+            match self.state {
+                State::Started => {}
+                State::Paused => return Ok(()),
+                _ => return Err(MF::MF_E_INVALIDREQUEST.into()),
             }
 
             if self.is_pending {
@@ -625,8 +629,10 @@ impl Inner {
 
     pub fn stop(&mut self) -> WinResult<()> {
         unsafe {
-            if !matches!(self.state, State::Started | State::Paused) {
-                return Err(MF::MF_E_INVALIDREQUEST.into());
+            match self.state {
+                State::Started | State::Paused => {}
+                State::Stopped => return Ok(()),
+                _ => return Err(MF::MF_E_INVALIDREQUEST.into()),
             }
 
             if self.is_pending {
@@ -649,12 +655,10 @@ impl Inner {
 
     pub fn play_or_pause(&mut self) -> WinResult<()> {
         match self.state {
-            State::Started => self.pause()?,
-            State::Paused => self.play()?,
-            _ => return Err(MF::MF_E_INVALIDREQUEST.into()),
+            State::Started => self.pause(),
+            State::Paused | State::Stopped => self.play(),
+            _ => Err(MF::MF_E_INVALIDREQUEST.into()),
         }
-
-        Ok(())
     }
 
     pub fn repaint(&mut self) -> WinResult<()> {
