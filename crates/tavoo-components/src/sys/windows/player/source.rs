@@ -187,6 +187,7 @@ fn create_audio_sd(stream: &isdb::filters::sorter::Stream) -> WinResult<MF::IMFS
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum State {
+    Init,
     Stopped,
     Paused,
     Started,
@@ -225,7 +226,7 @@ impl TransportStream {
             let inner = Mutex::new(Inner {
                 extract_handler,
 
-                state: State::Stopped,
+                state: State::Init,
 
                 event_queue,
                 presentation_descriptor,
@@ -560,41 +561,25 @@ impl Inner {
         _pd: &MF::IMFPresentationDescriptor,
         start_pos: Option<&PropVariant>,
     ) -> WinResult<()> {
-        macro_rules! activate {
-            ($field:ident, $method:ident) => {
-                let was_selected = Inner::$method(this, |es| {
-                    let was_selected = es.is_active();
-                    es.activate(true);
-                    was_selected
-                });
-
-                if was_selected {
-                    log::trace!("TransportStream: MEUpdatedStream");
-                    this.event_queue.QueueEventParamUnk(
-                        MF::MEUpdatedStream.0 as u32,
-                        &GUID_NULL,
-                        F::S_OK,
-                        &this.$field,
-                    )?;
-                } else {
-                    log::trace!("TransportStream: MENewStream");
-                    this.event_queue.QueueEventParamUnk(
-                        MF::MENewStream.0 as u32,
-                        &GUID_NULL,
-                        F::S_OK,
-                        &this.$field,
-                    )?;
-                }
-
-                Inner::$method(this, |es| es.start(start_pos))?;
-                this.pending_eos += 1;
-            };
-        }
-
         unsafe {
+            let event = if this.state == State::Init {
+                log::trace!("TransportStream: MENewStream");
+                MF::MENewStream.0 as u32
+            } else {
+                log::trace!("TransportStream: MEUpdatedStream");
+                MF::MEUpdatedStream.0 as u32
+            };
+
             this.pending_eos = 0;
-            activate!(video_stream, video_stream_unlocked);
-            activate!(audio_stream, audio_stream_unlocked);
+
+            this.event_queue
+                .QueueEventParamUnk(event, &GUID_NULL, F::S_OK, &this.video_stream)?;
+            Inner::video_stream_unlocked(this, |es| es.start(start_pos))?;
+            this.event_queue
+                .QueueEventParamUnk(event, &GUID_NULL, F::S_OK, &this.audio_stream)?;
+            Inner::audio_stream_unlocked(this, |es| es.start(start_pos))?;
+
+            this.pending_eos = 2;
             Ok(())
         }
     }
@@ -790,7 +775,7 @@ impl MF::IMFMediaSource_Impl for Outer {
                 Some(PropVariant::Empty) => None,
 
                 Some(PropVariant::I64(v)) => {
-                    if inner.state != State::Stopped {
+                    if !matches!(inner.state, State::Init | State::Stopped) {
                         return Err(MF::MF_E_INVALIDREQUEST.into());
                     }
 

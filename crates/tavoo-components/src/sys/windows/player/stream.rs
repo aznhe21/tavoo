@@ -37,7 +37,6 @@ impl ElementaryStream {
                 stream_descriptor,
 
                 state: State::Stopped,
-                is_active: false,
                 is_eos: false,
 
                 samples: VecDeque::new(),
@@ -76,16 +75,6 @@ impl ElementaryStream {
     #[inline]
     pub fn deliver_payload(&self, sample: MF::IMFSample) -> WinResult<()> {
         Inner::deliver_payload(&mut self.inner(), sample)
-    }
-
-    #[inline]
-    pub fn is_active(&self) -> bool {
-        self.inner().is_active
-    }
-
-    #[inline]
-    pub fn activate(&self, active: bool) {
-        Inner::activate(&mut self.inner(), active)
     }
 
     #[inline]
@@ -132,7 +121,6 @@ struct Inner {
     stream_descriptor: MF::IMFStreamDescriptor,
 
     state: State,
-    is_active: bool,
     is_eos: bool,
 
     samples: VecDeque<MF::IMFSample>,
@@ -162,7 +150,7 @@ impl Inner {
     }
 
     fn needs_data(&self) -> bool {
-        self.is_active && !self.is_eos && self.samples.len() < SAMPLE_QUEUE
+        !self.is_eos && self.samples.len() < SAMPLE_QUEUE
     }
 
     fn end_of_stream(this: &mut MutexGuard<Self>) -> WinResult<()> {
@@ -226,19 +214,6 @@ impl Inner {
         }
 
         r
-    }
-
-    fn activate(this: &mut MutexGuard<Self>, active: bool) {
-        if active == this.is_active {
-            return;
-        }
-
-        this.is_active = active;
-
-        if !active {
-            this.samples.clear();
-            this.requests.clear();
-        }
     }
 
     fn start(this: &mut MutexGuard<Self>, start_pos: Option<&PropVariant>) -> WinResult<()> {
@@ -400,7 +375,7 @@ impl MF::IMFMediaStream_Impl for Outer {
 
         let r: WinResult<()> = 'r: {
             tri!('r, inner.check_shutdown());
-            if inner.state == State::Stopped || !inner.is_active {
+            if inner.state == State::Stopped {
                 break 'r Err(MF::MF_E_INVALIDREQUEST.into());
             }
             if inner.is_eos && inner.samples.is_empty() {
