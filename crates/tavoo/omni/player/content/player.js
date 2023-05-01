@@ -215,6 +215,7 @@ export class Player extends HTMLElement {
 
       case "service-changed":
         // サービスが選択し直された
+        this.#currentServiceId = noti.new_service_id;
         this.dispatchEvent(new ServiceEvent("service-changed", { serviceId: noti.new_service_id }));
         break;
 
@@ -273,6 +274,29 @@ export class Player extends HTMLElement {
    */
   get services() {
     return this.#services;
+  }
+
+  /**
+   * 現在選択されているサービスのサービス識別。
+   *
+   * `0`では未選択。
+   */
+  #currentServiceId = 0;
+
+  /**
+   * 現在選択されているサービスのサービス識別。
+   *
+   * `0`では未選択。
+   */
+  get currentServiceId() {
+    return this.#currentServiceId;
+  }
+
+  /**
+   * 現在選択されているサービス。
+   */
+  get currentService() {
+    return this.#currentServiceId !== 0 ? this.#services.getById(this.#currentServiceId) : null;
   }
 
   /**
