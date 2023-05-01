@@ -65,6 +65,11 @@ export class Services {
   #services = [];
   #indices = {};
 
+  _clear() {
+    this.#services = [];
+    this.#indices = {};
+  }
+
   _update(services) {
     this.#services = services;
 
@@ -140,7 +145,10 @@ export class Player extends HTMLElement {
       case "source":
         // ファイルが開かれた、または閉じられた
         this.#source = noti.path;
+        this.#lastPos = 0;
+        this.#lastPosTime = 0;
         this.#duration = NaN;
+        this.#services._clear();
         this.dispatchEvent(new PlayerEvent("source"));
         break;
 
