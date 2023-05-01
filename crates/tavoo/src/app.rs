@@ -97,16 +97,12 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
     fn on_stopped(&self) {
         self.0.dispatch_task(|app| {
             if app.closing {
-                app.closing = false;
-
-                app.send_notification(Notification::Source { path: None });
-                app.send_notification(Notification::State {
-                    state: PlaybackState::Closed,
-                });
+                app.closed();
             } else {
                 app.send_notification(Notification::State {
                     state: PlaybackState::Stopped,
                 });
+                app.send_notification(Notification::Position { position: 0. });
             }
         });
     }
@@ -176,9 +172,7 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
         self.0.dispatch_task(move |app| app.send_notification(noti));
     }
 
-    fn on_end_of_stream(&self) {
-        self.on_stopped();
-    }
+    fn on_end_of_stream(&self) {}
 
     fn on_stream_error(&self, error: anyhow::Error) {
         let noti = Notification::Error {
@@ -256,6 +250,15 @@ impl App {
         }
     }
 
+    fn closed(&mut self) {
+        self.closing = false;
+
+        self.send_notification(Notification::Source { path: None });
+        self.send_notification(Notification::State {
+            state: PlaybackState::Closed,
+        });
+    }
+
     fn send_notification(&mut self, noti: Notification) {
         let json = serde_json::to_string(&noti).expect("JSON化は常に成功すべき");
         if let Err(e) = self.webview.post_web_message(&*json) {
@@ -282,7 +285,6 @@ impl App {
                     self.resize_video(None);
                 }
                 Command::Play => {
-                    // FIXME: 停止後に再生できない
                     tri!('r, self
                         .player
                         .play()
@@ -312,6 +314,10 @@ impl App {
                         .player
                         .close()
                         .map_err(|e| format!("ファイルを閉じることができません：{}", e)));
+
+                    if self.closing {
+                        self.closed();
+                    }
                 }
                 Command::SetPosition { position } => {
                     tri!('r, self
