@@ -172,7 +172,8 @@ impl Session {
                 rate_control: None,
                 rate_support: None,
 
-                state: State::Ready,
+                state: State::Closed,
+                status: Status::Closed,
                 seeking_pos: None,
                 is_pending: false,
                 op_request: OpRequest {
@@ -275,14 +276,25 @@ impl Session {
     }
 }
 
+/// セッションに要求している状態。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum State {
-    Ready,
+    Closed,
     OpenPending,
     Started,
     Paused,
     Stopped,
     Closing,
+}
+
+/// セッションから報告された現在の状態。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Status {
+    Closed,
+    Ready,
+    Started,
+    Paused,
+    Stopped,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -319,6 +331,7 @@ struct Inner {
     rate_support: Option<MF::IMFRateSupport>,
 
     state: State,
+    status: Status,
     /// シーク待ち中のシーク位置
     seeking_pos: Option<Duration>,
     /// 再生・停止や速度変更等の処理待ち
@@ -369,30 +382,46 @@ impl Inner {
         };
 
         unsafe { this.close_mutex.unlock() }
+        this.state = State::Closed;
+        this.status = Status::Closed;
 
         r
     }
 
-    fn run_pending_ops(&mut self, new_state: State) -> WinResult<()> {
+    fn set_status(&mut self, new_status: Status) {
+        if self.status != new_status {
+            self.status = new_status;
+
+            match new_status {
+                Status::Closed => unreachable!(),
+                Status::Ready => self.event_handler.on_ready(),
+                Status::Started => self.event_handler.on_started(),
+                Status::Paused => self.event_handler.on_paused(),
+                Status::Stopped => self.event_handler.on_stopped(),
+            }
+        }
+    }
+
+    fn update_playback_status(&mut self, new_state: State, new_status: Status) -> WinResult<()> {
         if self.state == new_state && self.is_pending {
             self.is_pending = false;
 
-            match self.op_request.command.take() {
-                None => {}
-                Some(Command::Start) => self.start_playback()?,
-                Some(Command::Pause) => self.pause()?,
-                Some(Command::Stop) => self.stop()?,
+            self.set_status(new_status);
+
+            // 保留中の処理を実行
+
+            match (self.op_request.pos.take(), self.op_request.command.take()) {
+                (Some(pos), command) => self.set_position_internal(pos, command)?,
+                (None, Some(Command::Start)) => self.start_playback()?,
+                (None, Some(Command::Pause)) => self.pause()?,
+                (None, Some(Command::Stop)) => self.stop()?,
+                (None, None) => {}
             }
 
             if let Some(rate) = self.op_request.rate.take() {
                 if rate != self.player_state.lock().rate {
                     self.set_rate(rate)?;
                 }
-            }
-
-            self.seeking_pos.take();
-            if let Some(pos) = self.op_request.pos.take() {
-                self.set_position_internal(pos)?;
             }
         }
 
@@ -407,6 +436,7 @@ impl Inner {
             match MF::MF_EVENT_TYPE(me_type as i32) {
                 MF::MESessionStarted => self.on_session_started(status, &event)?,
                 MF::MESessionPaused => self.on_session_paused(status, &event)?,
+                MF::MESessionStopped => self.on_session_stopped(status, &event)?,
                 MF::MESessionRateChanged => self.on_session_rate_changed(status, &event)?,
 
                 MF::MESessionTopologyStatus => self.on_topology_status(status, &event)?,
@@ -431,13 +461,11 @@ impl Inner {
         log::trace!("Session::on_session_started");
         status.ok()?;
 
-        if let Some(pos) = self.seeking_pos {
+        if let Some(pos) = self.seeking_pos.take() {
             self.event_handler.on_seek_completed(pos);
-        } else {
-            self.event_handler.on_started();
         }
 
-        self.run_pending_ops(State::Started)?;
+        self.update_playback_status(State::Started, Status::Started)?;
         Ok(())
     }
 
@@ -449,9 +477,19 @@ impl Inner {
         log::trace!("Session::on_session_paused");
         status.ok()?;
 
-        self.event_handler.on_paused();
+        self.update_playback_status(State::Paused, Status::Paused)?;
+        Ok(())
+    }
 
-        self.run_pending_ops(State::Paused)?;
+    fn on_session_stopped(
+        &mut self,
+        status: C::HRESULT,
+        _event: &MF::IMFMediaEvent,
+    ) -> WinResult<()> {
+        log::trace!("Session::on_session_stopped");
+        status.ok()?;
+
+        self.update_playback_status(State::Stopped, Status::Stopped)?;
         Ok(())
     }
 
@@ -524,7 +562,7 @@ impl Inner {
                     }
                 }
 
-                self.event_handler.on_ready();
+                self.set_status(Status::Ready);
 
                 self.start_playback()?;
             }
@@ -541,7 +579,7 @@ impl Inner {
         status.ok()?;
 
         self.state = State::Stopped;
-        self.event_handler.on_stopped();
+        self.set_status(Status::Stopped);
 
         Ok(())
     }
@@ -644,8 +682,6 @@ impl Inner {
                     .map_err(|_| MF::MF_E_INVALIDREQUEST)?;
 
                 self.state = State::Stopped;
-                self.event_handler.on_stopped();
-
                 self.is_pending = true;
             }
 
@@ -718,13 +754,30 @@ impl Inner {
         }
     }
 
-    fn set_position_internal(&mut self, pos: Duration) -> WinResult<()> {
+    fn set_position_internal(&mut self, pos: Duration, command: Option<Command>) -> WinResult<()> {
+        if command == Some(Command::Stop) {
+            return self.stop();
+        }
+
         unsafe {
             let time = (pos.as_nanos() / 100) as i64;
             self.session
                 .Start(&GUID_NULL, &PropVariant::I64(time).to_raw())?;
-            if self.state == State::Paused {
-                self.session.Pause()?
+
+            // 要求されている状態や現在の状態によって遷移
+            match (command, self.state) {
+                (Some(Command::Stop), _) => unreachable!(),
+
+                (Some(Command::Start), _) | (None, State::Started) => {
+                    self.state = State::Started;
+                }
+
+                (Some(Command::Pause), _) | (None, State::Paused) => {
+                    self.session.Pause()?;
+                    self.state = State::Paused;
+                }
+
+                (None, _) => log::debug!("シーク時に不明な状態：{:?}", self.state),
             }
 
             self.seeking_pos = Some(pos);
@@ -738,7 +791,7 @@ impl Inner {
         if self.is_pending {
             self.op_request.pos = Some(pos);
         } else {
-            self.set_position_internal(pos)?;
+            self.set_position_internal(pos, None)?;
         }
 
         Ok(())
