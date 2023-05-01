@@ -12,10 +12,9 @@ use super::patch;
 macro_rules! prop_string {
     ($prop:ident, $getter:ident, $setter:ident) => {
         fn $getter(&self, value: *mut PWSTR) -> Result<()> {
-            unsafe {
-                *value.as_mut().ok_or(F::E_POINTER)? = com::to_pwstr(&*self.$prop)?;
-                Ok(())
-            }
+            let value = unsafe { value.as_mut() }.ok_or(F::E_POINTER)?;
+            *value = com::to_pwstr(&*self.$prop)?;
+            Ok(())
         }
 
         fn $setter(&self, _: &C::PCWSTR) -> Result<()> {
@@ -29,10 +28,9 @@ macro_rules! prop_string {
 macro_rules! prop_bool {
     ($prop:ident, $getter:ident, $setter:ident) => {
         fn $getter(&self, value: *mut F::BOOL) -> Result<()> {
-            unsafe {
-                *value.as_mut().ok_or(F::E_POINTER)? = self.$prop.into();
-                Ok(())
-            }
+            let value = unsafe { value.as_mut() }.ok_or(F::E_POINTER)?;
+            *value = self.$prop.into();
+            Ok(())
         }
 
         fn $setter(&self, _: F::BOOL) -> Result<()> {
@@ -82,10 +80,9 @@ impl Default for CoreWebView2CustomSchemeRegistration {
 #[allow(non_snake_case)]
 impl WV2::ICoreWebView2CustomSchemeRegistration_Impl for CoreWebView2CustomSchemeRegistration {
     fn SchemeName(&self, scheme_name: *mut PWSTR) -> Result<()> {
-        unsafe {
-            *scheme_name.as_mut().ok_or(F::E_POINTER)? = com::to_pwstr(&*self.scheme_name)?;
-            Ok(())
-        }
+        let scheme_name = unsafe { scheme_name.as_mut() }.ok_or(F::E_POINTER)?;
+        *scheme_name = com::to_pwstr(&*self.scheme_name)?;
+        Ok(())
     }
 
     fn GetAllowedOrigins(
@@ -112,11 +109,15 @@ impl WV2::ICoreWebView2CustomSchemeRegistration_Impl for CoreWebView2CustomSchem
             }
 
             /// `idx`番目の値に`src`を書き込む。
+            ///
+            /// # 安全性
+            ///
+            /// `idx`が範囲内であることは検査されない。
             #[inline]
             unsafe fn write(&mut self, idx: usize, src: &str) -> Result<()> {
                 debug_assert!(idx < self.array.len());
 
-                self.array.get_unchecked_mut(idx).write(com::to_pwstr(src)?);
+                unsafe { self.array.get_unchecked_mut(idx) }.write(com::to_pwstr(src)?);
                 self.written += 1;
                 Ok(())
             }
@@ -124,12 +125,12 @@ impl WV2::ICoreWebView2CustomSchemeRegistration_Impl for CoreWebView2CustomSchem
             /// 書き込みを完了しポインタを返す。
             #[inline]
             fn finish(self) -> *mut PWSTR {
-                unsafe {
-                    debug_assert!(
-                        self.array.iter().all(|v| !PWSTR::is_null(&*v.as_ptr())),
-                        "未書き込み要素がある"
-                    );
-                }
+                debug_assert!(
+                    self.array
+                        .iter()
+                        .all(|v| unsafe { !PWSTR::is_null(&*v.as_ptr()) }),
+                    "未書き込み要素がある"
+                );
 
                 // Safety: selfはforgetするのでself.arrayを二重解放することは無い
                 let array = unsafe { std::ptr::read(&self.array).assume_init() };
@@ -148,26 +149,26 @@ impl WV2::ICoreWebView2CustomSchemeRegistration_Impl for CoreWebView2CustomSchem
             }
         }
 
-        unsafe {
-            let allowed_origins_count = allowed_origins_count.as_mut().ok_or(F::E_POINTER)?;
-            let allowed_origins = allowed_origins.as_mut().ok_or(F::E_POINTER)?;
+        let allowed_origins_count =
+            unsafe { allowed_origins_count.as_mut() }.ok_or(F::E_POINTER)?;
+        let allowed_origins = unsafe { allowed_origins.as_mut() }.ok_or(F::E_POINTER)?;
 
-            *allowed_origins_count = 0;
-            *allowed_origins = if self.allowed_origins.is_empty() {
-                std::ptr::null_mut()
-            } else {
-                let mut builder = Builder::new(self.allowed_origins.len())?;
-                for (i, src) in self.allowed_origins.iter().enumerate() {
-                    builder.write(i, &**src)?;
-                }
-                let ptr = builder.finish();
+        *allowed_origins_count = 0;
+        *allowed_origins = if self.allowed_origins.is_empty() {
+            std::ptr::null_mut()
+        } else {
+            let mut builder = Builder::new(self.allowed_origins.len())?;
+            for (i, src) in self.allowed_origins.iter().enumerate() {
+                // Safety: `i`は`self.allowed_origins`の範囲内
+                unsafe { builder.write(i, &**src)? };
+            }
+            let ptr = builder.finish();
 
-                *allowed_origins_count = self.allowed_origins.len() as u32;
-                ptr
-            };
+            *allowed_origins_count = self.allowed_origins.len() as u32;
+            ptr
+        };
 
-            Ok(())
-        }
+        Ok(())
     }
 
     fn SetAllowedOrigins(&self, _: u32, _: *mut PWSTR) -> Result<()> {
@@ -273,25 +274,25 @@ impl patch::ICoreWebView2EnvironmentOptions4_Impl for CoreWebView2EnvironmentOpt
         count: *mut u32,
         scheme_registrations: *mut *mut Option<WV2::ICoreWebView2CustomSchemeRegistration>,
     ) -> Result<()> {
-        unsafe {
-            let count = count.as_mut().ok_or(F::E_POINTER)?;
-            let scheme_registrations = scheme_registrations.as_mut().ok_or(F::E_POINTER)?;
+        let count = unsafe { count.as_mut() }.ok_or(F::E_POINTER)?;
+        let scheme_registrations = unsafe { scheme_registrations.as_mut() }.ok_or(F::E_POINTER)?;
 
-            *count = 0;
-            if self.custom_scheme_registrations.is_empty() {
-                *scheme_registrations = std::ptr::null_mut();
-                return Ok(());
-            }
-
-            let mut array = CoBox::try_new_uninit_slice(self.custom_scheme_registrations.len())?;
-            for (src, dst) in self.custom_scheme_registrations.iter().zip(&mut *array) {
-                dst.write(Some(src.clone()));
-            }
-
-            *scheme_registrations = CoBox::into_raw(array.assume_init()).cast();
-            *count = self.custom_scheme_registrations.len() as u32;
-            Ok(())
+        *count = 0;
+        if self.custom_scheme_registrations.is_empty() {
+            *scheme_registrations = std::ptr::null_mut();
+            return Ok(());
         }
+
+        let mut array = CoBox::try_new_uninit_slice(self.custom_scheme_registrations.len())?;
+        for (src, dst) in self.custom_scheme_registrations.iter().zip(&mut *array) {
+            dst.write(Some(src.clone()));
+        }
+        // Safety: arrayは全要素書き込み済み
+        let array = unsafe { array.assume_init() };
+
+        *scheme_registrations = CoBox::into_raw(array).cast();
+        *count = self.custom_scheme_registrations.len() as u32;
+        Ok(())
     }
 
     fn SetCustomSchemeRegistrations(

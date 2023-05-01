@@ -1,4 +1,5 @@
 use std::ops::RangeInclusive;
+use std::ptr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -21,40 +22,38 @@ fn create_media_sink_activate(
     source_sd: &MF::IMFStreamDescriptor,
     hwnd_video: F::HWND,
 ) -> WinResult<MF::IMFActivate> {
-    unsafe {
-        let handler = source_sd.GetMediaTypeHandler()?;
-        let major_type = handler.GetMajorType()?;
+    let handler = unsafe { source_sd.GetMediaTypeHandler()? };
+    let major_type = unsafe { handler.GetMajorType()? };
 
-        if log::log_enabled!(log::Level::Trace) {
-            let media_type = handler.GetCurrentMediaType()?;
-            log::trace!(
-                "codec: {}",
-                match media_type.GetGUID(&MF::MF_MT_SUBTYPE)? {
-                    MF::MFVideoFormat_MPEG2 => "MPEG-2",
-                    MF::MFVideoFormat_H264 => "H.264",
-                    MF::MFVideoFormat_H265 => "H.265",
-                    MF::MFAudioFormat_MPEG => "MPEG Audio",
-                    MF::MFAudioFormat_AAC => "AAC",
-                    MF::MFAudioFormat_Dolby_AC3 => "AC3",
-                    _ => "Unknown",
-                }
-            );
-            if let Ok(size) = media_type.GetUINT64(&MF::MF_MT_FRAME_SIZE) {
-                log::trace!("size: {}x{}", (size >> 32) as u32, size as u32);
+    if log::log_enabled!(log::Level::Trace) {
+        let media_type = unsafe { handler.GetCurrentMediaType()? };
+        log::trace!(
+            "codec: {}",
+            match unsafe { media_type.GetGUID(&MF::MF_MT_SUBTYPE)? } {
+                MF::MFVideoFormat_MPEG2 => "MPEG-2",
+                MF::MFVideoFormat_H264 => "H.264",
+                MF::MFVideoFormat_H265 => "H.265",
+                MF::MFAudioFormat_MPEG => "MPEG Audio",
+                MF::MFAudioFormat_AAC => "AAC",
+                MF::MFAudioFormat_Dolby_AC3 => "AC3",
+                _ => "Unknown",
             }
-            if let Ok(ratio) = media_type.GetUINT64(&MF::MF_MT_PIXEL_ASPECT_RATIO) {
-                log::trace!("ratio: {}/{}", (ratio >> 32) as u32, ratio as u32);
-            }
+        );
+        if let Ok(size) = unsafe { media_type.GetUINT64(&MF::MF_MT_FRAME_SIZE) } {
+            log::trace!("size: {}x{}", (size >> 32) as u32, size as u32);
         }
-
-        let activate = match major_type {
-            MF::MFMediaType_Audio => MF::MFCreateAudioRendererActivate()?,
-            MF::MFMediaType_Video => MF::MFCreateVideoRendererActivate(hwnd_video)?,
-            _ => return Err(F::E_FAIL.into()),
-        };
-
-        Ok(activate)
+        if let Ok(ratio) = unsafe { media_type.GetUINT64(&MF::MF_MT_PIXEL_ASPECT_RATIO) } {
+            log::trace!("ratio: {}/{}", (ratio >> 32) as u32, ratio as u32);
+        }
     }
+
+    let activate = match major_type {
+        MF::MFMediaType_Audio => unsafe { MF::MFCreateAudioRendererActivate()? },
+        MF::MFMediaType_Video => unsafe { MF::MFCreateVideoRendererActivate(hwnd_video)? },
+        _ => return Err(F::E_FAIL.into()),
+    };
+
+    Ok(activate)
 }
 
 fn add_source_node(
@@ -97,19 +96,16 @@ fn add_branch_to_partial_topology(
     i: u32,
     hwnd_video: F::HWND,
 ) -> WinResult<()> {
-    unsafe {
-        let (selected, sd) = wrap::wrap2(|a, b| pd.GetStreamDescriptorByIndex(i, a, b))?;
-        let sd = sd.unwrap();
-
-        if selected {
-            let sink_activate = create_media_sink_activate(&sd, hwnd_video)?;
-            let source_node = add_source_node(topology, source, pd, &sd)?;
-            let output_node = add_output_node(topology, &sink_activate, 0)?;
-            source_node.ConnectOutput(0, &output_node, 0)?;
-        }
-
-        Ok(())
+    let (selected, sd) = wrap::wrap2(|a, b| unsafe { pd.GetStreamDescriptorByIndex(i, a, b) })?;
+    let sd = sd.unwrap();
+    if selected {
+        let sink_activate = create_media_sink_activate(&sd, hwnd_video)?;
+        let source_node = add_source_node(topology, source, pd, &sd)?;
+        let output_node = add_output_node(topology, &sink_activate, 0)?;
+        unsafe { source_node.ConnectOutput(0, &output_node, 0)? };
     }
+
+    Ok(())
 }
 
 fn create_playback_topology(
@@ -117,16 +113,14 @@ fn create_playback_topology(
     pd: &MF::IMFPresentationDescriptor,
     hwnd_video: F::HWND,
 ) -> WinResult<MF::IMFTopology> {
-    unsafe {
-        let topology = MF::MFCreateTopology()?;
+    let topology = unsafe { MF::MFCreateTopology()? };
 
-        let c_source_streams = pd.GetStreamDescriptorCount()?;
-        for i in 0..c_source_streams {
-            add_branch_to_partial_topology(&topology, source, pd, i, hwnd_video)?;
-        }
-
-        Ok(topology)
+    let c_source_streams = unsafe { pd.GetStreamDescriptorCount()? };
+    for i in 0..c_source_streams {
+        add_branch_to_partial_topology(&topology, source, pd, i, hwnd_video)?;
     }
+
+    Ok(topology)
 }
 
 /// IMFMediaSessionのラッパー。
@@ -143,53 +137,48 @@ impl Session {
         extract_handler: ExtractHandler,
         source: TransportStream,
     ) -> WinResult<Session> {
-        unsafe {
-            let close_mutex = Arc::new(parking_lot::RawMutex::INIT);
-            close_mutex.lock();
+        let close_mutex = Arc::new(parking_lot::RawMutex::INIT);
+        close_mutex.lock();
 
-            let session = MF::MFCreateMediaSession(None)?;
-            let presentation_clock = session.GetClock()?.cast()?;
+        let session = unsafe { MF::MFCreateMediaSession(None)? };
+        let presentation_clock = unsafe { session.GetClock()?.cast()? };
 
-            let source_pd = source.intf().CreatePresentationDescriptor()?;
+        let source_pd = unsafe { source.intf().CreatePresentationDescriptor()? };
 
-            let topology = create_playback_topology(
-                source.intf(),
-                &source_pd,
-                player_state.lock().hwnd_video,
-            )?;
-            session.SetTopology(0, &topology)?;
+        let topology =
+            create_playback_topology(source.intf(), &source_pd, player_state.lock().hwnd_video)?;
+        unsafe { session.SetTopology(0, &topology)? };
 
-            let inner = Mutex::new(Inner {
-                close_mutex,
-                player_state,
-                extract_handler,
+        let inner = Mutex::new(Inner {
+            close_mutex,
+            player_state,
+            extract_handler,
 
-                session,
-                source,
-                presentation_clock,
-                video_display: None,
-                audio_volume: None,
-                rate_control: None,
-                rate_support: None,
+            session,
+            source,
+            presentation_clock,
+            video_display: None,
+            audio_volume: None,
+            rate_control: None,
+            rate_support: None,
 
-                state: State::Closed,
-                status: Status::Closed,
-                seeking_pos: None,
-                is_pending: false,
-                op_request: OpRequest {
-                    command: None,
-                    rate: None,
-                    pos: None,
-                },
+            state: State::Closed,
+            status: Status::Closed,
+            seeking_pos: None,
+            is_pending: false,
+            op_request: OpRequest {
+                command: None,
+                rate: None,
+                pos: None,
+            },
 
-                event_handler: Box::new(event_handler),
-            });
-            let this = Session(Outer { inner }.into());
+            event_handler: Box::new(event_handler),
+        });
+        let this = Session(Outer { inner }.into());
 
-            this.inner().session.BeginGetEvent(&this.0, None)?;
+        unsafe { this.inner().session.BeginGetEvent(&this.0, None)? };
 
-            Ok(this)
-        }
+        Ok(this)
     }
 }
 
@@ -361,27 +350,25 @@ impl Inner {
         this.rate_support.take();
 
         let r = 'r: {
-            unsafe {
-                this.state = State::Closing;
-                tri!('r, this.session.Close());
+            this.state = State::Closing;
+            unsafe { tri!('r, this.session.Close()) };
 
-                // IMFMediaSession::Close()の呼び出しでOuter::Invokeが呼ばれるため、
-                // 閉じるのを待つ間はロックを解除する
-                let close_mutex = this.close_mutex.clone();
-                let wait_result =
-                    MutexGuard::unlocked(this, || close_mutex.try_lock_for(Duration::from_secs(5)));
-                if !wait_result {
-                    log::trace!("Session::shutdown: timeout");
-                }
-
-                let _ = this.source.intf().Shutdown();
-                let _ = this.session.Shutdown();
-
-                Ok(())
+            // IMFMediaSession::Close()の呼び出しでOuter::Invokeが呼ばれるため、
+            // 閉じるのを待つ間はロックを解除する
+            let close_mutex = this.close_mutex.clone();
+            let wait_result =
+                MutexGuard::unlocked(this, || close_mutex.try_lock_for(Duration::from_secs(5)));
+            if !wait_result {
+                log::trace!("Session::shutdown: timeout");
             }
+
+            let _ = unsafe { this.source.intf().Shutdown() };
+            let _ = unsafe { this.session.Shutdown() };
+
+            Ok(())
         };
 
-        unsafe { this.close_mutex.unlock() }
+        unsafe { this.close_mutex.unlock() };
         this.state = State::Closed;
         this.status = Status::Closed;
 
@@ -429,28 +416,26 @@ impl Inner {
     }
 
     pub fn handle_event(&mut self, event: MF::IMFMediaEvent) -> WinResult<()> {
-        unsafe {
-            let me_type = event.GetType()?;
-            let status = event.GetStatus()?;
+        let me_type = unsafe { event.GetType()? };
+        let status = unsafe { event.GetStatus()? };
 
-            match MF::MF_EVENT_TYPE(me_type as i32) {
-                MF::MESessionStarted => self.on_session_started(status, &event)?,
-                MF::MESessionPaused => self.on_session_paused(status, &event)?,
-                MF::MESessionStopped => self.on_session_stopped(status, &event)?,
-                MF::MESessionRateChanged => self.on_session_rate_changed(status, &event)?,
+        match MF::MF_EVENT_TYPE(me_type as i32) {
+            MF::MESessionStarted => self.on_session_started(status, &event)?,
+            MF::MESessionPaused => self.on_session_paused(status, &event)?,
+            MF::MESessionStopped => self.on_session_stopped(status, &event)?,
+            MF::MESessionRateChanged => self.on_session_rate_changed(status, &event)?,
 
-                MF::MESessionTopologyStatus => self.on_topology_status(status, &event)?,
-                MF::MEEndOfPresentation => self.on_presentation_ended(status, &event)?,
-                MF::MENewPresentation => self.on_new_presentation(status, &event)?,
+            MF::MESessionTopologyStatus => self.on_topology_status(status, &event)?,
+            MF::MEEndOfPresentation => self.on_presentation_ended(status, &event)?,
+            MF::MENewPresentation => self.on_new_presentation(status, &event)?,
 
-                me => {
-                    log::trace!("media event: {:?}", me);
-                    status.ok()?;
-                }
+            me => {
+                log::trace!("media event: {:?}", me);
+                status.ok()?;
             }
-
-            Ok(())
         }
+
+        Ok(())
     }
 
     fn on_session_started(
@@ -509,9 +494,7 @@ impl Inner {
             // 実際は指定された値がそのまま入っているだけのようなので
             // IMFRateControlから実際の速度を取得する
             if let Some(rate_control) = &self.rate_control {
-                unsafe {
-                    let _ = rate_control.GetRate(std::ptr::null_mut(), &mut player_state.rate);
-                }
+                let _ = unsafe { rate_control.GetRate(ptr::null_mut(), &mut player_state.rate) };
             }
         }
 
@@ -520,11 +503,11 @@ impl Inner {
         Ok(())
     }
 
-    unsafe fn get_service<T: ComInterface>(&self, guid: &C::GUID) -> WinResult<T> {
-        let mut ptr = std::ptr::null_mut();
-        MF::MFGetService(&self.session, guid, &T::IID, &mut ptr)?;
+    fn get_service<T: ComInterface>(&self, guid: &C::GUID) -> WinResult<T> {
+        let mut ptr = ptr::null_mut();
+        unsafe { MF::MFGetService(&self.session, guid, &T::IID, &mut ptr)? };
         debug_assert!(!ptr.is_null());
-        Ok(T::from_raw(ptr))
+        Ok(unsafe { T::from_raw(ptr) })
     }
 
     fn on_topology_status(
@@ -532,42 +515,40 @@ impl Inner {
         status: C::HRESULT,
         event: &MF::IMFMediaEvent,
     ) -> WinResult<()> {
-        unsafe {
-            status.ok()?;
+        status.ok()?;
 
-            let status = event.GetUINT32(&MF::MF_EVENT_TOPOLOGY_STATUS)?;
-            if status == MF::MF_TOPOSTATUS_READY.0 as u32 {
-                log::trace!("Session::on_topology_ready");
+        let status = unsafe { event.GetUINT32(&MF::MF_EVENT_TOPOLOGY_STATUS)? };
+        if status == MF::MF_TOPOSTATUS_READY.0 as u32 {
+            log::trace!("Session::on_topology_ready");
 
-                self.video_display = self.get_service(&MF::MR_VIDEO_RENDER_SERVICE).ok();
-                self.audio_volume = self.get_service(&MF::MR_POLICY_VOLUME_SERVICE).ok();
-                self.rate_control = self.get_service(&MF::MF_RATE_CONTROL_SERVICE).ok();
-                self.rate_support = self.get_service(&MF::MF_RATE_CONTROL_SERVICE).ok();
+            self.video_display = self.get_service(&MF::MR_VIDEO_RENDER_SERVICE).ok();
+            self.audio_volume = self.get_service(&MF::MR_POLICY_VOLUME_SERVICE).ok();
+            self.rate_control = self.get_service(&MF::MF_RATE_CONTROL_SERVICE).ok();
+            self.rate_support = self.get_service(&MF::MF_RATE_CONTROL_SERVICE).ok();
 
-                {
-                    let player_state = self.player_state.lock();
+            {
+                let player_state = self.player_state.lock();
 
-                    let (left, top, right, bottom) = player_state.bounds;
-                    if let Err(e) = self.set_bounds_internal(left, top, right, bottom) {
-                        log::warn!("映像領域を設定できない：{}", e);
-                    }
-                    if let Err(e) = self.set_volume_internal(player_state.volume) {
-                        log::warn!("音量を設定できない：{}", e);
-                    }
-                    if let Err(e) = self.set_muted_internal(player_state.muted) {
-                        log::warn!("ミュート状態を設定できない：{}", e);
-                    }
-                    if let Err(e) = self.set_rate_internal(player_state.rate) {
-                        log::warn!("再生速度を設定できない：{}", e);
-                    }
+                let (left, top, right, bottom) = player_state.bounds;
+                if let Err(e) = self.set_bounds_internal(left, top, right, bottom) {
+                    log::warn!("映像領域を設定できない：{}", e);
                 }
-
-                self.set_status(Status::Ready);
-
-                self.start_playback()?;
+                if let Err(e) = self.set_volume_internal(player_state.volume) {
+                    log::warn!("音量を設定できない：{}", e);
+                }
+                if let Err(e) = self.set_muted_internal(player_state.muted) {
+                    log::warn!("ミュート状態を設定できない：{}", e);
+                }
+                if let Err(e) = self.set_rate_internal(player_state.rate) {
+                    log::warn!("再生速度を設定できない：{}", e);
+                }
             }
-            Ok(())
+
+            self.set_status(Status::Ready);
+
+            self.start_playback()?;
         }
+        Ok(())
     }
 
     fn on_presentation_ended(
@@ -589,53 +570,46 @@ impl Inner {
         status: C::HRESULT,
         event: &MF::IMFMediaEvent,
     ) -> WinResult<()> {
-        unsafe fn get_event_object<T: ComInterface>(event: &MF::IMFMediaEvent) -> WinResult<T> {
-            let Ok(PropVariant::IUnknown(unk)) = PropVariant::try_from(event.GetValue()?) else {
+        fn get_event_object<T: ComInterface>(event: &MF::IMFMediaEvent) -> WinResult<T> {
+            let Ok(PropVariant::IUnknown(unk)) = PropVariant::try_from(unsafe{ event.GetValue()? }) else {
                 return Err(MF::MF_E_INVALIDTYPE.into());
             };
 
             unk.cast()
         }
 
-        unsafe {
-            log::trace!("Session::on_new_presentation");
-            status.ok()?;
+        log::trace!("Session::on_new_presentation");
+        status.ok()?;
 
-            let pd = get_event_object(event)?;
-            let topology = create_playback_topology(
-                self.source.intf(),
-                &pd,
-                self.player_state.lock().hwnd_video,
-            )?;
-            self.session.SetTopology(0, &topology)?;
+        let pd = get_event_object(event)?;
+        let topology =
+            create_playback_topology(self.source.intf(), &pd, self.player_state.lock().hwnd_video)?;
+        unsafe { self.session.SetTopology(0, &topology)? };
 
-            self.state = State::OpenPending;
+        self.state = State::OpenPending;
 
-            Ok(())
-        }
+        Ok(())
     }
 
     fn start_playback(&mut self) -> WinResult<()> {
-        unsafe {
-            log::trace!("Session::start_playback");
+        log::trace!("Session::start_playback");
 
-            let start_pos = if self.state == State::Stopped {
-                // 停止状態からの再生は最初から
-                self.extract_handler
-                    .reset()
-                    .map_err(|_| MF::MF_E_INVALIDREQUEST)?;
-                PropVariant::I64(0)
-            } else {
-                // それ以外は位置を保持
-                PropVariant::Empty
-            };
-            self.session.Start(&GUID_NULL, &start_pos.to_raw())?;
+        let start_pos = if self.state == State::Stopped {
+            // 停止状態からの再生は最初から
+            self.extract_handler
+                .reset()
+                .map_err(|_| MF::MF_E_INVALIDREQUEST)?;
+            PropVariant::I64(0)
+        } else {
+            // それ以外は位置を保持
+            PropVariant::Empty
+        };
+        unsafe { self.session.Start(&GUID_NULL, &start_pos.to_raw())? };
 
-            self.state = State::Started;
-            self.is_pending = true;
+        self.state = State::Started;
+        self.is_pending = true;
 
-            Ok(())
-        }
+        Ok(())
     }
 
     pub fn play(&mut self) -> WinResult<()> {
@@ -655,45 +629,41 @@ impl Inner {
     }
 
     pub fn pause(&mut self) -> WinResult<()> {
-        unsafe {
-            match self.state {
-                State::Started => {}
-                State::Paused => return Ok(()),
-                _ => return Err(MF::MF_E_INVALIDREQUEST.into()),
-            }
-
-            if self.is_pending {
-                self.op_request.command = Some(Command::Pause);
-            } else {
-                self.session.Pause()?;
-
-                self.state = State::Paused;
-                self.is_pending = true;
-            }
-
-            Ok(())
+        match self.state {
+            State::Started => {}
+            State::Paused => return Ok(()),
+            _ => return Err(MF::MF_E_INVALIDREQUEST.into()),
         }
+
+        if self.is_pending {
+            self.op_request.command = Some(Command::Pause);
+        } else {
+            unsafe { self.session.Pause()? };
+
+            self.state = State::Paused;
+            self.is_pending = true;
+        }
+
+        Ok(())
     }
 
     pub fn stop(&mut self) -> WinResult<()> {
-        unsafe {
-            match self.state {
-                State::Started | State::Paused => {}
-                State::Stopped => return Ok(()),
-                _ => return Err(MF::MF_E_INVALIDREQUEST.into()),
-            }
-
-            if self.is_pending {
-                self.op_request.command = Some(Command::Stop);
-            } else {
-                self.session.Stop()?;
-
-                self.state = State::Stopped;
-                self.is_pending = true;
-            }
-
-            Ok(())
+        match self.state {
+            State::Started | State::Paused => {}
+            State::Stopped => return Ok(()),
+            _ => return Err(MF::MF_E_INVALIDREQUEST.into()),
         }
+
+        if self.is_pending {
+            self.op_request.command = Some(Command::Stop);
+        } else {
+            unsafe { self.session.Stop()? };
+
+            self.state = State::Stopped;
+            self.is_pending = true;
+        }
+
+        Ok(())
     }
 
     pub fn play_or_pause(&mut self) -> WinResult<()> {
@@ -705,12 +675,10 @@ impl Inner {
     }
 
     pub fn repaint(&mut self) -> WinResult<()> {
-        unsafe {
-            if let Some(video_display) = &self.video_display {
-                video_display.RepaintVideo()
-            } else {
-                Ok(())
-            }
+        if let Some(video_display) = &self.video_display {
+            unsafe { video_display.RepaintVideo() }
+        } else {
+            Ok(())
         }
     }
 
@@ -719,25 +687,23 @@ impl Inner {
             return Ok(());
         };
 
-        unsafe {
-            let size = wrap::wrap(|a| video_display.GetNativeVideoSize(a, std::ptr::null_mut()))?;
+        let size = wrap::wrap(|a| unsafe { video_display.GetNativeVideoSize(a, ptr::null_mut()) })?;
 
-            let src = MF::MFVideoNormalizedRect {
-                left: 0.,
-                top: 0.,
-                right: 1.,
-                bottom: if size.cy == 1088 { 1080. / 1088. } else { 1. },
-            };
-            let dst = F::RECT {
-                left: left as i32,
-                top: top as i32,
-                right: right as i32,
-                bottom: bottom as i32,
-            };
-            video_display.SetVideoPosition(&src, &dst)?;
+        let src = MF::MFVideoNormalizedRect {
+            left: 0.,
+            top: 0.,
+            right: 1.,
+            bottom: if size.cy == 1088 { 1080. / 1088. } else { 1. },
+        };
+        let dst = F::RECT {
+            left: left as i32,
+            top: top as i32,
+            right: right as i32,
+            bottom: bottom as i32,
+        };
+        unsafe { video_display.SetVideoPosition(&src, &dst)? };
 
-            Ok(())
-        }
+        Ok(())
     }
 
     pub fn set_bounds(&mut self, left: u32, top: u32, right: u32, bottom: u32) -> WinResult<()> {
@@ -750,15 +716,13 @@ impl Inner {
     }
 
     pub fn position(&self) -> WinResult<Duration> {
-        unsafe {
-            let pos = if let Some(pos) = self.op_request.pos.or(self.seeking_pos) {
-                pos
-            } else {
-                Duration::from_nanos(self.presentation_clock.GetTime()? as u64 * 100)
-            };
+        let pos = if let Some(pos) = self.op_request.pos.or(self.seeking_pos) {
+            pos
+        } else {
+            Duration::from_nanos(unsafe { self.presentation_clock.GetTime()? } as u64 * 100)
+        };
 
-            Ok(pos)
-        }
+        Ok(pos)
     }
 
     fn set_position_internal(&mut self, pos: Duration, command: Option<Command>) -> WinResult<()> {
@@ -766,32 +730,32 @@ impl Inner {
             return self.stop();
         }
 
+        let time = (pos.as_nanos() / 100) as i64;
         unsafe {
-            let time = (pos.as_nanos() / 100) as i64;
             self.session
-                .Start(&GUID_NULL, &PropVariant::I64(time).to_raw())?;
+                .Start(&GUID_NULL, &PropVariant::I64(time).to_raw())?
+        };
 
-            // 要求されている状態や現在の状態によって遷移
-            match (command, self.state) {
-                (Some(Command::Stop), _) => unreachable!(),
+        // 要求されている状態や現在の状態によって遷移
+        match (command, self.state) {
+            (Some(Command::Stop), _) => unreachable!(),
 
-                (Some(Command::Start), _) | (None, State::Started) => {
-                    self.state = State::Started;
-                }
-
-                (Some(Command::Pause), _) | (None, State::Paused) => {
-                    self.session.Pause()?;
-                    self.state = State::Paused;
-                }
-
-                (None, _) => log::debug!("シーク時に不明な状態：{:?}", self.state),
+            (Some(Command::Start), _) | (None, State::Started) => {
+                self.state = State::Started;
             }
 
-            self.seeking_pos = Some(pos);
-            self.is_pending = true;
+            (Some(Command::Pause), _) | (None, State::Paused) => {
+                unsafe { self.session.Pause()? };
+                self.state = State::Paused;
+            }
 
-            Ok(())
+            (None, _) => log::debug!("シーク時に不明な状態：{:?}", self.state),
         }
+
+        self.seeking_pos = Some(pos);
+        self.is_pending = true;
+
+        Ok(())
     }
 
     pub fn set_position(&mut self, pos: Duration) -> WinResult<()> {
@@ -805,14 +769,12 @@ impl Inner {
     }
 
     fn set_volume_internal(&self, value: f32) -> WinResult<()> {
-        unsafe {
-            let Some(audio_volume) = &self.audio_volume else {
-                return Err(MF::MF_E_INVALIDREQUEST.into());
-            };
+        let Some(audio_volume) = &self.audio_volume else {
+            return Err(MF::MF_E_INVALIDREQUEST.into());
+        };
 
-            audio_volume.SetMasterVolume(value)?;
-            Ok(())
-        }
+        unsafe { audio_volume.SetMasterVolume(value)? };
+        Ok(())
     }
 
     pub fn set_volume(&mut self, value: f32) -> WinResult<()> {
@@ -825,14 +787,12 @@ impl Inner {
     }
 
     fn set_muted_internal(&self, mute: bool) -> WinResult<()> {
-        unsafe {
-            let Some(audio_volume) = &self.audio_volume else {
-                return Err(MF::MF_E_INVALIDREQUEST.into());
-            };
+        let Some(audio_volume) = &self.audio_volume else {
+            return Err(MF::MF_E_INVALIDREQUEST.into());
+        };
 
-            audio_volume.SetMute(F::BOOL::from(mute))?;
-            Ok(())
-        }
+        unsafe { audio_volume.SetMute(F::BOOL::from(mute))? };
+        Ok(())
     }
 
     pub fn set_muted(&mut self, mute: bool) -> WinResult<()> {
@@ -845,26 +805,22 @@ impl Inner {
     }
 
     pub fn rate_range(&self) -> WinResult<RangeInclusive<f32>> {
-        unsafe {
-            let Some(rate_support) = &self.rate_support else {
-                return Err(MF::MF_E_INVALIDREQUEST.into());
-            };
+        let Some(rate_support) = &self.rate_support else {
+            return Err(MF::MF_E_INVALIDREQUEST.into());
+        };
 
-            let slowest = rate_support.GetSlowestRate(MF::MFRATE_FORWARD, F::FALSE)?;
-            let fastest = rate_support.GetFastestRate(MF::MFRATE_FORWARD, F::FALSE)?;
-            Ok(slowest..=fastest)
-        }
+        let slowest = unsafe { rate_support.GetSlowestRate(MF::MFRATE_FORWARD, F::FALSE)? };
+        let fastest = unsafe { rate_support.GetFastestRate(MF::MFRATE_FORWARD, F::FALSE)? };
+        Ok(slowest..=fastest)
     }
 
     fn set_rate_internal(&self, value: f32) -> WinResult<()> {
-        unsafe {
-            let Some(rate_control) = &self.rate_control else {
-                return Err(MF::MF_E_INVALIDREQUEST.into());
-            };
+        let Some(rate_control) = &self.rate_control else {
+            return Err(MF::MF_E_INVALIDREQUEST.into());
+        };
 
-            rate_control.SetRate(F::FALSE, value)?;
-            Ok(())
-        }
+        unsafe { rate_control.SetRate(F::FALSE, value)? };
+        Ok(())
     }
 
     pub fn set_rate(&mut self, value: f32) -> WinResult<()> {
@@ -888,24 +844,22 @@ impl MF::IMFAsyncCallback_Impl for Outer {
 
     fn Invoke(&self, presult: Option<&MF::IMFAsyncResult>) -> WinResult<()> {
         log::trace!("Session::Invoke");
-        unsafe {
-            let inner = self.inner.lock();
+        let inner = self.inner.lock();
 
-            let event = inner.session.EndGetEvent(presult)?;
-            let me_type = event.GetType()?;
-            if me_type == MF::MESessionClosed.0 as u32 {
-                inner.close_mutex.unlock();
-            } else {
-                inner.session.BeginGetEvent(&self.intf(), None)?;
-            }
-
-            if inner.state != State::Closing {
-                inner
-                    .event_handler
-                    .on_player_event(PlayerEvent(event.into()));
-            }
-
-            Ok(())
+        let event = unsafe { inner.session.EndGetEvent(presult)? };
+        let me_type = unsafe { event.GetType()? };
+        if me_type == MF::MESessionClosed.0 as u32 {
+            unsafe { inner.close_mutex.unlock() };
+        } else {
+            unsafe { inner.session.BeginGetEvent(&self.intf(), None)? };
         }
+
+        if inner.state != State::Closing {
+            inner
+                .event_handler
+                .on_player_event(PlayerEvent(event.into()));
+        }
+
+        Ok(())
     }
 }

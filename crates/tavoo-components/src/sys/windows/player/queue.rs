@@ -33,12 +33,10 @@ impl AsyncQueue {
     }
 
     pub fn process_queue(&self) -> WinResult<()> {
-        unsafe {
-            if !self.inner().queue.lock().is_empty() {
-                MF::MFPutWorkItem(MF::MFASYNC_CALLBACK_QUEUE_STANDARD, &self.0, None)?;
-            }
-            Ok(())
+        if !self.inner().queue.lock().is_empty() {
+            unsafe { MF::MFPutWorkItem(MF::MFASYNC_CALLBACK_QUEUE_STANDARD, &self.0, None)? };
         }
+        Ok(())
     }
 
     pub fn enqueue<F: FnOnce() + Send + 'static>(&self, f: F) -> WinResult<()> {

@@ -1,6 +1,11 @@
 //! webview2-com-sysで定義が間違っているものをこちらで再定義する。
 
-#![allow(non_snake_case, non_camel_case_types, dead_code)]
+#![allow(
+    non_snake_case,
+    non_camel_case_types,
+    dead_code,
+    unsafe_op_in_unsafe_fn
+)]
 
 use webview2_com_sys::Microsoft::Web::WebView2::Win32::ICoreWebView2CustomSchemeRegistration;
 

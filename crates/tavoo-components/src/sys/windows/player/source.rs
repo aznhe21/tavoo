@@ -23,33 +23,37 @@ const SID_VIDEO: u32 = 0;
 const SID_AUDIO: u32 = 1;
 
 fn create_video_sd(stream: &isdb::filters::sorter::Stream) -> WinResult<MF::IMFStreamDescriptor> {
-    unsafe {
-        use isdb::psi::desc::StreamType;
+    use isdb::psi::desc::StreamType;
 
-        let vef = stream
-            .video_encode_format()
-            .unwrap_or_else(|| isdb::psi::desc::VideoEncodeFormat::from(0b0001));
+    let vef = stream
+        .video_encode_format()
+        .unwrap_or_else(|| isdb::psi::desc::VideoEncodeFormat::from(0b0001));
 
-        let media_type = MF::MFCreateMediaType()?;
-        match stream.stream_type() {
-            StreamType::MPEG2_VIDEO => {
+    let media_type = unsafe { MF::MFCreateMediaType()? };
+    match stream.stream_type() {
+        StreamType::MPEG2_VIDEO => {
+            unsafe {
                 media_type.SetGUID(&MF::MF_MT_MAJOR_TYPE, &MF::MFMediaType_Video)?;
                 media_type.SetGUID(&MF::MF_MT_SUBTYPE, &MF::MFVideoFormat_MPEG2)?;
                 media_type.SetUINT32(&MF::MF_MT_FIXED_SIZE_SAMPLES, 0)?;
                 media_type.SetUINT32(&MF::MF_MT_COMPRESSED, 1)?;
+            }
 
-                if let Some(info) = VefInfo::new(vef) {
+            if let Some(info) = VefInfo::new(vef) {
+                unsafe {
                     media_type.SetUINT64(
                         &MF::MF_MT_FRAME_SIZE,
                         (info.width as u64) << 32 | (info.height as u64),
                     )?;
+                }
 
-                    if info.is_interlace {
-                        let (numerator, denominator) = if info.height == 1088 {
-                            (16, 9)
-                        } else {
-                            (info.decoded_width, info.decoded_height)
-                        };
+                if info.is_interlace {
+                    let (numerator, denominator) = if info.height == 1088 {
+                        (16, 9)
+                    } else {
+                        (info.decoded_width, info.decoded_height)
+                    };
+                    unsafe {
                         media_type.SetUINT64(
                             &MF::MF_MT_PIXEL_ASPECT_RATIO,
                             (numerator as u64) << 32 | (denominator as u64),
@@ -57,30 +61,32 @@ fn create_video_sd(stream: &isdb::filters::sorter::Stream) -> WinResult<MF::IMFS
                     }
                 }
             }
-            StreamType::H264 => {
-                media_type.SetGUID(&MF::MF_MT_MAJOR_TYPE, &MF::MFMediaType_Video)?;
-                media_type.SetGUID(&MF::MF_MT_SUBTYPE, &MF::MFVideoFormat_H264)?;
-                media_type.SetUINT32(&MF::MF_MT_FIXED_SIZE_SAMPLES, 0)?;
-                media_type.SetUINT32(&MF::MF_MT_COMPRESSED, 1)?;
-            }
-            StreamType::H265 => {
-                media_type.SetGUID(&MF::MF_MT_MAJOR_TYPE, &MF::MFMediaType_Video)?;
-                media_type.SetGUID(&MF::MF_MT_SUBTYPE, &MF::MFVideoFormat_H265)?;
-                media_type.SetUINT32(&MF::MF_MT_FIXED_SIZE_SAMPLES, 0)?;
-                media_type.SetUINT32(&MF::MF_MT_COMPRESSED, 1)?;
-            }
-
-            _ => return Err(F::E_INVALIDARG.into()),
         }
+        StreamType::H264 => unsafe {
+            media_type.SetGUID(&MF::MF_MT_MAJOR_TYPE, &MF::MFMediaType_Video)?;
+            media_type.SetGUID(&MF::MF_MT_SUBTYPE, &MF::MFVideoFormat_H264)?;
+            media_type.SetUINT32(&MF::MF_MT_FIXED_SIZE_SAMPLES, 0)?;
+            media_type.SetUINT32(&MF::MF_MT_COMPRESSED, 1)?;
+        },
+        StreamType::H265 => unsafe {
+            media_type.SetGUID(&MF::MF_MT_MAJOR_TYPE, &MF::MFMediaType_Video)?;
+            media_type.SetGUID(&MF::MF_MT_SUBTYPE, &MF::MFVideoFormat_H265)?;
+            media_type.SetUINT32(&MF::MF_MT_FIXED_SIZE_SAMPLES, 0)?;
+            media_type.SetUINT32(&MF::MF_MT_COMPRESSED, 1)?;
+        },
 
-        let stream_descriptor =
-            MF::MFCreateStreamDescriptor(SID_VIDEO, &[Some(media_type.clone())])?;
+        _ => return Err(F::E_INVALIDARG.into()),
+    }
 
+    let stream_descriptor =
+        unsafe { MF::MFCreateStreamDescriptor(SID_VIDEO, &[Some(media_type.clone())])? };
+
+    unsafe {
         let handler = stream_descriptor.GetMediaTypeHandler()?;
         handler.SetCurrentMediaType(&media_type)?;
-
-        Ok(stream_descriptor)
     }
+
+    Ok(stream_descriptor)
 }
 
 fn create_audio_sd(stream: &isdb::filters::sorter::Stream) -> WinResult<MF::IMFStreamDescriptor> {
@@ -90,17 +96,17 @@ fn create_audio_sd(stream: &isdb::filters::sorter::Stream) -> WinResult<MF::IMFS
     const BLOCK_ALIGNMENT: u32 = BITS_PER_SAMPLE * NUM_CHANNELS / 8;
     const AVG_BYTES_PER_SECOND: u32 = SAMPLES_PER_SEC * BLOCK_ALIGNMENT;
 
-    unsafe {
-        let media_type = MF::MFCreateMediaType()?;
+    let media_type = unsafe { MF::MFCreateMediaType()? };
 
-        use isdb::psi::desc::StreamType;
-        match stream.stream_type() {
-            StreamType::MPEG1_AUDIO | StreamType::MPEG2_AUDIO => {
-                // media_type.SetGUID(&MF::MF_MT_MAJOR_TYPE, &MF::MFMediaType_Audio)?;
-                // media_type.SetGUID(&MF::MF_MT_SUBTYPE, &MF::MFAudioFormat_MPEG)?;
-                todo!()
-            }
-            StreamType::AAC => {
+    use isdb::psi::desc::StreamType;
+    match stream.stream_type() {
+        StreamType::MPEG1_AUDIO | StreamType::MPEG2_AUDIO => {
+            // media_type.SetGUID(&MF::MF_MT_MAJOR_TYPE, &MF::MFMediaType_Audio)?;
+            // media_type.SetGUID(&MF::MF_MT_SUBTYPE, &MF::MFAudioFormat_MPEG)?;
+            todo!()
+        }
+        StreamType::AAC => {
+            unsafe {
                 media_type.SetGUID(&MF::MF_MT_MAJOR_TYPE, &MF::MFMediaType_Audio)?;
                 media_type.SetGUID(&MF::MF_MT_SUBTYPE, &MF::MFAudioFormat_AAC)?;
                 media_type.SetUINT32(&MF::MF_MT_AUDIO_NUM_CHANNELS, NUM_CHANNELS)?;
@@ -109,80 +115,84 @@ fn create_audio_sd(stream: &isdb::filters::sorter::Stream) -> WinResult<MF::IMFS
                     .SetUINT32(&MF::MF_MT_AUDIO_AVG_BYTES_PER_SECOND, AVG_BYTES_PER_SECOND)?;
                 media_type.SetUINT32(&MF::MF_MT_AUDIO_BLOCK_ALIGNMENT, BLOCK_ALIGNMENT)?;
                 media_type.SetUINT32(&MF::MF_MT_AUDIO_BITS_PER_SAMPLE, BITS_PER_SAMPLE)?;
+            }
 
-                // HEAACWAVEINFOとaudioSpecificConfig()
-                #[repr(C, packed(1))]
-                #[allow(non_snake_case)]
-                struct AacInfo {
-                    wPayloadType: u16,
-                    wAudioProfileLevelIndication: u16,
-                    wStructType: u16,
-                    wReserved1: u16,
-                    dwReserved2: u32,
-                    // https://wiki.multimedia.cx/index.php/MPEG-4_Audio
-                    audioSpecificConfig: [u8; 2],
-                }
-                const fn audio_specific_config(
-                    audio_object_type: u8,
-                    freq: u32,
-                    channel_configuration: u8,
-                ) -> [u8; 2] {
-                    let sampling_frequency_index = match freq {
-                        96000 => 0,
-                        88200 => 1,
-                        64000 => 2,
-                        48000 => 3,
-                        44100 => 4,
-                        32000 => 5,
-                        24000 => 6,
-                        22050 => 7,
-                        16000 => 8,
-                        12000 => 9,
-                        11025 => 10,
-                        8000 => 11,
-                        7350 => 12,
-                        _ => unreachable!(),
-                    };
-
-                    u16::to_be_bytes(
-                        (audio_object_type as u16) << (16 - 5)
-                            | sampling_frequency_index << (16 - 5 - 4)
-                            | (channel_configuration as u16) << (16 - 5 - 4 - 4),
-                    )
-                }
-
-                const AAC_INFO: AacInfo = AacInfo {
-                    wPayloadType: 1, // ADTS
-                    wAudioProfileLevelIndication: 0x29,
-                    wStructType: 0,
-                    wReserved1: 0,
-                    dwReserved2: 0,
-                    audioSpecificConfig: audio_specific_config(
-                        2, // AAC LC
-                        SAMPLES_PER_SEC,
-                        NUM_CHANNELS as u8,
-                    ),
+            // HEAACWAVEINFOとaudioSpecificConfig()
+            #[repr(C, packed(1))]
+            #[allow(non_snake_case)]
+            struct AacInfo {
+                wPayloadType: u16,
+                wAudioProfileLevelIndication: u16,
+                wStructType: u16,
+                wReserved1: u16,
+                dwReserved2: u32,
+                // https://wiki.multimedia.cx/index.php/MPEG-4_Audio
+                audioSpecificConfig: [u8; 2],
+            }
+            const fn audio_specific_config(
+                audio_object_type: u8,
+                freq: u32,
+                channel_configuration: u8,
+            ) -> [u8; 2] {
+                let sampling_frequency_index = match freq {
+                    96000 => 0,
+                    88200 => 1,
+                    64000 => 2,
+                    48000 => 3,
+                    44100 => 4,
+                    32000 => 5,
+                    24000 => 6,
+                    22050 => 7,
+                    16000 => 8,
+                    12000 => 9,
+                    11025 => 10,
+                    8000 => 11,
+                    7350 => 12,
+                    _ => unreachable!(),
                 };
-                const USER_DATA: [u8; 14] = unsafe { std::mem::transmute(AAC_INFO) };
+
+                u16::to_be_bytes(
+                    (audio_object_type as u16) << (16 - 5)
+                        | sampling_frequency_index << (16 - 5 - 4)
+                        | (channel_configuration as u16) << (16 - 5 - 4 - 4),
+                )
+            }
+
+            const AAC_INFO: AacInfo = AacInfo {
+                wPayloadType: 1, // ADTS
+                wAudioProfileLevelIndication: 0x29,
+                wStructType: 0,
+                wReserved1: 0,
+                dwReserved2: 0,
+                audioSpecificConfig: audio_specific_config(
+                    2, // AAC LC
+                    SAMPLES_PER_SEC,
+                    NUM_CHANNELS as u8,
+                ),
+            };
+            const USER_DATA: [u8; 14] = unsafe { std::mem::transmute(AAC_INFO) };
+            unsafe {
                 media_type.SetBlob(&MF::MF_MT_USER_DATA, &USER_DATA)?;
             }
-            StreamType::AC3 => {
-                // media_type.SetGUID(&MF::MF_MT_MAJOR_TYPE, &MF::MFMediaType_Audio)?;
-                // media_type.SetGUID(&MF::MF_MT_SUBTYPE, &MF::MFAudioFormat_Dolby_AC3)?;
-                todo!()
-            }
-
-            _ => return Err(F::E_INVALIDARG.into()),
+        }
+        StreamType::AC3 => {
+            // media_type.SetGUID(&MF::MF_MT_MAJOR_TYPE, &MF::MFMediaType_Audio)?;
+            // media_type.SetGUID(&MF::MF_MT_SUBTYPE, &MF::MFAudioFormat_Dolby_AC3)?;
+            todo!()
         }
 
-        let stream_descriptor =
-            MF::MFCreateStreamDescriptor(SID_AUDIO, &[Some(media_type.clone())])?;
+        _ => return Err(F::E_INVALIDARG.into()),
+    }
 
+    let stream_descriptor =
+        unsafe { MF::MFCreateStreamDescriptor(SID_AUDIO, &[Some(media_type.clone())])? };
+
+    unsafe {
         let handler = stream_descriptor.GetMediaTypeHandler()?;
         handler.SetCurrentMediaType(&media_type)?;
-
-        Ok(stream_descriptor)
     }
+
+    Ok(stream_descriptor)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -206,55 +216,57 @@ impl TransportStream {
         video_stream: &isdb::filters::sorter::Stream,
         audio_stream: &isdb::filters::sorter::Stream,
     ) -> WinResult<TransportStream> {
-        unsafe {
-            let video_sd = create_video_sd(video_stream)?;
-            let audio_sd = create_audio_sd(audio_stream)?;
-            let presentation_descriptor = MF::MFCreatePresentationDescriptor(Some(&[
+        let video_sd = create_video_sd(video_stream)?;
+        let audio_sd = create_audio_sd(audio_stream)?;
+        let presentation_descriptor = unsafe {
+            MF::MFCreatePresentationDescriptor(Some(&[
                 Some(video_sd.clone()),
                 Some(audio_sd.clone()),
-            ]))?;
+            ]))?
+        };
+        unsafe {
             presentation_descriptor.SelectStream(SID_VIDEO)?;
             presentation_descriptor.SelectStream(SID_AUDIO)?;
-            if let Some(duration) = extract_handler.duration() {
-                presentation_descriptor
-                    .SetUINT64(&MF::MF_PD_DURATION, (duration.as_nanos() / 100) as u64)?;
-            }
-
-            let event_queue = MF::MFCreateEventQueue()?;
-            let dummy_stream: MF::IMFMediaStream = dummy::DummyStream.into();
-
-            let inner = Mutex::new(Inner {
-                extract_handler,
-
-                state: State::Init,
-
-                event_queue,
-                presentation_descriptor,
-                video_stream: dummy_stream.clone(),
-                audio_stream: dummy_stream,
-
-                rate: 1.,
-                pending_eos: 0,
-            });
-            let this = TransportStream(
-                Outer {
-                    inner,
-                    queue: AsyncQueue::new(),
-                }
-                .into(),
-            );
-
-            let video_stream = ElementaryStream::new(&this, video_sd)?;
-            let audio_stream = ElementaryStream::new(&this, audio_sd)?;
-
-            {
-                let mut inner = this.outer().inner.lock();
-                inner.video_stream = video_stream.intf().clone();
-                inner.audio_stream = audio_stream.intf().clone();
-            }
-
-            Ok(this)
         }
+        if let Some(duration) = extract_handler.duration() {
+            let duration = (duration.as_nanos() / 100) as u64;
+            unsafe { presentation_descriptor.SetUINT64(&MF::MF_PD_DURATION, duration)? };
+        }
+
+        let event_queue = unsafe { MF::MFCreateEventQueue()? };
+        let dummy_stream: MF::IMFMediaStream = dummy::DummyStream.into();
+
+        let inner = Mutex::new(Inner {
+            extract_handler,
+
+            state: State::Init,
+
+            event_queue,
+            presentation_descriptor,
+            video_stream: dummy_stream.clone(),
+            audio_stream: dummy_stream,
+
+            rate: 1.,
+            pending_eos: 0,
+        });
+        let this = TransportStream(
+            Outer {
+                inner,
+                queue: AsyncQueue::new(),
+            }
+            .into(),
+        );
+
+        let video_stream = ElementaryStream::new(&this, video_sd)?;
+        let audio_stream = ElementaryStream::new(&this, audio_sd)?;
+
+        {
+            let mut inner = this.outer().inner.lock();
+            inner.video_stream = video_stream.intf().clone();
+            inner.audio_stream = audio_stream.intf().clone();
+        }
+
+        Ok(this)
     }
 
     #[inline]
@@ -366,14 +378,14 @@ impl Outer {
             (inner.state, inner.event_queue.clone())
         };
         if state != State::Shutdown {
-            unsafe {
-                let _ = event_queue.QueueEventParamVar(
+            let _ = unsafe {
+                event_queue.QueueEventParamVar(
                     MF::MEError.0 as u32,
                     &GUID_NULL,
                     error.into(),
                     std::ptr::null(),
-                );
-            }
+                )
+            };
         }
     }
 
@@ -430,20 +442,18 @@ impl Inner {
         &self,
         pd: &MF::IMFPresentationDescriptor,
     ) -> WinResult<()> {
-        unsafe {
-            let c_streams = pd.GetStreamDescriptorCount()?;
-            if c_streams != 2 {
-                return Err(F::E_INVALIDARG.into());
-            }
-
-            let all_selected = wrap::wrap2(|a, b| pd.GetStreamDescriptorByIndex(0, a, b))?.0
-                && wrap::wrap2(|a, b| pd.GetStreamDescriptorByIndex(1, a, b))?.0;
-            if !all_selected {
-                return Err(F::E_INVALIDARG.into());
-            }
-
-            Ok(())
+        let c_streams = unsafe { pd.GetStreamDescriptorCount()? };
+        if c_streams != 2 {
+            return Err(F::E_INVALIDARG.into());
         }
+
+        let all_selected = wrap::wrap2(|a, b| unsafe { pd.GetStreamDescriptorByIndex(0, a, b) })?.0
+            && wrap::wrap2(|a, b| unsafe { pd.GetStreamDescriptorByIndex(1, a, b) })?.0;
+        if !all_selected {
+            return Err(F::E_INVALIDARG.into());
+        }
+
+        Ok(())
     }
 
     fn do_start(
@@ -452,108 +462,108 @@ impl Inner {
         start_pos: Option<i64>,
     ) -> WinResult<()> {
         let r: WinResult<()> = 'r: {
+            log::trace!("TransportStream::do_start");
+
+            let start_pos = if let Some(start_pos) = start_pos {
+                if this
+                    .extract_handler
+                    .set_position(Duration::from_nanos((start_pos as u64) * 100))
+                    .is_err()
+                {
+                    break 'r Err(MF::MF_E_INVALIDREQUEST.into());
+                }
+
+                PropVariant::I64(start_pos)
+            } else {
+                PropVariant::Empty
+            };
+
+            tri!('r, Inner::select_streams(this, pd, Some(&start_pos)));
+
+            this.state = State::Started;
+
             unsafe {
-                log::trace!("TransportStream::do_start");
-
-                let start_pos = if let Some(start_pos) = start_pos {
-                    if this
-                        .extract_handler
-                        .set_position(Duration::from_nanos((start_pos as u64) * 100))
-                        .is_err()
-                    {
-                        break 'r Err(MF::MF_E_INVALIDREQUEST.into());
-                    }
-
-                    PropVariant::I64(start_pos)
-                } else {
-                    PropVariant::Empty
-                };
-
-                tri!('r, Inner::select_streams(this, pd, Some(&start_pos)));
-
-                this.state = State::Started;
-
                 tri!('r, this.event_queue.QueueEventParamVar(
                     MF::MESourceStarted.0 as u32,
                     &GUID_NULL,
                     F::S_OK,
                     &start_pos.to_raw(),
-                ));
+                ))
+            };
 
-                Ok(())
-            }
+            Ok(())
         };
         if let Err(ref e) = r {
             log::debug!("error[do_start]: {}", e);
-            unsafe {
-                let _ = this.event_queue.QueueEventParamVar(
+            let _ = unsafe {
+                this.event_queue.QueueEventParamVar(
                     MF::MESourceStarted.0 as u32,
                     &GUID_NULL,
                     e.code(),
                     std::ptr::null(),
-                );
-            }
+                )
+            };
         }
 
         r
     }
 
     fn do_stop(this: &mut MutexGuard<Self>) -> WinResult<()> {
+        log::trace!("TransportStream::do_stop");
+
+        Inner::video_stream_unlocked(this, |es| es.stop())?;
+        Inner::audio_stream_unlocked(this, |es| es.stop())?;
+
+        this.state = State::Stopped;
+
         unsafe {
-            log::trace!("TransportStream::do_stop");
-
-            Inner::video_stream_unlocked(this, |es| es.stop())?;
-            Inner::audio_stream_unlocked(this, |es| es.stop())?;
-
-            this.state = State::Stopped;
-
             this.event_queue.QueueEventParamVar(
                 MF::MESourceStopped.0 as u32,
                 &GUID_NULL,
                 F::S_OK,
                 std::ptr::null(),
-            )?;
+            )?
+        };
 
-            Ok(())
-        }
+        Ok(())
     }
 
     fn do_pause(this: &mut MutexGuard<Self>) -> WinResult<()> {
+        log::trace!("TransportStream::do_pause");
+
+        Inner::video_stream_unlocked(this, |es| es.pause())?;
+        Inner::audio_stream_unlocked(this, |es| es.pause())?;
+
+        this.state = State::Paused;
+
         unsafe {
-            log::trace!("TransportStream::do_pause");
-
-            Inner::video_stream_unlocked(this, |es| es.pause())?;
-            Inner::audio_stream_unlocked(this, |es| es.pause())?;
-
-            this.state = State::Paused;
-
             this.event_queue.QueueEventParamVar(
                 MF::MESourcePaused.0 as u32,
                 &GUID_NULL,
                 F::S_OK,
                 std::ptr::null(),
-            )?;
+            )?
+        };
 
-            Ok(())
-        }
+        Ok(())
     }
 
     fn end_of_stream(this: &mut MutexGuard<Self>) -> WinResult<()> {
-        unsafe {
-            log::trace!("TransportStream::end_of_stream");
+        log::trace!("TransportStream::end_of_stream");
 
-            this.pending_eos -= 1;
-            if this.pending_eos == 0 {
+        this.pending_eos -= 1;
+        if this.pending_eos == 0 {
+            unsafe {
                 this.event_queue.QueueEventParamVar(
                     MF::MEEndOfPresentation.0 as u32,
                     &GUID_NULL,
                     F::S_OK,
                     std::ptr::null(),
-                )?;
-            }
-
-            Ok(())
+                )?
+            };
         }
+
+        Ok(())
     }
 
     fn select_streams(
@@ -561,27 +571,29 @@ impl Inner {
         _pd: &MF::IMFPresentationDescriptor,
         start_pos: Option<&PropVariant>,
     ) -> WinResult<()> {
+        let event = if this.state == State::Init {
+            log::trace!("TransportStream: MENewStream");
+            MF::MENewStream.0 as u32
+        } else {
+            log::trace!("TransportStream: MEUpdatedStream");
+            MF::MEUpdatedStream.0 as u32
+        };
+
+        this.pending_eos = 0;
+
         unsafe {
-            let event = if this.state == State::Init {
-                log::trace!("TransportStream: MENewStream");
-                MF::MENewStream.0 as u32
-            } else {
-                log::trace!("TransportStream: MEUpdatedStream");
-                MF::MEUpdatedStream.0 as u32
-            };
-
-            this.pending_eos = 0;
-
             this.event_queue
-                .QueueEventParamUnk(event, &GUID_NULL, F::S_OK, &this.video_stream)?;
-            Inner::video_stream_unlocked(this, |es| es.start(start_pos))?;
+                .QueueEventParamUnk(event, &GUID_NULL, F::S_OK, &this.video_stream)?
+        };
+        Inner::video_stream_unlocked(this, |es| es.start(start_pos))?;
+        unsafe {
             this.event_queue
-                .QueueEventParamUnk(event, &GUID_NULL, F::S_OK, &this.audio_stream)?;
-            Inner::audio_stream_unlocked(this, |es| es.start(start_pos))?;
+                .QueueEventParamUnk(event, &GUID_NULL, F::S_OK, &this.audio_stream)?
+        };
+        Inner::audio_stream_unlocked(this, |es| es.start(start_pos))?;
 
-            this.pending_eos = 2;
-            Ok(())
-        }
+        this.pending_eos = 2;
+        Ok(())
     }
 
     fn streams_need_data(this: &mut MutexGuard<Self>) -> bool {
@@ -642,9 +654,9 @@ impl MF::IMFGetService_Impl for Outer {
         iid: *const windows::core::GUID,
         ppv: *mut *mut core::ffi::c_void,
     ) -> WinResult<()> {
-        unsafe {
-            use windows::core::Interface;
+        use windows::core::Interface;
 
+        unsafe {
             match (*sid, *iid) {
                 (MF::MF_RATE_CONTROL_SERVICE, MF::IMFRateControl::IID) => {
                     *ppv = self.cast::<MF::IMFRateControl>().unwrap().into_raw();
@@ -669,16 +681,14 @@ impl MF::IMFMediaEventGenerator_Impl for Outer {
         &self,
         dwflags: MF::MEDIA_EVENT_GENERATOR_GET_EVENT_FLAGS,
     ) -> WinResult<MF::IMFMediaEvent> {
-        unsafe {
-            log::trace!("TransportStream::GetEvent");
+        log::trace!("TransportStream::GetEvent");
 
-            let queue = {
-                let inner = self.inner.lock();
-                inner.check_shutdown()?;
-                inner.event_queue.clone()
-            };
-            queue.GetEvent(dwflags.0)
-        }
+        let queue = {
+            let inner = self.inner.lock();
+            inner.check_shutdown()?;
+            inner.event_queue.clone()
+        };
+        unsafe { queue.GetEvent(dwflags.0) }
     }
 
     fn BeginGetEvent(
@@ -686,23 +696,19 @@ impl MF::IMFMediaEventGenerator_Impl for Outer {
         pcallback: Option<&MF::IMFAsyncCallback>,
         punkstate: Option<&C::IUnknown>,
     ) -> WinResult<()> {
-        unsafe {
-            log::trace!("TransportStream::BeginGetEvent");
+        log::trace!("TransportStream::BeginGetEvent");
 
-            let inner = self.inner.lock();
-            inner.check_shutdown()?;
-            inner.event_queue.BeginGetEvent(pcallback, punkstate)
-        }
+        let inner = self.inner.lock();
+        inner.check_shutdown()?;
+        unsafe { inner.event_queue.BeginGetEvent(pcallback, punkstate) }
     }
 
     fn EndGetEvent(&self, presult: Option<&MF::IMFAsyncResult>) -> WinResult<MF::IMFMediaEvent> {
-        unsafe {
-            log::trace!("TransportStream::EndGetEvent");
+        log::trace!("TransportStream::EndGetEvent");
 
-            let inner = self.inner.lock();
-            inner.check_shutdown()?;
-            inner.event_queue.EndGetEvent(presult)
-        }
+        let inner = self.inner.lock();
+        inner.check_shutdown()?;
+        unsafe { inner.event_queue.EndGetEvent(presult) }
     }
 
     fn QueueEvent(
@@ -712,11 +718,11 @@ impl MF::IMFMediaEventGenerator_Impl for Outer {
         hrstatus: C::HRESULT,
         pvvalue: *const windows::Win32::System::Com::StructuredStorage::PROPVARIANT,
     ) -> WinResult<()> {
-        unsafe {
-            log::trace!("TransportStream::QueueEvent");
+        log::trace!("TransportStream::QueueEvent");
 
-            let inner = self.inner.lock();
-            inner.check_shutdown()?;
+        let inner = self.inner.lock();
+        inner.check_shutdown()?;
+        unsafe {
             inner
                 .event_queue
                 .QueueEventParamVar(met, guidextendedtype, hrstatus, pvvalue)
@@ -737,15 +743,13 @@ impl MF::IMFMediaSource_Impl for Outer {
     }
 
     fn CreatePresentationDescriptor(&self) -> WinResult<MF::IMFPresentationDescriptor> {
-        unsafe {
-            log::trace!("TransportStream::CreatePresentationDescriptor");
+        log::trace!("TransportStream::CreatePresentationDescriptor");
 
-            let inner = self.inner.lock();
-            inner.check_shutdown()?;
+        let inner = self.inner.lock();
+        inner.check_shutdown()?;
 
-            let pd = inner.presentation_descriptor.Clone()?;
-            Ok(pd)
-        }
+        let pd = unsafe { inner.presentation_descriptor.Clone()? };
+        Ok(pd)
     }
 
     fn Start(
@@ -754,48 +758,48 @@ impl MF::IMFMediaSource_Impl for Outer {
         time_format: *const C::GUID,
         start_pos: *const windows::Win32::System::Com::StructuredStorage::PROPVARIANT,
     ) -> WinResult<()> {
-        unsafe {
-            log::trace!(
-                "TransportStream::Start: pd={:?}, time_format={:?}, start_pos={:?}",
-                pd,
-                time_format.as_ref(),
-                start_pos.as_ref().and_then(PropVariant::new),
-            );
+        let time_format = unsafe { time_format.as_ref() };
+        let start_pos = unsafe { start_pos.as_ref() };
+        log::trace!(
+            "TransportStream::Start: pd={:?}, time_format={:?}, start_pos={:?}",
+            pd,
+            time_format,
+            start_pos.and_then(PropVariant::new),
+        );
 
-            let inner = self.inner.lock();
+        let inner = self.inner.lock();
 
-            let pd = pd.ok_or(F::E_INVALIDARG)?;
-            let Some(start_pos) = start_pos.as_ref() else {
-                return Err(F::E_INVALIDARG.into());
-            };
-            if !time_format.is_null() && *time_format != GUID_NULL {
-                return Err(MF::MF_E_UNSUPPORTED_TIME_FORMAT.into());
-            }
-            let start_pos = match PropVariant::new(start_pos) {
-                Some(PropVariant::Empty) => None,
+        let pd = pd.ok_or(F::E_INVALIDARG)?;
+        let Some(start_pos) = start_pos else {
+            return Err(F::E_INVALIDARG.into());
+        };
+        if matches!(time_format, Some(tf) if *tf != GUID_NULL) {
+            return Err(MF::MF_E_UNSUPPORTED_TIME_FORMAT.into());
+        }
+        let start_pos = match PropVariant::new(start_pos) {
+            Some(PropVariant::Empty) => None,
 
-                Some(PropVariant::I64(v)) => {
-                    if !matches!(inner.state, State::Init | State::Stopped) {
-                        return Err(MF::MF_E_INVALIDREQUEST.into());
-                    }
-
-                    Some(v)
+            Some(PropVariant::I64(v)) => {
+                if !matches!(inner.state, State::Init | State::Stopped) {
+                    return Err(MF::MF_E_INVALIDREQUEST.into());
                 }
 
-                _ => return Err(MF::MF_E_UNSUPPORTED_TIME_FORMAT.into()),
-            };
+                Some(v)
+            }
 
-            inner.check_shutdown()?;
-            inner.validate_presentation_descriptor(pd)?;
+            _ => return Err(MF::MF_E_UNSUPPORTED_TIME_FORMAT.into()),
+        };
 
-            let pd = PresentationDescriptor(pd.clone());
-            self.enqueue_op(move |outer| {
-                let pd = pd;
-                Inner::do_start(&mut outer.inner.lock(), &pd.0, start_pos)
-            })?;
+        inner.check_shutdown()?;
+        inner.validate_presentation_descriptor(pd)?;
 
-            Ok(())
-        }
+        let pd = PresentationDescriptor(pd.clone());
+        self.enqueue_op(move |outer| {
+            let pd = pd;
+            Inner::do_start(&mut outer.inner.lock(), &pd.0, start_pos)
+        })?;
+
+        Ok(())
     }
 
     fn Stop(&self) -> WinResult<()> {
@@ -821,69 +825,67 @@ impl MF::IMFMediaSource_Impl for Outer {
     }
 
     fn Shutdown(&self) -> WinResult<()> {
-        unsafe {
-            log::trace!("TransportStream::Shutdown");
+        log::trace!("TransportStream::Shutdown");
 
-            let mut inner = self.inner.lock();
-            inner.check_shutdown()?;
+        let mut inner = self.inner.lock();
+        inner.check_shutdown()?;
 
-            let _ = Inner::video_stream_unlocked(&mut inner, |es| es.shutdown());
-            let _ = Inner::audio_stream_unlocked(&mut inner, |es| es.shutdown());
-            let _ = inner.event_queue.Shutdown();
+        let _ = Inner::video_stream_unlocked(&mut inner, |es| es.shutdown());
+        let _ = Inner::audio_stream_unlocked(&mut inner, |es| es.shutdown());
+        let _ = unsafe { inner.event_queue.Shutdown() };
 
-            inner.state = State::Shutdown;
-            Ok(())
-        }
+        inner.state = State::Shutdown;
+        Ok(())
     }
 }
 
 #[allow(non_snake_case)]
 impl MF::IMFRateControl_Impl for Outer {
     fn SetRate(&self, thin: F::BOOL, rate: f32) -> WinResult<()> {
+        log::trace!("TransportStream::SetRate");
+
+        let mut inner = self.inner.lock();
+        inner.check_shutdown()?;
+
+        // TODO: リアルタイム視聴では速度変更不可
+
+        if rate < 0. {
+            return Err(MF::MF_E_REVERSE_UNSUPPORTED.into());
+        }
+        if thin.as_bool() {
+            return Err(MF::MF_E_THINNING_UNSUPPORTED.into());
+        }
+
+        inner.rate = rate;
+
         unsafe {
-            log::trace!("TransportStream::SetRate");
-
-            let mut inner = self.inner.lock();
-            inner.check_shutdown()?;
-
-            // TODO: リアルタイム視聴では速度変更不可
-
-            if rate < 0. {
-                return Err(MF::MF_E_REVERSE_UNSUPPORTED.into());
-            }
-            if thin.as_bool() {
-                return Err(MF::MF_E_THINNING_UNSUPPORTED.into());
-            }
-
-            inner.rate = rate;
-
             inner.event_queue.QueueEventParamVar(
                 MF::MESourceRateChanged.0 as u32,
                 &GUID_NULL,
                 F::S_OK,
                 &PropVariant::F32(rate).to_raw(),
-            )?;
+            )?
+        };
 
-            Ok(())
-        }
+        Ok(())
     }
 
     fn GetRate(&self, thin: *mut F::BOOL, rate: *mut f32) -> WinResult<()> {
-        unsafe {
-            log::trace!("TransportStream::GetRate");
+        log::trace!("TransportStream::GetRate");
+        let thin = unsafe { thin.as_mut() };
+        let rate = unsafe { rate.as_mut() };
 
-            let inner = self.inner.lock();
-            inner.check_shutdown()?;
+        let inner = self.inner.lock();
+        inner.check_shutdown()?;
 
-            if let Some(thin) = thin.as_mut() {
-                *thin = F::FALSE;
-            }
-            if let Some(rate) = rate.as_mut() {
-                *rate = inner.rate;
-            }
-
-            Ok(())
+        if let Some(thin) = thin {
+            *thin = F::FALSE;
         }
+        if let Some(rate) = rate {
+            *rate = inner.rate;
+        }
+
+        Ok(())
     }
 }
 
@@ -937,34 +939,33 @@ impl MF::IMFRateSupport_Impl for Outer {
         rate: f32,
         nearest_supported_rate: *mut f32,
     ) -> windows::core::Result<()> {
-        unsafe {
-            log::trace!("TransportStream::IsRateSupported");
+        log::trace!("TransportStream::IsRateSupported");
+        let nearest_supported_rate = unsafe { nearest_supported_rate.as_mut() };
 
-            let inner = self.inner.lock();
-            inner.check_shutdown()?;
+        let inner = self.inner.lock();
+        inner.check_shutdown()?;
 
-            if rate < 0. {
-                return Err(MF::MF_E_REVERSE_UNSUPPORTED.into());
-            }
-            if thin.as_bool() {
-                return Err(MF::MF_E_THINNING_UNSUPPORTED.into());
-            }
-
-            // TODO: リアルタイム視聴では1.0以外不可？
-            if rate > 128. {
-                if let Some(nearest_supported_rate) = nearest_supported_rate.as_mut() {
-                    *nearest_supported_rate = 128.;
-                }
-
-                return Err(MF::MF_E_UNSUPPORTED_RATE.into());
-            }
-
-            if let Some(nearest_supported_rate) = nearest_supported_rate.as_mut() {
-                *nearest_supported_rate = rate;
-            }
-
-            Ok(())
+        if rate < 0. {
+            return Err(MF::MF_E_REVERSE_UNSUPPORTED.into());
         }
+        if thin.as_bool() {
+            return Err(MF::MF_E_THINNING_UNSUPPORTED.into());
+        }
+
+        // TODO: リアルタイム視聴では1.0以外不可？
+        if rate > 128. {
+            if let Some(nearest_supported_rate) = nearest_supported_rate {
+                *nearest_supported_rate = 128.;
+            }
+
+            return Err(MF::MF_E_UNSUPPORTED_RATE.into());
+        }
+
+        if let Some(nearest_supported_rate) = nearest_supported_rate {
+            *nearest_supported_rate = rate;
+        }
+
+        Ok(())
     }
 }
 

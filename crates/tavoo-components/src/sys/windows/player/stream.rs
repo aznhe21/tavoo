@@ -28,22 +28,20 @@ impl ElementaryStream {
         source: &TransportStream,
         stream_descriptor: MF::IMFStreamDescriptor,
     ) -> WinResult<ElementaryStream> {
-        unsafe {
-            let event_queue = MF::MFCreateEventQueue()?;
-            let inner = Mutex::new(Inner {
-                source: source.intf().downgrade().unwrap(),
-                event_queue,
+        let event_queue = unsafe { MF::MFCreateEventQueue()? };
+        let inner = Mutex::new(Inner {
+            source: source.intf().downgrade().unwrap(),
+            event_queue,
 
-                stream_descriptor,
+            stream_descriptor,
 
-                state: State::Stopped,
-                is_eos: false,
+            state: State::Stopped,
+            is_eos: false,
 
-                samples: VecDeque::new(),
-                requests: VecDeque::new(),
-            });
-            Ok(ElementaryStream(Outer { inner }.into()))
-        }
+            samples: VecDeque::new(),
+            requests: VecDeque::new(),
+        });
+        Ok(ElementaryStream(Outer { inner }.into()))
     }
 
     #[inline]
@@ -169,42 +167,44 @@ impl Inner {
 
     fn dispatch_samples(this: &mut MutexGuard<Self>) -> WinResult<()> {
         let r: WinResult<()> = 'r: {
-            unsafe {
-                if this.state != State::Started {
-                    break 'r Ok(());
+            if this.state != State::Started {
+                break 'r Ok(());
+            }
+
+            while !this.samples.is_empty() && !this.requests.is_empty() {
+                let sample = this.samples.pop_front().unwrap();
+                let token = this.requests.pop_front().unwrap();
+
+                if let Some(token) = token {
+                    unsafe { tri!('r, sample.SetUnknown(&MF::MFSampleExtension_Token, &token)) };
                 }
 
-                while !this.samples.is_empty() && !this.requests.is_empty() {
-                    let sample = this.samples.pop_front().unwrap();
-                    let token = this.requests.pop_front().unwrap();
-
-                    if let Some(token) = token {
-                        tri!('r, sample.SetUnknown(&MF::MFSampleExtension_Token, &token));
-                    }
-
+                unsafe {
                     tri!('r, this.event_queue.QueueEventParamUnk(
                         MF::MEMediaSample.0 as u32,
                         &GUID_NULL,
                         F::S_OK,
                         &sample,
-                    ));
-                }
+                    ))
+                };
+            }
 
-                if this.samples.is_empty() && this.is_eos {
-                    log::trace!("sample exhausted ({:p})", this);
+            if this.samples.is_empty() && this.is_eos {
+                log::trace!("sample exhausted ({:p})", this);
+                unsafe {
                     tri!('r, this.event_queue.QueueEventParamVar(
                         MF::MEEndOfStream.0 as u32,
                         &GUID_NULL,
                         F::S_OK,
                         std::ptr::null(),
-                    ));
-                    tri!('r, Inner::source_unlocked(this, |ts| ts.enqueue_end_of_stream()));
-                } else if this.needs_data() {
-                    Inner::source_unlocked(this, |ts| ts.request_sample());
-                }
-
-                Ok(())
+                    ))
+                };
+                tri!('r, Inner::source_unlocked(this, |ts| ts.enqueue_end_of_stream()));
+            } else if this.needs_data() {
+                Inner::source_unlocked(this, |ts| ts.request_sample());
             }
+
+            Ok(())
         };
         if let Err(ref e) = r {
             if this.state != State::Shutdown {
@@ -261,16 +261,14 @@ impl Inner {
     }
 
     fn shutdown(this: &mut MutexGuard<Self>) -> WinResult<()> {
-        unsafe {
-            this.state = State::Shutdown;
+        this.state = State::Shutdown;
 
-            let _ = this.event_queue.Shutdown();
+        let _ = unsafe { this.event_queue.Shutdown() };
 
-            this.samples.clear();
-            this.requests.clear();
+        this.samples.clear();
+        this.requests.clear();
 
-            Ok(())
-        }
+        Ok(())
     }
 
     #[inline]
@@ -294,17 +292,15 @@ impl MF::IMFMediaEventGenerator_Impl for Outer {
         &self,
         dwflags: MF::MEDIA_EVENT_GENERATOR_GET_EVENT_FLAGS,
     ) -> WinResult<MF::IMFMediaEvent> {
-        unsafe {
-            log::trace!("ElementaryStream::GetEvent");
+        log::trace!("ElementaryStream::GetEvent");
 
-            let queue = {
-                let inner = self.inner.lock();
-                inner.check_shutdown()?;
-                inner.event_queue.clone()
-            };
+        let queue = {
+            let inner = self.inner.lock();
+            inner.check_shutdown()?;
+            inner.event_queue.clone()
+        };
 
-            queue.GetEvent(dwflags.0)
-        }
+        unsafe { queue.GetEvent(dwflags.0) }
     }
 
     fn BeginGetEvent(
@@ -312,25 +308,21 @@ impl MF::IMFMediaEventGenerator_Impl for Outer {
         pcallback: Option<&MF::IMFAsyncCallback>,
         punkstate: Option<&C::IUnknown>,
     ) -> WinResult<()> {
-        unsafe {
-            log::trace!("ElementaryStream::BeginGetEvent");
+        log::trace!("ElementaryStream::BeginGetEvent");
 
-            let inner = self.inner.lock();
-            inner.check_shutdown()?;
+        let inner = self.inner.lock();
+        inner.check_shutdown()?;
 
-            inner.event_queue.BeginGetEvent(pcallback, punkstate)
-        }
+        unsafe { inner.event_queue.BeginGetEvent(pcallback, punkstate) }
     }
 
     fn EndGetEvent(&self, presult: Option<&MF::IMFAsyncResult>) -> WinResult<MF::IMFMediaEvent> {
-        unsafe {
-            log::trace!("ElementaryStream::EndGetEvent");
+        log::trace!("ElementaryStream::EndGetEvent");
 
-            let inner = self.inner.lock();
-            inner.check_shutdown()?;
+        let inner = self.inner.lock();
+        inner.check_shutdown()?;
 
-            inner.event_queue.EndGetEvent(presult)
-        }
+        unsafe { inner.event_queue.EndGetEvent(presult) }
     }
 
     fn QueueEvent(

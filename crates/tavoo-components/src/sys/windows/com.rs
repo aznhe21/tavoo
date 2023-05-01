@@ -20,9 +20,7 @@ impl From<Com::StructuredStorage::PROPVARIANT> for RawPropVariant {
 
 impl Drop for RawPropVariant {
     fn drop(&mut self) {
-        unsafe {
-            let _ = Com::StructuredStorage::PropVariantClear(&mut self.0);
-        }
+        let _ = unsafe { Com::StructuredStorage::PropVariantClear(&mut self.0) };
     }
 }
 
@@ -182,12 +180,10 @@ impl<T> CoBox<T> {
     }
 
     pub fn try_new_uninit() -> WinResult<CoBox<MaybeUninit<T>>> {
-        unsafe {
-            let ptr = Com::CoTaskMemAlloc(std::mem::size_of::<T>()).cast::<MaybeUninit<T>>();
-            NonNull::new(ptr)
-                .map(CoBox)
-                .ok_or_else(C::Error::from_win32)
-        }
+        let ptr = unsafe { Com::CoTaskMemAlloc(std::mem::size_of::<T>()).cast::<MaybeUninit<T>>() };
+        NonNull::new(ptr)
+            .map(CoBox)
+            .ok_or_else(C::Error::from_win32)
     }
 }
 
@@ -197,14 +193,13 @@ impl<T> CoBox<[T]> {
             return Err(F::E_INVALIDARG.into());
         }
 
-        unsafe {
-            let ptr = Com::CoTaskMemAlloc(std::mem::size_of::<T>() * len).cast::<MaybeUninit<T>>();
-            if ptr.is_null() {
-                Err(C::Error::from_win32())
-            } else {
-                let ptr = std::ptr::slice_from_raw_parts_mut(ptr, len);
-                Ok(CoBox(NonNull::new_unchecked(ptr)))
-            }
+        let ptr =
+            unsafe { Com::CoTaskMemAlloc(std::mem::size_of::<T>() * len).cast::<MaybeUninit<T>>() };
+        if ptr.is_null() {
+            Err(C::Error::from_win32())
+        } else {
+            let ptr = std::ptr::slice_from_raw_parts_mut(ptr, len);
+            Ok(CoBox(unsafe { NonNull::new_unchecked(ptr) }))
         }
     }
 }
@@ -253,9 +248,7 @@ impl<T: ?Sized + fmt::Display> fmt::Display for CoBox<T> {
 
 impl<T: ?Sized> Drop for CoBox<T> {
     fn drop(&mut self) {
-        unsafe {
-            Com::CoTaskMemFree(Some(self.0.as_ptr().cast_const().cast()));
-        }
+        unsafe { Com::CoTaskMemFree(Some(self.0.as_ptr().cast_const().cast())) };
     }
 }
 
@@ -272,9 +265,9 @@ impl CoString {
         if ptr.is_null() {
             CoString(None)
         } else {
-            let len = ptr.as_wide().len();
+            let len = unsafe { ptr.as_wide() }.len();
             let slice = std::ptr::slice_from_raw_parts_mut(ptr.0, len);
-            CoString(Some(CoBox::from_raw(slice)))
+            CoString(Some(unsafe { CoBox::from_raw(slice) }))
         }
     }
 

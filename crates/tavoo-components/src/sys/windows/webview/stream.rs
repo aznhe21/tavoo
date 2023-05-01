@@ -15,14 +15,12 @@ pub struct DerivedStream(pub IStream);
 impl Read for DerivedStream {
     /// `buf`が`u32`を超える容量の場合、読み取られる容量は`u32::MAX`に制限される。
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        unsafe {
-            let len = buf.len().try_into().unwrap_or(u32::MAX);
-            let mut read = 0;
-            match self.0.Read(buf.as_mut_ptr().cast(), len, Some(&mut read)) {
-                // 32ビット未満はサポートしないので`as`で良い
-                F::S_OK | F::S_FALSE => Ok(read as usize),
-                hr => Err(crate::sys::error::hr_to_io(hr)),
-            }
+        let len = buf.len().try_into().unwrap_or(u32::MAX);
+        let mut read = 0;
+        match unsafe { self.0.Read(buf.as_mut_ptr().cast(), len, Some(&mut read)) } {
+            // 32ビット未満はサポートしないので`as`で良い
+            F::S_OK | F::S_FALSE => Ok(read as usize),
+            hr => Err(crate::sys::error::hr_to_io(hr)),
         }
     }
 }
@@ -30,23 +28,19 @@ impl Read for DerivedStream {
 impl Write for DerivedStream {
     /// `buf`が`u32`を超える容量の場合、書き込まれる容量は`u32::MAX`に制限される。
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        unsafe {
-            let len = buf.len().try_into().unwrap_or(u32::MAX);
-            let mut written = 0;
-            match self.0.Write(buf.as_ptr().cast(), len, Some(&mut written)) {
-                // 32ビット未満はサポートしないので`as`で良い
-                F::S_OK => Ok(written as usize),
-                hr => Err(crate::sys::error::hr_to_io(hr)),
-            }
+        let len = buf.len().try_into().unwrap_or(u32::MAX);
+        let mut written = 0;
+        match unsafe { self.0.Write(buf.as_ptr().cast(), len, Some(&mut written)) } {
+            // 32ビット未満はサポートしないので`as`で良い
+            F::S_OK => Ok(written as usize),
+            hr => Err(crate::sys::error::hr_to_io(hr)),
         }
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        unsafe {
-            match self.0.Commit(STGC_DEFAULT) {
-                Ok(()) => Ok(()),
-                Err(e) => Err(crate::sys::error::hr_to_io(e.code())),
-            }
+        match unsafe { self.0.Commit(STGC_DEFAULT) } {
+            Ok(()) => Ok(()),
+            Err(e) => Err(crate::sys::error::hr_to_io(e.code())),
         }
     }
 }
@@ -70,23 +64,26 @@ impl ReadStream {
 #[allow(non_snake_case)]
 impl ISequentialStream_Impl for ReadStream {
     fn Read(&self, pv: *mut c_void, cb: u32, pcbread: *mut u32) -> HRESULT {
-        unsafe {
-            // 32ビット未満はサポートしないので`as`で良い
-            let cb = cb as usize;
+        let pcbread = unsafe { pcbread.as_mut() };
+
+        // 32ビット未満はサポートしないので`as`で良い
+        let cb = cb as usize;
+        let r = unsafe {
             let buf = std::slice::from_raw_parts_mut(pv.cast(), cb);
-            match (*self.0.get()).read(buf) {
-                Ok(read) => {
-                    if let Some(pcbread) = pcbread.as_mut() {
-                        *pcbread = read as u32;
-                    }
-                    if read < cb {
-                        F::S_FALSE
-                    } else {
-                        F::S_OK
-                    }
+            (*self.0.get()).read(buf)
+        };
+        match r {
+            Ok(read) => {
+                if let Some(pcbread) = pcbread {
+                    *pcbread = read as u32;
                 }
-                Err(e) => crate::sys::error::io_to_hr(e),
+                if read < cb {
+                    F::S_FALSE
+                } else {
+                    F::S_OK
+                }
             }
+            Err(e) => crate::sys::error::io_to_hr(e),
         }
     }
 
@@ -112,23 +109,23 @@ impl IStream_Impl for ReadStream {
         pcbread: *mut u64,
         pcbwritten: *mut u64,
     ) -> WinResult<()> {
-        unsafe {
-            let pstm = pstm.ok_or(F::E_POINTER)?;
+        let pstm = pstm.ok_or(F::E_POINTER)?;
+        let pcbread = unsafe { pcbread.as_mut() };
+        let pcbwritten = unsafe { pcbwritten.as_mut() };
+        let reader = unsafe { &mut *self.0.get() };
 
-            let reader = &mut *self.0.get();
-            let mut writer = DerivedStream(pstm.clone());
-            match std::io::copy(&mut reader.take(cb), &mut writer) {
-                Ok(written) => {
-                    if let Some(pcbread) = pcbread.as_mut() {
-                        *pcbread = written;
-                    }
-                    if let Some(pcbwritten) = pcbwritten.as_mut() {
-                        *pcbwritten = written;
-                    }
-                    Ok(())
+        let mut writer = DerivedStream(pstm.clone());
+        match std::io::copy(&mut reader.take(cb), &mut writer) {
+            Ok(written) => {
+                if let Some(pcbread) = pcbread {
+                    *pcbread = written;
                 }
-                Err(e) => Err(crate::sys::error::io_to_hr(e).into()),
+                if let Some(pcbwritten) = pcbwritten {
+                    *pcbwritten = written;
+                }
+                Ok(())
             }
+            Err(e) => Err(crate::sys::error::io_to_hr(e).into()),
         }
     }
 

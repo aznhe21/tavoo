@@ -327,9 +327,7 @@ impl<H: EventHandler + Clone> Player<H> {
 
 impl<H> Drop for Player<H> {
     fn drop(&mut self) {
-        unsafe {
-            let _ = MF::MFShutdown();
-        }
+        let _ = unsafe { MF::MFShutdown() };
     }
 }
 

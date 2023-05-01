@@ -267,45 +267,56 @@ impl Builder {
                 let r = 'r: {
                     let controller = tri!('r, controller);
 
-                    unsafe {
-                        const CONTEXT_WV2_OLD: &str = "WebView2のバージョンが古い";
-                        let controller = tri!('r, controller
+                    const CONTEXT_WV2_OLD: &str = "WebView2のバージョンが古い";
+                    let controller = tri!('r, controller
                             .cast::<ICoreWebView2Controller>()
                             .context(CONTEXT_WV2_OLD));
-                        let env = tri!('r, env
+                    let env = tri!('r, env
                             .cast::<ICoreWebView2Environment>()
                             .context(CONTEXT_WV2_OLD));
-                        let webview = tri!('r, tri!('r, controller
-                            .CoreWebView2())
+                    let webview = tri!('r,
+                        unsafe { tri!('r, controller.CoreWebView2()) }
                             .cast::<ICoreWebView2>()
-                            .context(CONTEXT_WV2_OLD));
+                            .context(CONTEXT_WV2_OLD)
+                    );
 
-                        let hwnd_webview =
-                            WM::FindWindowExW(hwnd, None, w!("Chrome_WidgetWin_0"), None);
-                        if hwnd_webview == F::HWND(0) {
-                            break 'r Err(C::Error::from_win32())
-                                .context("WebViewの子ウィンドウが見つからない");
-                        }
+                    let hwnd_webview =
+                        unsafe { WM::FindWindowExW(hwnd, None, w!("Chrome_WidgetWin_0"), None) };
+                    if hwnd_webview == F::HWND(0) {
+                        break 'r Err(C::Error::from_win32())
+                            .context("WebViewの子ウィンドウが見つからない");
+                    }
 
-                        // 背景を透過させる（1/2）
-                        tri!('r, controller.SetDefaultBackgroundColor(WV2::COREWEBVIEW2_COLOR::default()));
+                    // 背景を透過させる（1/2）
+                    unsafe {
+                        tri!(
+                            'r,
+                            controller
+                                .SetDefaultBackgroundColor(WV2::COREWEBVIEW2_COLOR::default())
+                        );
+                    }
 
-                        // D&Dを無効化
-                        // TODO: クライアント領域でD&Dを受けられなくなる
+                    // D&Dを無効化
+                    // TODO: クライアント領域でD&Dを受けられなくなる
+                    unsafe {
                         tri!('r, controller.SetAllowExternalDrop(false));
+                    }
 
-                        for scheme in scheme_handlers.keys() {
-                            // "scheme://"で始まるURLに遷移・要求できるようにする
-                            let uri = format!("{}://*", scheme);
-                            let uri = WideString::from_str(&*uri);
+                    for scheme in scheme_handlers.keys() {
+                        // "scheme://"で始まるURLに遷移・要求できるようにする
+                        let uri = format!("{}://*", scheme);
+                        let uri = WideString::from_str(&*uri);
+                        unsafe {
                             tri!('r, webview.AddWebResourceRequestedFilter(
                                 uri.as_pcwstr(),
                                 WV2::COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL,
                             ));
                         }
+                    }
 
-                        let mut token =
-                            windows::Win32::System::WinRT::EventRegistrationToken::default();
+                    let mut token =
+                        windows::Win32::System::WinRT::EventRegistrationToken::default();
+                    unsafe {
                         tri!('r, webview.add_NavigationCompleted(
                             &WebView::nav_handler(hwnd_webview, &controller),
                             &mut token,
@@ -314,28 +325,34 @@ impl Builder {
                             &WebView::req_handler(&env, scheme_handlers),
                             &mut token,
                         ));
+                    }
 
-                        if let Some(handler) = navigation_starting_handler {
+                    if let Some(handler) = navigation_starting_handler {
+                        unsafe {
                             tri!('r, webview.add_NavigationStarting(&WebView::navigation_starting(handler), &mut token));
                         }
-                        if let Some(handler) = document_title_changed_handler {
+                    }
+                    if let Some(handler) = document_title_changed_handler {
+                        unsafe {
                             tri!('r, webview.add_DocumentTitleChanged(
                                 &WebView::title_changed_handler(handler),
                                 &mut token,
                             ));
                         }
-                        if let Some(handler) = web_message_received_handler {
+                    }
+                    if let Some(handler) = web_message_received_handler {
+                        unsafe {
                             tri!('r, tri!('r, webview.Settings()).SetIsWebMessageEnabled(F::TRUE));
                             tri!('r, webview.add_WebMessageReceived(
                                 &WebView::web_message_handler(handler),
                                 &mut token,
                             ));
                         }
-
-                        tri!('r, state.lock().shift(webview, controller));
-
-                        Ok(())
                     }
+
+                    tri!('r, state.lock().shift(webview, controller));
+
+                    Ok(())
                 };
 
                 let create_completed = create_completed
@@ -473,14 +490,16 @@ impl WebView {
         let mut loaded = false;
         let controller = controller.clone();
 
-        callback::navigation_completed_event_handler(move |_sender, _args| unsafe {
+        callback::navigation_completed_event_handler(move |_sender, _args| {
             if !loaded {
-                // 背景を透過させる（2/2）
-                let ex_style = WM::GetWindowLongPtrW(hwnd_webview, WM::GWL_EXSTYLE)
-                    | WM::WS_EX_TRANSPARENT.0 as isize;
-                WM::SetWindowLongPtrW(hwnd_webview, WM::GWL_EXSTYLE, ex_style);
+                unsafe {
+                    // 背景を透過させる（2/2）
+                    let ex_style = WM::GetWindowLongPtrW(hwnd_webview, WM::GWL_EXSTYLE)
+                        | WM::WS_EX_TRANSPARENT.0 as isize;
+                    WM::SetWindowLongPtrW(hwnd_webview, WM::GWL_EXSTYLE, ex_style);
+                }
 
-                controller.SetIsVisible(true)?;
+                unsafe { controller.SetIsVisible(true)? };
 
                 loaded = true;
             }
@@ -494,12 +513,12 @@ impl WebView {
     ) -> WV2::ICoreWebView2WebResourceRequestedEventHandler {
         let env = env.clone();
 
-        callback::web_resource_requested_event_handler(move |_, args| unsafe {
+        callback::web_resource_requested_event_handler(move |_, args| {
             let args = args.ok_or(F::E_POINTER)?;
-            let req = args.Request()?;
+            let req = unsafe { args.Request()? };
 
             let res = 'res: {
-                let uri = wrap::wrap(|s| req.Uri(s))?.to_string()?;
+                let uri = wrap::wrap(|s| unsafe { req.Uri(s) })?.to_string()?;
                 let uri: http::Uri = match uri.parse() {
                     Err(e) => {
                         log::warn!("不正なURL（'{}'）：{}", uri, e);
@@ -509,7 +528,7 @@ impl WebView {
                 };
                 log::trace!("独自スキームへのアクセス：{}", uri);
 
-                let method = wrap::wrap(|s| req.Method(s))?.to_string()?;
+                let method = wrap::wrap(|s| unsafe { req.Method(s) })?.to_string()?;
                 if !method.eq_ignore_ascii_case("GET") {
                     log::warn!("独自スキームへのGET以外のアクセス：{}", method);
                     break 'res None;
@@ -533,7 +552,7 @@ impl WebView {
                     .unwrap()
             });
 
-            args.SetResponse(&build_response(&env, res)?)?;
+            unsafe { args.SetResponse(&build_response(&env, res)?)? };
             Ok(())
         })
     }
@@ -541,13 +560,13 @@ impl WebView {
     fn navigation_starting(
         mut handler: Box<dyn FnMut(&str) -> bool>,
     ) -> WV2::ICoreWebView2NavigationStartingEventHandler {
-        callback::navigation_starting_event_handler(move |_, args| unsafe {
+        callback::navigation_starting_event_handler(move |_, args| {
             let args = args.ok_or(F::E_POINTER)?;
 
-            let uri = wrap::wrap(|a| args.Uri(a))?.to_string()?;
+            let uri = wrap::wrap(|a| unsafe { args.Uri(a) })?.to_string()?;
             if !handler(&*uri) {
                 log::trace!("'{}'への遷移を取り消し", uri);
-                args.SetCancel(F::TRUE)?;
+                unsafe { args.SetCancel(F::TRUE)? };
             }
             Ok(())
         })
@@ -556,10 +575,10 @@ impl WebView {
     fn title_changed_handler(
         mut handler: Box<dyn FnMut(&str)>,
     ) -> WV2::ICoreWebView2DocumentTitleChangedEventHandler {
-        callback::document_title_changed_event_handler(move |webview, _| unsafe {
+        callback::document_title_changed_event_handler(move |webview, _| {
             let webview = webview.ok_or(F::E_POINTER)?;
 
-            let title = wrap::wrap(|a| webview.DocumentTitle(a))?.to_string()?;
+            let title = wrap::wrap(|a| unsafe { webview.DocumentTitle(a) })?.to_string()?;
             handler(&*title);
             Ok(())
         })
@@ -568,10 +587,10 @@ impl WebView {
     fn web_message_handler(
         mut handler: Box<dyn FnMut(&str)>,
     ) -> WV2::ICoreWebView2WebMessageReceivedEventHandler {
-        callback::web_message_received_event_handler(move |_, args| unsafe {
+        callback::web_message_received_event_handler(move |_, args| {
             let args = args.ok_or(F::E_POINTER)?;
 
-            let json = wrap::wrap(|a| args.WebMessageAsJson(a))?.to_string()?;
+            let json = wrap::wrap(|a| unsafe { args.WebMessageAsJson(a) })?.to_string()?;
             handler(&*json);
             Ok(())
         })
@@ -654,19 +673,17 @@ fn build_request(
 ) -> WinResult<Request> {
     let mut builder = http::Request::builder().uri(uri);
 
-    unsafe {
-        builder = builder.method(method);
+    builder = builder.method(method);
 
-        let headers = req.Headers()?;
-        let iter = headers.GetIterator()?;
-        if wrap::wrap(|v| iter.HasCurrentHeader(v))? {
-            loop {
-                let (name, value) = wrap::wrap2(|a, b| iter.GetCurrentHeader(a, b))?;
-                builder = builder.header(&*name.to_string()?, &*value.to_string()?);
+    let headers = unsafe { req.Headers()? };
+    let iter = unsafe { headers.GetIterator()? };
+    if wrap::wrap(|v| unsafe { iter.HasCurrentHeader(v) })? {
+        loop {
+            let (name, value) = wrap::wrap2(|a, b| unsafe { iter.GetCurrentHeader(a, b) })?;
+            builder = builder.header(&*name.to_string()?, &*value.to_string()?);
 
-                if !wrap::wrap(|v| iter.MoveNext(v))? {
-                    break;
-                }
+            if !wrap::wrap(|v| unsafe { iter.MoveNext(v) })? {
+                break;
             }
         }
     }
