@@ -251,6 +251,7 @@ impl Inner {
                 None => std::ptr::null(),
             },
         )?;
+        this.is_eos = false;
         this.state = State::Started;
         Inner::dispatch_samples(this)?;
 

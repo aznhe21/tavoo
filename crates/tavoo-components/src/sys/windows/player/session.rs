@@ -83,7 +83,7 @@ fn add_output_node(
         let node = MF::MFCreateTopologyNode(MF::MF_TOPOLOGY_OUTPUT_NODE)?;
         node.SetObject(activate)?;
         node.SetUINT32(&MF::MF_TOPONODE_STREAMID, id)?;
-        node.SetUINT32(&MF::MF_TOPONODE_NOSHUTDOWN_ON_REMOVE, F::FALSE.0 as u32)?;
+        node.SetUINT32(&MF::MF_TOPONODE_NOSHUTDOWN_ON_REMOVE, F::TRUE.0 as u32)?;
         topology.AddNode(&node)?;
 
         Ok(node)
@@ -619,7 +619,17 @@ impl Inner {
         unsafe {
             log::trace!("Session::start_playback");
 
-            self.session.Start(&GUID_NULL, &Default::default())?;
+            let start_pos = if self.state == State::Stopped {
+                // 停止状態からの再生は最初から
+                self.extract_handler
+                    .reset()
+                    .map_err(|_| MF::MF_E_INVALIDREQUEST)?;
+                PropVariant::I64(0)
+            } else {
+                // それ以外は位置を保持
+                PropVariant::Empty
+            };
+            self.session.Start(&GUID_NULL, &start_pos.to_raw())?;
 
             self.state = State::Started;
             self.is_pending = true;
@@ -677,9 +687,6 @@ impl Inner {
                 self.op_request.command = Some(Command::Stop);
             } else {
                 self.session.Stop()?;
-                self.extract_handler
-                    .reset()
-                    .map_err(|_| MF::MF_E_INVALIDREQUEST)?;
 
                 self.state = State::Stopped;
                 self.is_pending = true;
