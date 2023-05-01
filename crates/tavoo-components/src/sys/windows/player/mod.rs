@@ -223,12 +223,6 @@ impl<H: EventHandler + Clone> Player<H> {
     }
 
     #[inline]
-    pub fn play_or_pause(&mut self) -> Result<()> {
-        self.session_must()?.play_or_pause()?;
-        Ok(())
-    }
-
-    #[inline]
     pub fn stop(&mut self) -> Result<()> {
         self.session_must()?.stop()?;
         Ok(())

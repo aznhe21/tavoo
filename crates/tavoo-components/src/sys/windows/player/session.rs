@@ -215,11 +215,6 @@ impl Session {
     }
 
     #[inline]
-    pub fn play_or_pause(&self) -> WinResult<()> {
-        self.inner().play_or_pause()
-    }
-
-    #[inline]
     pub fn stop(&self) -> WinResult<()> {
         self.inner().stop()
     }
@@ -664,14 +659,6 @@ impl Inner {
         }
 
         Ok(())
-    }
-
-    pub fn play_or_pause(&mut self) -> WinResult<()> {
-        match self.state {
-            State::Started => self.pause(),
-            State::Paused | State::Stopped => self.play(),
-            _ => Err(MF::MF_E_INVALIDREQUEST.into()),
-        }
     }
 
     pub fn repaint(&mut self) -> WinResult<()> {

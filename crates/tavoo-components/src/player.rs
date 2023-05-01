@@ -117,12 +117,6 @@ impl<H: EventHandler + Clone> Player<H> {
         self.inner.pause()
     }
 
-    /// 再生、または一時停止する。
-    #[inline]
-    pub fn play_or_pause(&mut self) -> Result<()> {
-        self.inner.play_or_pause()
-    }
-
     /// 停止する。
     #[inline]
     pub fn stop(&mut self) -> Result<()> {
@@ -142,13 +136,6 @@ impl<H: EventHandler + Clone> Player<H> {
     #[inline]
     pub fn set_bounds(&mut self, left: u32, top: u32, right: u32, bottom: u32) -> Result<()> {
         self.inner.set_bounds(left, top, right, bottom)
-    }
-
-    /// 映像の大きさを設定する。
-    #[inline]
-    #[deprecated = "代わりに`set_bounds(0, 0, width, height)`を使用すること"]
-    pub fn resize_video(&mut self, width: u32, height: u32) -> Result<()> {
-        self.set_bounds(0, 0, width, height)
     }
 
     /// 動画の長さを取得する。
