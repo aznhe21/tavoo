@@ -181,6 +181,8 @@ export class Player extends HTMLElement {
       case "rate":
         // 再生速度が更新された
         this.#playbackRate = noti.rate;
+        this.#lastPos = this.currentTime;
+        this.#lastPosTime = performance.now();
         this.dispatchEvent(new PlayerEvent("rate"));
         break;
 
@@ -322,14 +324,14 @@ export class Player extends HTMLElement {
   /**
    * 再生位置が通知された時刻
    */
-  #lastPosTime = performance.now();
+  #lastPosTime = 0;
 
   /**
    * 秒単位の再生位置。
    */
   get currentTime() {
     if (this.#state === "playing") {
-      return this.#lastPos + (performance.now() - this.#lastPosTime) / 1000;
+      return this.#lastPos + (performance.now() - this.#lastPosTime) / 1000 * this.#playbackRate;
     }
     return this.#lastPos;
   }

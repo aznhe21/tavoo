@@ -115,8 +115,14 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
     }
 
     fn on_rate_changed(&self, rate: f32) {
-        let noti = Notification::Rate { rate: rate as f64 };
-        self.0.dispatch_task(move |app| app.send_notification(noti));
+        self.0.dispatch_task(move |app| {
+            app.send_notification(Notification::Rate { rate: rate as f64 });
+            if let Ok(pos) = app.player.position() {
+                app.send_notification(Notification::Position {
+                    position: pos.as_secs_f64(),
+                });
+            }
+        });
     }
 
     fn on_services_updated(&self, services: &isdb::filters::sorter::ServiceMap) {
