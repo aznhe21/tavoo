@@ -1,4 +1,4 @@
-import { UI } from "tavoo://player/content/ui.js";
+import { Skin as SkinDefault } from "tavoo://player/content/skin-default.js";
 
 /**
  * プレイヤーで発生するイベント。
@@ -463,5 +463,9 @@ export class Player extends HTMLElement {
 export function startup() {
   Player.register();
 
-  new UI();
+  customElements.define("skin-default", SkinDefault);
+  while (document.body.firstChild) {
+    document.body.firstChild.remove();
+  }
+  document.body.append(document.createElement("skin-default"));
 }

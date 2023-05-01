@@ -1,8 +1,22 @@
-export class UI {
+export class Skin extends HTMLElement {
   #player;
 
   constructor() {
-    this.#player = document.getElementById("player");
+    super();
+
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(`
+      <root xmlns="http://www.w3.org/1999/xhtml">
+        <link rel="stylesheet" href="tavoo://player/skin/default.css" />
+
+        <tavoo-player id="player"></tavoo-player>
+      </root>
+    `, "application/xml");
+
+    const shadow = this.attachShadow({ mode: "open" });
+    shadow.append(...doc.documentElement.children);
+
+    this.#player = shadow.getElementById("player");
 
     this.#player.addEventListener("source", this);
     this.#player.addEventListener("rate-range", this);
@@ -16,22 +30,13 @@ export class UI {
     this.#player.addEventListener("service-changed", this);
     this.#player.addEventListener("caption", this);
     this.#player.addEventListener("superimpose", this);
+  }
+
+  connectedCallback() {
     document.body.addEventListener("keydown", this);
   }
 
-  detach() {
-    this.#player.removeEventListener("source", this);
-    this.#player.removeEventListener("rate-range", this);
-    this.#player.removeEventListener("duration", this);
-    this.#player.removeEventListener("state", this);
-    this.#player.removeEventListener("position", this);
-    this.#player.removeEventListener("rate", this);
-    this.#player.removeEventListener("services", this);
-    this.#player.removeEventListener("service", this);
-    this.#player.removeEventListener("event", this);
-    this.#player.removeEventListener("service-changed", this);
-    this.#player.removeEventListener("caption", this);
-    this.#player.removeEventListener("superimpose", this);
+  disconnectedCallback() {
     document.body.removeEventListener("keydown", this);
   }
 
