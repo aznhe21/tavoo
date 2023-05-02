@@ -20,10 +20,10 @@ pub trait Shooter {
     /// PATが更新された際に呼ばれる。
     fn on_pat_updated(&mut self, services: &ServiceMap);
 
-    /// `service_id`のPMTが更新された際に呼ばれる。
+    /// `service`のPMTが更新された際に呼ばれる。
     fn on_pmt_updated(&mut self, services: &ServiceMap, service: &Service);
 
-    /// `service_id`のEITが更新された際に呼ばれる。
+    /// `service`のEITが更新された際に呼ばれる。
     ///
     /// このメソッドが呼ばれた後に`Service::present_event`等が`None`を返す場合、
     /// EIT未受信ではないためイベントが存在しないことを表す。
