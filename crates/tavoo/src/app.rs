@@ -233,6 +233,7 @@ pub struct App {
     window: winit::window::Window,
     player: player::Player<PlayerEventHandler>,
     webview: webview::WebView,
+    loaded: bool,
 
     player_bounds: Rect,
     closing: bool,
@@ -249,6 +250,7 @@ impl App {
             window,
             player,
             webview,
+            loaded: false,
 
             player_bounds: Rect {
                 left: 0.,
@@ -285,6 +287,29 @@ impl App {
         self.send_notification(Notification::State {
             state: PlaybackState::Closed,
         });
+    }
+
+    fn on_webview_navigation_completed(&mut self) {
+        if !self.loaded {
+            // 初回の読み込み完了でウィンドウを表示する
+            self.loaded = true;
+            self.window.set_visible(true);
+            self.window.focus_window();
+            if let Err(e) = self.webview.focus() {
+                log::error!("webview.focus: {}", e);
+            }
+        }
+    }
+
+    fn on_webview_title_changed(&mut self, title: String) {
+        self.window.set_title(&*title);
+    }
+
+    fn on_webview_message_received(&mut self, json: String) {
+        match serde_json::from_str(&*json) {
+            Ok(command) => self.process_command(command),
+            Err(e) => log::error!("WebViewからの不正なJSON：{}", e),
+        }
     }
 
     fn send_notification(&mut self, noti: Notification) {
@@ -407,6 +432,8 @@ pub fn run() -> anyhow::Result<()> {
 
     let window = WindowBuilder::new()
         .with_title("TaVoo")
+        // 読み込み完了までウィンドウを表示しない
+        .with_visible(false)
         .build(&event_loop)?;
 
     let player = player::Player::new(&window, PlayerEventHandler(proxy.clone()))?;
@@ -414,22 +441,22 @@ pub fn run() -> anyhow::Result<()> {
     let mut builder = webview::WebView::builder()
         .add_scheme("tavoo", crate::scheme::TavooHandler)
         .navigation_starting_handler(|uri| uri == "tavoo://player/content/player.html")
+        .navigation_completed_handler({
+            let proxy = proxy.clone();
+            move || proxy.dispatch_task(move |app| app.on_webview_navigation_completed())
+        })
         .document_title_changed_handler({
             let proxy = proxy.clone();
             move |title| {
                 let title = title.to_string();
-                proxy.dispatch_task(move |app| {
-                    app.window.set_title(&*title);
-                });
+                proxy.dispatch_task(move |app| app.on_webview_title_changed(title));
             }
         })
         .web_message_received_handler({
             let proxy = proxy.clone();
-            move |json| match serde_json::from_str(json) {
-                Ok(command) => proxy.dispatch_task(move |app| app.process_command(command)),
-                Err(e) => {
-                    log::error!("WebViewからの不正なJSON：{}", e)
-                }
+            move |json| {
+                let json = json.to_string();
+                proxy.dispatch_task(move |app| app.on_webview_message_received(json));
             }
         });
     if cfg!(target_os = "windows") {
@@ -440,7 +467,6 @@ pub fn run() -> anyhow::Result<()> {
         let proxy = proxy.clone();
         move |r| proxy.send_event(UserEvent::WebViewCreated(r))
     });
-    webview.focus()?;
     webview.navigate("tavoo://player/content/player.html")?;
 
     let mut app = App::new(window, player, webview);
