@@ -433,6 +433,7 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
         table.set_as_psi(Pid::PAT, Tag::Pat);
         table.set_as_psi(Pid::SDT, Tag::Sdt);
         table.set_as_psi(Pid::H_EIT, Tag::Eit);
+        table.set_as_psi(Pid::L_EIT, Tag::Eit);
     }
 
     fn on_packet_storing(&mut self, ctx: &mut demux::Context<Self::Tag>) {
