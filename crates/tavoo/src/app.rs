@@ -1,3 +1,4 @@
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use isdb::psi::table::ServiceId;
@@ -75,9 +76,7 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
 
     fn on_started(&self) {
         self.0.dispatch_task(|app| {
-            app.send_notification(Notification::State {
-                state: PlaybackState::Playing,
-            });
+            app.set_state(PlaybackState::Playing);
             if let Ok(pos) = app.player.position() {
                 app.send_notification(Notification::Position {
                     position: pos.as_secs_f64(),
@@ -88,9 +87,7 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
 
     fn on_paused(&self) {
         self.0.dispatch_task(|app| {
-            app.send_notification(Notification::State {
-                state: PlaybackState::Paused,
-            })
+            app.set_state(PlaybackState::Paused);
         });
     }
 
@@ -99,9 +96,7 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
             if app.closing {
                 app.closed();
             } else {
-                app.send_notification(Notification::State {
-                    state: PlaybackState::Stopped,
-                });
+                app.set_state(PlaybackState::Stopped);
                 app.send_notification(Notification::Position { position: 0. });
             }
         });
@@ -235,6 +230,9 @@ pub struct App {
     webview: webview::WebView,
     loaded: bool,
 
+    source: Option<PathBuf>,
+    state: PlaybackState,
+
     player_bounds: Rect,
     closing: bool,
 }
@@ -251,6 +249,9 @@ impl App {
             player,
             webview,
             loaded: false,
+
+            source: None,
+            state: PlaybackState::Closed,
 
             player_bounds: Rect {
                 left: 0.,
@@ -280,13 +281,38 @@ impl App {
         }
     }
 
+    fn open(&mut self, path: &Path) {
+        match self.player.open(&*path) {
+            Ok(()) => {
+                self.set_source(Some(path.to_path_buf()));
+                self.set_state(PlaybackState::OpenPending);
+            }
+            Err(e) => {
+                log::error!("player.open: {}", e);
+            }
+        }
+    }
+
     fn closed(&mut self) {
         self.closing = false;
 
-        self.send_notification(Notification::Source { path: None });
-        self.send_notification(Notification::State {
-            state: PlaybackState::Closed,
+        self.set_source(None);
+        self.set_state(PlaybackState::Closed);
+    }
+
+    fn set_source(&mut self, source: Option<PathBuf>) {
+        self.source = source;
+        self.send_notification(Notification::Source {
+            path: self
+                .source
+                .as_ref()
+                .map(|path| path.to_string_lossy().into_owned()),
         });
+    }
+
+    fn set_state(&mut self, state: PlaybackState) {
+        self.state = state;
+        self.send_notification(Notification::State { state });
     }
 
     fn on_webview_navigation_completed(&mut self) {
@@ -297,6 +323,44 @@ impl App {
             self.window.focus_window();
             if let Err(e) = self.webview.focus() {
                 log::error!("webview.focus: {}", e);
+            }
+        }
+
+        self.send_notification(Notification::Source {
+            path: self
+                .source
+                .as_ref()
+                .map(|path| path.to_string_lossy().into_owned()),
+        });
+        if let Ok(range) = self.player.rate_range() {
+            self.send_notification(Notification::RateRange {
+                slowest: *range.start() as f64,
+                fastest: *range.end() as f64,
+            });
+        }
+        self.send_notification(Notification::Duration {
+            duration: self.player.duration().map(|dur| dur.as_secs_f64()),
+        });
+        self.send_notification(Notification::State { state: self.state });
+        if let Ok(pos) = self.player.position() {
+            self.send_notification(Notification::Position {
+                position: pos.as_secs_f64(),
+            });
+        }
+        if let Ok(rate) = self.player.rate() {
+            self.send_notification(Notification::Rate { rate: rate as f64 });
+        }
+        if let Some(services) = self.player.services() {
+            self.send_notification(Notification::Services {
+                services: services.values().map(Into::into).collect(),
+            });
+
+            if let Some(service) = self.player.selected_service() {
+                self.send_notification(Notification::ServiceChanged {
+                    new_service_id: service.service_id().get(),
+                    video_component_tag: self.player.active_video_tag(),
+                    audio_component_tag: self.player.active_audio_tag(),
+                });
             }
         }
     }
@@ -495,19 +559,7 @@ pub fn run() -> anyhow::Result<()> {
                     }
                 }
 
-                WindowEvent::DroppedFile(path) => match app.player.open(&*path) {
-                    Ok(()) => {
-                        app.send_notification(Notification::Source {
-                            path: Some(path.to_string_lossy().into_owned()),
-                        });
-                        app.send_notification(Notification::State {
-                            state: PlaybackState::OpenPending,
-                        });
-                    }
-                    Err(e) => {
-                        log::error!("player.open: {}", e);
-                    }
-                },
+                WindowEvent::DroppedFile(path) => app.open(&*path),
 
                 WindowEvent::CloseRequested => {
                     control_flow.set_exit();
