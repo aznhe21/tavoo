@@ -521,6 +521,7 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                     return;
                 };
                 let Some(service) = self.services.get_mut(&pmt.program_number) else {
+                    self.repo.unset(psi);
                     return;
                 };
 

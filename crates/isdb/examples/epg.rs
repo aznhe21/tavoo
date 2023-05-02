@@ -109,6 +109,7 @@ impl isdb::demux::Filter for Filter {
                 };
 
                 let Some(network) = self.networks.get_mut(&eit.original_network_id) else {
+                    self.repo.unset(psi);
                     return;
                 };
                 let service = network

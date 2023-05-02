@@ -157,6 +157,7 @@ impl isdb::demux::Filter for Filter {
                     return;
                 }
                 let Some(service) = self.find_service(eit.service_id) else {
+                    self.repo.unset(psi);
                     return;
                 };
                 let Some(event) = eit.events.first() else {

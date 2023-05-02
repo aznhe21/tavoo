@@ -186,6 +186,36 @@ impl Repository {
         T::read(psi)
     }
 
+    /// `psi`が示すサブテーブルのバージョンを未読み取りとする。
+    ///
+    /// `read`で読み取ったテーブルがまだ処理出来る段階にない場合（PAT前のPMTなど）に、
+    /// このメソッドを使用して未読み取りとすることで再度処理出来るようにする。
+    pub fn unset(&mut self, psi: &PsiSection) {
+        let Some(syntax) = psi.syntax.as_ref() else {
+            return;
+        };
+
+        let len = (syntax.last_section_number + 1) as usize;
+        let idx = syntax.section_number as usize;
+        if idx >= len {
+            return;
+        }
+
+        let Some(versions) = self
+            .subtable_versions
+            .get_mut(&(psi.table_id, syntax.table_id_extension))
+        else {
+            return;
+        };
+
+        if idx <= versions.len() {
+            return;
+        }
+
+        // バージョン番号は5ビットであるため0x20以上は無効値
+        versions[idx] = 0xFF;
+    }
+
     /// `Repository`の内容を消去して初期化する。
     #[inline]
     pub fn clear(&mut self) {

@@ -169,7 +169,7 @@ impl<F: FnMut(&LogoData)> LogoDownloadFilter<F> {
         };
 
         let Some(service) = self.services.get_mut(&pmt.program_number) else {
-            log::debug!("PMT: unknown program number");
+            self.repo.unset(psi);
             return;
         };
         if service.service_type == ServiceType::ENGINEERING {
