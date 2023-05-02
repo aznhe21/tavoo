@@ -156,13 +156,35 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
     }
 
     fn on_service_changed(&self, service: &isdb::filters::sorter::Service) {
-        let noti = Notification::ServiceChanged {
-            new_service_id: service.service_id().get(),
-        };
-        self.0.dispatch_task(move |app| app.send_notification(noti));
+        let new_service_id = service.service_id().get();
+        self.0.dispatch_task(move |app| {
+            app.send_notification(Notification::ServiceChanged {
+                new_service_id,
+                video_component_tag: app.player.active_video_tag(),
+                audio_component_tag: app.player.active_audio_tag(),
+            });
+        });
     }
 
-    fn on_stream_changed(&self, _: tavoo_components::extract::StreamChanged) {}
+    fn on_stream_changed(&self, _: tavoo_components::extract::StreamChanged) {
+        self.0.dispatch_task(move |app| {
+            if let Some((video_component_tag, audio_component_tag)) = app
+                .player
+                .active_video_tag()
+                .zip(app.player.active_audio_tag())
+            {
+                app.send_notification(Notification::StreamChanged {
+                    video_component_tag,
+                    audio_component_tag,
+                });
+            }
+            if let Ok(pos) = app.player.position() {
+                app.send_notification(Notification::Position {
+                    position: pos.as_secs_f64(),
+                });
+            }
+        });
+    }
 
     fn on_caption(&self, caption: &isdb::filters::sorter::Caption) {
         let noti = Notification::Caption {

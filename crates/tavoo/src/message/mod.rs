@@ -57,7 +57,16 @@ pub enum Notification {
         event: service::Event,
     },
     /// サービスが選択し直された。
-    ServiceChanged { new_service_id: u16 },
+    ServiceChanged {
+        new_service_id: u16,
+        video_component_tag: Option<u8>,
+        audio_component_tag: Option<u8>,
+    },
+    /// ストリームが変更された。
+    StreamChanged {
+        video_component_tag: u8,
+        audio_component_tag: u8,
+    },
     /// 字幕。
     Caption { caption: caption::Caption },
     /// 文字スーパー。

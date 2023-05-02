@@ -149,6 +149,9 @@ export class Player extends HTMLElement {
         this.#lastPosTime = 0;
         this.#duration = NaN;
         this.#services._clear();
+        this.#currentServiceId = 0;
+        this.#activeVideoTag = null;
+        this.#activeAudioTag = null;
         this.dispatchEvent(new PlayerEvent("source"));
         break;
 
@@ -216,7 +219,15 @@ export class Player extends HTMLElement {
       case "service-changed":
         // サービスが選択し直された
         this.#currentServiceId = noti.new_service_id;
-        this.dispatchEvent(new ServiceEvent("service-changed", { serviceId: noti.new_service_id }));
+        this.#activeVideoTag = noti.video_component_tag;
+        this.#activeAudioTag = noti.audio_component_tag;
+        this.dispatchEvent(new PlayerEvent("service-changed"));
+        break;
+
+      case "stream-changed":
+        this.#activeVideoTag = noti.video_component_tag;
+        this.#activeAudioTag = noti.audio_component_tag;
+        this.dispatchEvent(new PlayerEvent("stream-changed"));
         break;
 
       case "caption":
@@ -297,6 +308,28 @@ export class Player extends HTMLElement {
    */
   get currentService() {
     return this.#currentServiceId !== 0 ? this.#services.getById(this.#currentServiceId) : null;
+  }
+
+  #activeVideoTag = null;
+
+  /**
+   * アクティブな映像コンポーネントのタグ。
+   *
+   * TSを開いていない状態、または映像ストリームにコンポーネントタグがない場合には`null`となる。
+   */
+  get activeVideoTag() {
+    return this.#activeVideoTag;
+  }
+
+  #activeAudioTag = null;
+
+  /**
+   * アクティブな音声コンポーネントのタグ。
+   *
+   * TSを開いていない状態、または音声ストリームにコンポーネントタグがない場合には`null`となる。
+   */
+  get activeAudioTag() {
+    return this.#activeAudioTag;
   }
 
   /**

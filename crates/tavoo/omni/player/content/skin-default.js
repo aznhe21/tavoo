@@ -28,6 +28,7 @@ export class Skin extends HTMLElement {
     this.#player.addEventListener("service", this);
     this.#player.addEventListener("event", this);
     this.#player.addEventListener("service-changed", this);
+    this.#player.addEventListener("stream-changed", this);
     this.#player.addEventListener("caption", this);
     this.#player.addEventListener("superimpose", this);
   }
@@ -86,7 +87,11 @@ export class Skin extends HTMLElement {
           }
 
           case "service-changed":
-            console.log(`新サービスID：${e.serviceId}`);
+            console.log(`新サービスID：${this.#player.currentServiceId}`);
+            break;
+
+          case "stream-changed":
+            console.log("ストリーム更新");
             break;
 
           case "caption":

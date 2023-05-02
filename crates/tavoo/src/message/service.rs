@@ -155,6 +155,7 @@ impl From<&isdb::filters::sorter::EventInfo> for Event {
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct Service {
     service_id: u16,
+    is_oneseg: bool,
     video_streams: Vec<Stream>,
     audio_streams: Vec<Stream>,
     provider_name: String,
@@ -168,6 +169,7 @@ impl From<&isdb::filters::sorter::Service> for Service {
     fn from(service: &isdb::filters::sorter::Service) -> Service {
         Service {
             service_id: service.service_id().get(),
+            is_oneseg: service.is_oneseg(),
             video_streams: service.video_streams().iter().map(Into::into).collect(),
             audio_streams: service.audio_streams().iter().map(Into::into).collect(),
             provider_name: service.provider_name().to_string(Default::default()),
