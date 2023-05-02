@@ -1,5 +1,6 @@
 //! パケットを仕分けるためのフィルター。
 
+use fxhash::FxHashMap;
 use fxhash::FxHashSet;
 use smallvec::SmallVec;
 
@@ -18,6 +19,8 @@ use crate::AribString;
 /// 各メソッドには現在[`Sorter`]の保持するサービス一覧が与えられる。
 pub trait Shooter {
     /// PATが更新された際に呼ばれる。
+    ///
+    /// パケットの順序によっては既にイベント情報が存在する場合がある。
     fn on_pat_updated(&mut self, services: &ServiceMap);
 
     /// `service`のPMTが更新された際に呼ばれる。
@@ -109,7 +112,7 @@ impl Stream {
     }
 }
 
-/// PAT・PMTから送出されるサービス情報。
+/// PAT・PMT・EITから送出されるサービス情報。
 #[derive(Debug, Clone)]
 pub struct Service {
     service_id: ServiceId,
@@ -362,6 +365,8 @@ pub struct Sorter<T> {
     repo: psi::Repository,
 
     services: ServiceMap,
+    // PAT前のEIT
+    events: FxHashMap<ServiceId, (Option<EventInfo>, Option<EventInfo>)>,
 }
 
 impl<T> Sorter<T> {
@@ -372,6 +377,7 @@ impl<T> Sorter<T> {
             repo: psi::Repository::new(),
 
             services: ServiceMap::default(),
+            events: FxHashMap::default(),
         }
     }
 
@@ -463,25 +469,33 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                     return;
                 };
 
+                // メモリを解放するためself.eventsを置き換える
+                let mut events = std::mem::take(&mut self.events);
+
                 for (i, program) in pat.pmts.iter().enumerate() {
                     let service_id = program.program_number;
 
                     let entry = self.services.entry(service_id);
                     let index = entry.index();
-                    entry.or_insert_with(|| Service {
-                        service_id,
-                        pmt_pid: program.program_map_pid,
-                        pcr_pid: Pid::NULL,
-                        pcr: None,
-                        pmt_filled: false,
-                        video_streams: Vec::new(),
-                        audio_streams: Vec::new(),
-                        caption_stream: None,
-                        superimpose_stream: None,
-                        provider_name: AribString::new(),
-                        service_name: AribString::new(),
-                        present_event: None,
-                        following_event: None,
+                    entry.or_insert_with(|| {
+                        let (present_event, following_event) =
+                            events.remove(&service_id).unwrap_or_else(|| (None, None));
+
+                        Service {
+                            service_id,
+                            pmt_pid: program.program_map_pid,
+                            pcr_pid: Pid::NULL,
+                            pcr: None,
+                            pmt_filled: false,
+                            video_streams: Vec::new(),
+                            audio_streams: Vec::new(),
+                            caption_stream: None,
+                            superimpose_stream: None,
+                            provider_name: AribString::new(),
+                            service_name: AribString::new(),
+                            present_event,
+                            following_event,
+                        }
                     });
 
                     // pat.pmtsの順に並べる
@@ -618,14 +632,11 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                 let Some(psi::table::Eit::ActualPf(eit)) = self.repo.read(psi) else {
                     return;
                 };
+                // TODO: transport_stream_idやoriginal_network_idをチェックすべき？
                 let is_present = match eit.section_number {
                     0 => true,
                     1 => false,
                     _ => return,
-                };
-                // TODO: transport_stream_idやoriginal_network_idもチェックすべき？
-                let Some(service) = self.services.get_mut(&eit.service_id) else {
-                    return;
                 };
 
                 let event = eit.events.get(0).map(|event| {
@@ -706,17 +717,29 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                     }
                 });
 
-                if is_present {
-                    service.present_event = event;
-                } else {
-                    service.following_event = event;
-                }
+                if let Some(service) = self.services.get_mut(&eit.service_id) {
+                    if is_present {
+                        service.present_event = event;
+                    } else {
+                        service.following_event = event;
+                    }
 
-                self.shooter.on_eit_updated(
-                    &self.services,
-                    self.services.get(&eit.service_id).unwrap(),
-                    is_present,
-                );
+                    self.shooter.on_eit_updated(
+                        &self.services,
+                        self.services.get(&eit.service_id).unwrap(),
+                        is_present,
+                    );
+                } else {
+                    let events = self
+                        .events
+                        .entry(eit.service_id)
+                        .or_insert_with(Default::default);
+                    if is_present {
+                        events.0 = event;
+                    } else {
+                        events.1 = event;
+                    }
+                }
             }
             tag @ _ => {
                 log::error!("invalid tag: {:?}", tag);
