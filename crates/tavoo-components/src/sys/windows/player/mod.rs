@@ -329,13 +329,14 @@ impl<H: EventHandler + Clone> Session<H> {
     /// サービスが未選択の場合はパニックする。
     fn reset(&self, changed: extract::StreamChanged) -> WinResult<()> {
         let mut session_state = self.session_state.lock();
-        if let Some(session) = session_state.session.take() {
+        if let Some(session) = &session_state.session {
             // 音声種別が変わらない場合は何もしない
             if !changed.video_type && !changed.video_pid && !changed.audio_type {
                 return Ok(());
             }
 
             session.close()?;
+            session_state.session = None;
         }
 
         let selected_stream = self.extract_handler.selected_stream();
