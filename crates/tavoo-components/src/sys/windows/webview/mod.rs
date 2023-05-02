@@ -89,12 +89,18 @@ impl ResponseBody {
 type CreateCompleted = Once<Box<dyn FnOnce(Result<()>) -> ()>>;
 
 #[derive(Default)]
+struct Handlers {
+    navigation_starting_handler: Option<Box<dyn FnMut(&str) -> bool>>,
+    navigation_completed_handler: Option<Box<dyn FnMut()>>,
+    document_title_changed_handler: Option<Box<dyn FnMut(&str)>>,
+    web_message_received_handler: Option<Box<dyn FnMut(&str)>>,
+}
+
+#[derive(Default)]
 pub struct Builder {
     env_opts: options::CoreWebView2EnvironmentOptions,
     scheme_handlers: FxHashMap<String, Box<dyn Handler>>,
-    navigation_starting_handler: Option<Box<dyn FnMut(&str) -> bool>>,
-    document_title_changed_handler: Option<Box<dyn FnMut(&str)>>,
-    web_message_received_handler: Option<Box<dyn FnMut(&str)>>,
+    handlers: Handlers,
 }
 
 impl Builder {
@@ -128,21 +134,28 @@ impl Builder {
     where
         F: FnMut(&str) -> bool + 'static,
     {
-        self.navigation_starting_handler = Some(Box::new(handler));
+        self.handlers.navigation_starting_handler = Some(Box::new(handler));
+    }
+
+    pub fn navigation_completed_handler<F>(&mut self, handler: F)
+    where
+        F: FnMut() + 'static,
+    {
+        self.handlers.navigation_completed_handler = Some(Box::new(handler));
     }
 
     pub fn document_title_changed_handler<F>(&mut self, handler: F)
     where
         F: FnMut(&str) + 'static,
     {
-        self.document_title_changed_handler = Some(Box::new(handler));
+        self.handlers.document_title_changed_handler = Some(Box::new(handler));
     }
 
     pub fn web_message_received_handler<F>(&mut self, handler: F)
     where
         F: FnMut(&str) + 'static,
     {
-        self.web_message_received_handler = Some(Box::new(handler));
+        self.handlers.web_message_received_handler = Some(Box::new(handler));
     }
 
     pub fn build(
@@ -153,9 +166,7 @@ impl Builder {
         let Self {
             env_opts,
             scheme_handlers,
-            navigation_starting_handler,
-            document_title_changed_handler,
-            web_message_received_handler,
+            handlers,
         } = self;
 
         let hwnd = F::HWND(window.hwnd());
@@ -174,9 +185,7 @@ impl Builder {
                     hwnd,
                     create_completed.clone(),
                     scheme_handlers,
-                    navigation_starting_handler,
-                    document_title_changed_handler,
-                    web_message_received_handler,
+                    handlers,
                 ),
             )
         };
@@ -215,9 +224,7 @@ impl Builder {
             hwnd: F::HWND,
             create_completed: CreateCompleted,
             scheme_handlers: FxHashMap<String, Box<dyn Handler>>,
-            navigation_starting_handler: Option<Box<dyn FnMut(&str) -> bool>>,
-            document_title_changed_handler: Option<Box<dyn FnMut(&str)>>,
-            web_message_received_handler: Option<Box<dyn FnMut(&str)>>,
+            handlers: Handlers,
         ) -> WV2::ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler {
             callback::environment_completed_handler(move |env| {
                 let r = 'r: {
@@ -230,9 +237,7 @@ impl Builder {
                                 hwnd,
                                 create_completed.clone(),
                                 scheme_handlers,
-                                navigation_starting_handler,
-                                document_title_changed_handler,
-                                web_message_received_handler,
+                                handlers,
                                 env.clone(),
                             ),
                         ));
@@ -258,9 +263,7 @@ impl Builder {
             hwnd: F::HWND,
             create_completed: CreateCompleted,
             scheme_handlers: FxHashMap<String, Box<dyn Handler>>,
-            navigation_starting_handler: Option<Box<dyn FnMut(&str) -> bool>>,
-            document_title_changed_handler: Option<Box<dyn FnMut(&str)>>,
-            web_message_received_handler: Option<Box<dyn FnMut(&str)>>,
+            handlers: Handlers,
             env: WV2::ICoreWebView2Environment,
         ) -> WV2::ICoreWebView2CreateCoreWebView2ControllerCompletedHandler {
             callback::controller_completed_handler(move |controller| {
@@ -318,7 +321,7 @@ impl Builder {
                         windows::Win32::System::WinRT::EventRegistrationToken::default();
                     unsafe {
                         tri!('r, webview.add_NavigationCompleted(
-                            &WebView::nav_handler(hwnd_webview, &controller),
+                            &WebView::nav_handler(hwnd_webview, &controller, handlers.navigation_completed_handler),
                             &mut token,
                         ));
                         tri!('r, webview.add_WebResourceRequested(
@@ -327,12 +330,12 @@ impl Builder {
                         ));
                     }
 
-                    if let Some(handler) = navigation_starting_handler {
+                    if let Some(handler) = handlers.navigation_starting_handler {
                         unsafe {
                             tri!('r, webview.add_NavigationStarting(&WebView::navigation_starting(handler), &mut token));
                         }
                     }
-                    if let Some(handler) = document_title_changed_handler {
+                    if let Some(handler) = handlers.document_title_changed_handler {
                         unsafe {
                             tri!('r, webview.add_DocumentTitleChanged(
                                 &WebView::title_changed_handler(handler),
@@ -340,7 +343,7 @@ impl Builder {
                             ));
                         }
                     }
-                    if let Some(handler) = web_message_received_handler {
+                    if let Some(handler) = handlers.web_message_received_handler {
                         unsafe {
                             tri!('r, tri!('r, webview.Settings()).SetIsWebMessageEnabled(F::TRUE));
                             tri!('r, webview.add_WebMessageReceived(
@@ -486,6 +489,7 @@ impl WebView {
     fn nav_handler(
         hwnd_webview: F::HWND,
         controller: &ICoreWebView2Controller,
+        mut handler: Option<Box<dyn FnMut()>>,
     ) -> WV2::ICoreWebView2NavigationCompletedEventHandler {
         let mut loaded = false;
         let controller = controller.clone();
@@ -503,6 +507,11 @@ impl WebView {
 
                 loaded = true;
             }
+
+            if let Some(handler) = &mut handler {
+                handler();
+            }
+
             Ok(())
         })
     }

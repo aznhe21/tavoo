@@ -89,6 +89,15 @@ impl Builder {
         self
     }
 
+    /// 遷移が完了した際のハンドラーを指定する。
+    pub fn navigation_completed_handler<F>(mut self, handler: F) -> Builder
+    where
+        F: FnMut() + 'static,
+    {
+        self.inner.navigation_completed_handler(handler);
+        self
+    }
+
     /// コンテンツのタイトルが変更された際のハンドラーを指定する。
     pub fn document_title_changed_handler<F>(mut self, handler: F) -> Builder
     where
