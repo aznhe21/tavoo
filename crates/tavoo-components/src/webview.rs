@@ -1,6 +1,7 @@
 //! 動画とオーバーレイしてUIを構築するためのWebView。
 
 use std::io;
+use std::path::Path;
 
 use anyhow::Result;
 pub use http;
@@ -78,6 +79,18 @@ impl Builder {
         self
     }
 
+    /// WebView上にファイルがドロップされた際のハンドラーを指定する。
+    ///
+    /// このハンドラーを設定するとWebViewへのドラッグ＆ドロップがアプリ用に捕捉されるようになり、
+    /// ブラウザの機能としてのドラッグ＆ドロップが使えなくなる場合がある。
+    pub fn file_drop_handler<F>(mut self, handler: F) -> Builder
+    where
+        F: FnMut(&Path) + 'static,
+    {
+        self.inner.file_drop_handler(handler);
+        self
+    }
+
     /// 遷移が始まる際のハンドラーを指定する。
     ///
     /// ハンドラーから`false`が返った場合、遷移は取り消される。
@@ -139,7 +152,6 @@ impl Builder {
 ///
 /// 一般的なWebViewとは以下の点が異なる。
 /// - 背景が透過される
-/// - WebView領域へのドラッグ＆ドロップは無効化される
 pub struct WebView {
     inner: imp::WebView,
 }

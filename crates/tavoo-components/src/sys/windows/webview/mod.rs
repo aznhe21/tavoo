@@ -1,9 +1,11 @@
 mod callback;
+mod drop_target;
 mod options;
 mod patch;
 mod stream;
 
 use std::fmt::Write;
+use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
@@ -14,6 +16,7 @@ use windows::core::{self as C, ComInterface, Result as WinResult};
 use windows::w;
 use windows::Win32::Foundation as F;
 use windows::Win32::System::Com;
+use windows::Win32::System::Ole;
 use windows::Win32::UI::WindowsAndMessaging as WM;
 use winit::platform::windows::WindowExtWindows;
 
@@ -90,6 +93,7 @@ type CreateCompleted = Once<Box<dyn FnOnce(Result<()>) -> ()>>;
 
 #[derive(Default)]
 struct Handlers {
+    file_drop_handler: Option<Box<dyn FnMut(&Path)>>,
     navigation_starting_handler: Option<Box<dyn FnMut(&str) -> bool>>,
     navigation_completed_handler: Option<Box<dyn FnMut()>>,
     document_title_changed_handler: Option<Box<dyn FnMut(&str)>>,
@@ -128,6 +132,13 @@ impl Builder {
         );
         self.scheme_handlers
             .insert(name.to_string(), Box::new(handler));
+    }
+
+    pub fn file_drop_handler<F>(&mut self, handler: F)
+    where
+        F: FnMut(&Path) + 'static,
+    {
+        self.handlers.file_drop_handler = Some(Box::new(handler));
     }
 
     pub fn navigation_starting_handler<F>(&mut self, handler: F)
@@ -299,11 +310,10 @@ impl Builder {
                         );
                     }
 
-                    // D&Dを無効化
-                    // TODO: クライアント領域でD&Dを受けられなくなる
-                    unsafe {
-                        tri!('r, controller.SetAllowExternalDrop(false));
-                    }
+                    // D&Dを捕捉（1/2）
+                    let drop_target = handlers
+                        .file_drop_handler
+                        .map(|h| drop_target::DropTarget::new(h).into());
 
                     for scheme in scheme_handlers.keys() {
                         // "scheme://"で始まるURLに遷移・要求できるようにする
@@ -321,7 +331,12 @@ impl Builder {
                         windows::Win32::System::WinRT::EventRegistrationToken::default();
                     unsafe {
                         tri!('r, webview.add_NavigationCompleted(
-                            &WebView::nav_handler(hwnd_webview, &controller, handlers.navigation_completed_handler),
+                            &WebView::nav_handler(
+                                hwnd_webview,
+                                &controller,
+                                drop_target.as_ref(),
+                                handlers.navigation_completed_handler,
+                            ),
                             &mut token,
                         ));
                         tri!('r, webview.add_WebResourceRequested(
@@ -489,18 +504,30 @@ impl WebView {
     fn nav_handler(
         hwnd_webview: F::HWND,
         controller: &ICoreWebView2Controller,
+        drop_target: Option<&Ole::IDropTarget>,
         mut handler: Option<Box<dyn FnMut()>>,
     ) -> WV2::ICoreWebView2NavigationCompletedEventHandler {
         let mut loaded = false;
         let controller = controller.clone();
+        let mut drop_target = drop_target.cloned();
 
         callback::navigation_completed_event_handler(move |_sender, _args| {
             if !loaded {
+                // 背景を透過させる（2/2）
                 unsafe {
-                    // 背景を透過させる（2/2）
                     let ex_style = WM::GetWindowLongPtrW(hwnd_webview, WM::GWL_EXSTYLE)
                         | WM::WS_EX_TRANSPARENT.0 as isize;
                     WM::SetWindowLongPtrW(hwnd_webview, WM::GWL_EXSTYLE, ex_style);
+                }
+
+                // D&Dを捕捉（2/2）
+                if let Some(drop_target) = drop_target.take() {
+                    unsafe {
+                        let hwnd =
+                            WM::FindWindowExW(hwnd_webview, None, w!("Chrome_WidgetWin_1"), None);
+                        let _ = Ole::RevokeDragDrop(hwnd);
+                        Ole::RegisterDragDrop(hwnd, &drop_target)?;
+                    }
                 }
 
                 unsafe { controller.SetIsVisible(true)? };
