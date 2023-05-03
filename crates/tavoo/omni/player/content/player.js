@@ -531,8 +531,5 @@ export function startup() {
   Player.register();
 
   customElements.define("skin-default", SkinDefault);
-  while (document.body.firstChild) {
-    document.body.firstChild.remove();
-  }
-  document.body.append(document.createElement("skin-default"));
+  document.body.replaceChildren(document.createElement("skin-default"));
 }
