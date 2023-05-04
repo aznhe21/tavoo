@@ -426,6 +426,14 @@ struct PlaybackTime {
 }
 
 impl PlaybackTime {
+    #[inline]
+    pub fn with_offset(offset: Duration) -> PlaybackTime {
+        PlaybackTime {
+            prev_ts: None,
+            duration: offset,
+        }
+    }
+
     /// 現在の再生時間を更新する。
     ///
     /// 前パケットとの差分を積分していくことでラップアラウンドを回避する。
@@ -811,7 +819,10 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
 
         // シーク中も再生時間は更新
         let pos = if let Some(pts) = pts {
-            let time = self.pts_times.entry(service_id).or_default();
+            let time = self
+                .pts_times
+                .entry(service_id)
+                .or_insert_with(|| PlaybackTime::with_offset(self.pcr_time.duration));
             time.update(pts);
             Some(time.duration)
         } else {
@@ -844,7 +855,10 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
 
         // シーク中も再生時間は更新
         let pos = if let Some(pts) = pts {
-            let time = self.pts_times.entry(service_id).or_default();
+            let time = self
+                .pts_times
+                .entry(service_id)
+                .or_insert_with(|| PlaybackTime::with_offset(self.pcr_time.duration));
             time.update(pts);
             Some(time.duration)
         } else {
