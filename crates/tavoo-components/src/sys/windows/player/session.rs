@@ -345,6 +345,9 @@ impl Inner {
         this.rate_support.take();
 
         let r = 'r: {
+            // Outer::Invokeが呼ばれるために必要
+            let _ = this.source.end_of_mpeg_stream();
+
             this.state = State::Closing;
             unsafe { tri!('r, this.session.Close()) };
 
