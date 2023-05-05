@@ -505,6 +505,13 @@ pub fn run() -> anyhow::Result<()> {
     let mut builder = webview::WebView::builder()
         .add_scheme("tavoo", crate::scheme::TavooHandler)
         .navigation_starting_handler(|uri| uri == "tavoo://player/content/player.html")
+        .file_drop_handler({
+            let proxy = proxy.clone();
+            move |path| {
+                let path = path.to_path_buf();
+                proxy.dispatch_task(move |app| app.open(&*path))
+            }
+        })
         .navigation_completed_handler({
             let proxy = proxy.clone();
             move || proxy.dispatch_task(move |app| app.on_webview_navigation_completed())
