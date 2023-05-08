@@ -115,14 +115,20 @@ impl<H: EventHandler + Clone> Player<H> {
         if let Some(opened) = self.opened.take() {
             opened.sink.extract_handler.shutdown();
 
-            if let Some(session) = &*opened.sink.session.lock() {
-                session.close()?;
-            }
+            let r = if let Some(session) = opened.sink.session.lock().take() {
+                session.close().map_err(Into::into)
+            } else {
+                Ok(())
+            };
+
             if let Some(thread_handle) = opened.thread_handle {
                 let _ = thread_handle.join();
             }
+
+            r
+        } else {
+            Ok(())
         }
-        Ok(())
     }
 
     fn no_session() -> anyhow::Error {
