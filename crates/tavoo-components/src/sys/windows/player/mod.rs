@@ -44,24 +44,23 @@ struct PlayerState {
     pub rate: f32,
 }
 
-#[derive(Default)]
-struct SessionState {
-    thread_handle: Option<std::thread::JoinHandle<()>>,
-    session: Option<session::Session>,
-}
-
 #[derive(Clone)]
-struct Session<H> {
+struct Sink<H> {
     player_state: Arc<Mutex<PlayerState>>,
     event_handler: H,
     extract_handler: ExtractHandler,
-    session_state: Arc<Mutex<SessionState>>,
+    session: Arc<Mutex<Option<session::Session>>>,
+}
+
+struct Opened<H> {
+    thread_handle: Option<std::thread::JoinHandle<()>>,
+    sink: Sink<H>,
 }
 
 pub struct Player<H> {
     player_state: Arc<Mutex<PlayerState>>,
     event_handler: H,
-    session: Option<Session<H>>,
+    opened: Option<Opened<H>>,
 }
 
 impl<H: EventHandler + Clone> Player<H> {
@@ -82,49 +81,44 @@ impl<H: EventHandler + Clone> Player<H> {
                 rate: 1.0,
             })),
             event_handler,
-            session: None,
+            opened: None,
         })
     }
 
     #[inline]
     pub fn is_opened(&self) -> bool {
-        self.session.is_some()
+        self.opened.is_some()
     }
 
     pub fn open<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
         let _ = self.close();
 
+        let file = std::fs::File::open(path)?;
+
         let extractor = extract::Extractor::new();
-        let session = Session {
+        let sink = Sink {
             player_state: self.player_state.clone(),
             event_handler: self.event_handler.clone(),
             extract_handler: extractor.handler(),
-            session_state: Arc::new(Mutex::new(SessionState::default())),
+            session: Arc::new(Mutex::new(None)),
         };
-        let file = std::fs::File::open(path)?;
-        let thread_handle = extractor.spawn(file, session.clone());
-        session.session_state.lock().thread_handle = Some(thread_handle);
+        let thread_handle = extractor.spawn(file, sink.clone());
 
-        self.session = Some(session);
+        self.opened = Some(Opened {
+            sink,
+            thread_handle: Some(thread_handle),
+        });
         Ok(())
     }
 
     pub fn close(&mut self) -> Result<()> {
-        if let Some(session) = self.session.take() {
-            session.extract_handler.shutdown();
+        if let Some(opened) = self.opened.take() {
+            opened.sink.extract_handler.shutdown();
 
-            let (session, thread_handle) = {
-                let mut session_state = session.session_state.lock();
-                (
-                    session_state.session.take(),
-                    session_state.thread_handle.take(),
-                )
-            };
-
-            if let Some(session) = session {
+            if let Some(session) = &*opened.sink.session.lock() {
                 session.close()?;
             }
-            if let Some(thread_handle) = thread_handle {
+            if let Some(thread_handle) = opened.thread_handle {
                 let _ = thread_handle.join();
             }
         }
@@ -137,13 +131,8 @@ impl<H: EventHandler + Clone> Player<H> {
 
     #[inline]
     fn session(&self) -> Option<MappedMutexGuard<session::Session>> {
-        match &self.session {
-            Some(session) => {
-                MutexGuard::try_map(session.session_state.lock(), |state| state.session.as_mut())
-                    .ok()
-            }
-            None => None,
-        }
+        let opened = self.opened.as_ref()?;
+        MutexGuard::try_map(opened.sink.session.lock(), |session| session.as_mut()).ok()
     }
 
     #[inline]
@@ -153,52 +142,58 @@ impl<H: EventHandler + Clone> Player<H> {
 
     #[inline]
     pub fn selected_service(&self) -> Option<isdb::filters::sorter::Service> {
-        let session = self.session.as_ref()?;
-        let selected_service = session.extract_handler.selected_stream();
+        let opened = self.opened.as_ref()?;
+        let selected_service = opened.sink.extract_handler.selected_stream();
         let selected_service = selected_service.as_ref()?;
-        let service = session.extract_handler.services()[&selected_service.service_id].clone();
+        let service = opened.sink.extract_handler.services()[&selected_service.service_id].clone();
         Some(service)
     }
 
     #[inline]
     pub fn active_video_tag(&self) -> Option<u8> {
-        let session = self.session.as_ref()?;
-        let selected_stream = session.extract_handler.selected_stream();
+        let opened = self.opened.as_ref()?;
+        let selected_stream = opened.sink.extract_handler.selected_stream();
         selected_stream.as_ref()?.video_stream.component_tag()
     }
 
     #[inline]
     pub fn active_audio_tag(&self) -> Option<u8> {
-        let session = self.session.as_ref()?;
-        let selected_stream = session.extract_handler.selected_stream();
+        let opened = self.opened.as_ref()?;
+        let selected_stream = opened.sink.extract_handler.selected_stream();
         selected_stream.as_ref()?.audio_stream.component_tag()
     }
 
     #[inline]
     pub fn services(&self) -> Option<isdb::filters::sorter::ServiceMap> {
-        let session = self.session.as_ref()?;
-        let services = session.extract_handler.services();
+        let opened = self.opened.as_ref()?;
+        let services = opened.sink.extract_handler.services();
         Some(services.clone())
     }
 
     #[inline]
     pub fn select_service(&mut self, service_id: Option<ServiceId>) -> Result<()> {
-        let session = self.session.as_ref().ok_or_else(Self::no_session)?;
-        session.extract_handler.select_service(service_id)?;
+        let opened = self.opened.as_ref().ok_or_else(Self::no_session)?;
+        opened.sink.extract_handler.select_service(service_id)?;
         Ok(())
     }
 
     #[inline]
     pub fn select_video_stream(&mut self, component_tag: u8) -> Result<()> {
-        let session = self.session.as_ref().ok_or_else(Self::no_session)?;
-        session.extract_handler.select_video_stream(component_tag)?;
+        let opened = self.opened.as_ref().ok_or_else(Self::no_session)?;
+        opened
+            .sink
+            .extract_handler
+            .select_video_stream(component_tag)?;
         Ok(())
     }
 
     #[inline]
     pub fn select_audio_stream(&mut self, component_tag: u8) -> Result<()> {
-        let session = self.session.as_ref().ok_or_else(Self::no_session)?;
-        session.extract_handler.select_audio_stream(component_tag)?;
+        let opened = self.opened.as_ref().ok_or_else(Self::no_session)?;
+        opened
+            .sink
+            .extract_handler
+            .select_audio_stream(component_tag)?;
         Ok(())
     }
 
@@ -248,8 +243,8 @@ impl<H: EventHandler + Clone> Player<H> {
 
     #[inline]
     pub fn duration(&self) -> Option<Duration> {
-        let session = self.session.as_ref()?;
-        session.extract_handler.duration()
+        let opened = self.opened.as_ref()?;
+        opened.sink.extract_handler.duration()
     }
 
     #[inline]
@@ -325,18 +320,18 @@ impl<H> Drop for Player<H> {
     }
 }
 
-impl<H: EventHandler + Clone> Session<H> {
+impl<H: EventHandler + Clone> Sink<H> {
     /// サービスが未選択の場合はパニックする。
     fn reset(&self, changed: extract::StreamChanged) -> WinResult<()> {
-        let mut session_state = self.session_state.lock();
-        if let Some(session) = &session_state.session {
+        let mut guard = self.session.lock();
+        if let Some(session) = &*guard {
             // 音声種別が変わらない場合は何もしない
             if !changed.video_type && !changed.video_pid && !changed.audio_type {
                 return Ok(());
             }
 
             session.close()?;
-            session_state.session = None;
+            *guard = None;
         }
 
         let selected_stream = self.extract_handler.selected_stream();
@@ -347,7 +342,7 @@ impl<H: EventHandler + Clone> Session<H> {
             &selected_stream.audio_stream,
         )?;
 
-        session_state.session = Some(session::Session::new(
+        *guard = Some(session::Session::new(
             self.player_state.clone(),
             self.event_handler.clone(),
             self.extract_handler.clone(),
@@ -357,7 +352,7 @@ impl<H: EventHandler + Clone> Session<H> {
     }
 }
 
-impl<H: EventHandler + Clone> extract::Sink for Session<H> {
+impl<H: EventHandler + Clone> extract::Sink for Sink<H> {
     fn on_services_updated(&mut self, services: &isdb::filters::sorter::ServiceMap) {
         self.event_handler.on_services_updated(services);
     }
@@ -383,26 +378,14 @@ impl<H: EventHandler + Clone> extract::Sink for Session<H> {
     }
 
     fn on_video_packet(&mut self, pos: Option<Duration>, payload: &[u8]) {
-        let source = self
-            .session_state
-            .lock()
-            .session
-            .as_ref()
-            .map(|s| s.source());
-        if let Some(source) = source {
-            source.deliver_video_packet(pos, payload);
+        if let Some(session) = self.session.lock().as_ref() {
+            session.source().deliver_video_packet(pos, payload);
         }
     }
 
     fn on_audio_packet(&mut self, pos: Option<Duration>, payload: &[u8]) {
-        let source = self
-            .session_state
-            .lock()
-            .session
-            .as_ref()
-            .map(|s| s.source());
-        if let Some(source) = source {
-            source.deliver_audio_packet(pos, payload);
+        if let Some(session) = self.session.lock().as_ref() {
+            session.source().deliver_audio_packet(pos, payload);
         }
     }
 
@@ -415,14 +398,8 @@ impl<H: EventHandler + Clone> extract::Sink for Session<H> {
     }
 
     fn on_end_of_stream(&mut self) {
-        let source = self
-            .session_state
-            .lock()
-            .session
-            .as_ref()
-            .map(|s| s.source());
-        if let Some(source) = source {
-            let _ = source.end_of_mpeg_stream();
+        if let Some(session) = self.session.lock().as_ref() {
+            let _ = session.source().end_of_mpeg_stream();
         }
 
         self.event_handler.on_end_of_stream();
@@ -434,14 +411,8 @@ impl<H: EventHandler + Clone> extract::Sink for Session<H> {
     }
 
     fn needs_es(&self) -> bool {
-        let source = self
-            .session_state
-            .lock()
-            .session
-            .as_ref()
-            .map(|s| s.source());
-        if let Some(source) = source {
-            source.streams_need_data()
+        if let Some(session) = self.session.lock().as_ref() {
+            session.source().streams_need_data()
         } else {
             false
         }
