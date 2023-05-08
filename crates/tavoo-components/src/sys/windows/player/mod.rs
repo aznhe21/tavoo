@@ -129,6 +129,10 @@ impl<H: EventHandler + Clone> Player<H> {
         anyhow::anyhow!("セッションがありません")
     }
 
+    fn open_pending() -> anyhow::Error {
+        anyhow::anyhow!("再生開始前に操作はできません")
+    }
+
     #[inline]
     fn session(&self) -> Option<MappedMutexGuard<session::Session>> {
         let opened = self.opened.as_ref()?;
@@ -137,7 +141,9 @@ impl<H: EventHandler + Clone> Player<H> {
 
     #[inline]
     fn session_must(&self) -> Result<MappedMutexGuard<session::Session>> {
-        self.session().ok_or_else(Self::no_session)
+        let opened = self.opened.as_ref().ok_or_else(Self::no_session)?;
+        MutexGuard::try_map(opened.sink.session.lock(), |session| session.as_mut())
+            .map_err(|_| Self::open_pending())
     }
 
     #[inline]
