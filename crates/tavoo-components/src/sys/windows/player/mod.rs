@@ -146,7 +146,6 @@ impl<H: EventHandler + Clone> Player<H> {
             .map_err(|_| Self::open_pending())
     }
 
-    #[inline]
     pub fn selected_service(&self) -> Option<isdb::filters::sorter::Service> {
         let opened = self.opened.as_ref()?;
         let selected_service = opened.sink.extract_handler.selected_stream();
@@ -155,35 +154,30 @@ impl<H: EventHandler + Clone> Player<H> {
         Some(service)
     }
 
-    #[inline]
     pub fn active_video_tag(&self) -> Option<u8> {
         let opened = self.opened.as_ref()?;
         let selected_stream = opened.sink.extract_handler.selected_stream();
         selected_stream.as_ref()?.video_stream.component_tag()
     }
 
-    #[inline]
     pub fn active_audio_tag(&self) -> Option<u8> {
         let opened = self.opened.as_ref()?;
         let selected_stream = opened.sink.extract_handler.selected_stream();
         selected_stream.as_ref()?.audio_stream.component_tag()
     }
 
-    #[inline]
     pub fn services(&self) -> Option<isdb::filters::sorter::ServiceMap> {
         let opened = self.opened.as_ref()?;
         let services = opened.sink.extract_handler.services();
         Some(services.clone())
     }
 
-    #[inline]
     pub fn select_service(&mut self, service_id: Option<ServiceId>) -> Result<()> {
         let opened = self.opened.as_ref().ok_or_else(Self::no_session)?;
         opened.sink.extract_handler.select_service(service_id)?;
         Ok(())
     }
 
-    #[inline]
     pub fn select_video_stream(&mut self, component_tag: u8) -> Result<()> {
         let opened = self.opened.as_ref().ok_or_else(Self::no_session)?;
         opened
@@ -193,7 +187,6 @@ impl<H: EventHandler + Clone> Player<H> {
         Ok(())
     }
 
-    #[inline]
     pub fn select_audio_stream(&mut self, component_tag: u8) -> Result<()> {
         let opened = self.opened.as_ref().ok_or_else(Self::no_session)?;
         opened
@@ -203,7 +196,6 @@ impl<H: EventHandler + Clone> Player<H> {
         Ok(())
     }
 
-    #[inline]
     pub fn handle_event(&mut self, event: PlayerEvent) -> Result<()> {
         if let Some(session) = self.session() {
             session.handle_event(event.0)?;
@@ -211,25 +203,21 @@ impl<H: EventHandler + Clone> Player<H> {
         Ok(())
     }
 
-    #[inline]
     pub fn play(&mut self) -> Result<()> {
         self.session_must()?.play()?;
         Ok(())
     }
 
-    #[inline]
     pub fn pause(&mut self) -> Result<()> {
         self.session_must()?.pause()?;
         Ok(())
     }
 
-    #[inline]
     pub fn stop(&mut self) -> Result<()> {
         self.session_must()?.stop()?;
         Ok(())
     }
 
-    #[inline]
     pub fn repaint(&mut self) -> Result<()> {
         if let Some(session) = self.session() {
             session.repaint()?;
@@ -237,7 +225,6 @@ impl<H: EventHandler + Clone> Player<H> {
         Ok(())
     }
 
-    #[inline]
     pub fn set_bounds(&mut self, left: u32, top: u32, right: u32, bottom: u32) -> Result<()> {
         if let Some(session) = self.session() {
             session.set_bounds(left, top, right, bottom)?;
@@ -247,31 +234,26 @@ impl<H: EventHandler + Clone> Player<H> {
         Ok(())
     }
 
-    #[inline]
     pub fn duration(&self) -> Option<Duration> {
         let opened = self.opened.as_ref()?;
         opened.sink.extract_handler.duration()
     }
 
-    #[inline]
     pub fn position(&self) -> Result<Duration> {
         let pos = self.session_must()?.position()?;
         Ok(pos)
     }
 
-    #[inline]
     pub fn set_position(&mut self, pos: Duration) -> Result<()> {
         self.session_must()?.set_position(pos)?;
         Ok(())
     }
 
-    #[inline]
     pub fn volume(&self) -> Result<f32> {
         let volume = self.player_state.lock().volume;
         Ok(volume)
     }
 
-    #[inline]
     pub fn set_volume(&mut self, value: f32) -> Result<()> {
         if let Some(session) = self.session() {
             session.set_volume(value)?;
@@ -281,13 +263,11 @@ impl<H: EventHandler + Clone> Player<H> {
         Ok(())
     }
 
-    #[inline]
     pub fn muted(&self) -> Result<bool> {
         let muted = self.player_state.lock().muted;
         Ok(muted)
     }
 
-    #[inline]
     pub fn set_muted(&mut self, muted: bool) -> Result<()> {
         if let Some(session) = self.session() {
             session.set_muted(muted)?;
@@ -297,19 +277,16 @@ impl<H: EventHandler + Clone> Player<H> {
         Ok(())
     }
 
-    #[inline]
     pub fn rate_range(&self) -> Result<RangeInclusive<f32>> {
         let range = self.session_must()?.rate_range()?;
         Ok(range)
     }
 
-    #[inline]
     pub fn rate(&self) -> Result<f32> {
         let rate = self.player_state.lock().rate;
         Ok(rate)
     }
 
-    #[inline]
     pub fn set_rate(&mut self, value: f32) -> Result<()> {
         if let Some(session) = self.session() {
             session.set_rate(value)?;
