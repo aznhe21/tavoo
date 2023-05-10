@@ -311,7 +311,7 @@ impl<H> Drop for Player<H> {
 
 impl<H: EventHandler + Clone> Sink<H> {
     /// サービスが未選択の場合はパニックする。
-    fn reset(&self, changed: extract::StreamChanged) -> WinResult<()> {
+    fn reset(&self, _immediate: bool, changed: extract::StreamChanged) -> WinResult<()> {
         let mut guard = self.session.lock();
         if let Some(session) = &*guard {
             // 音声種別が変わらない場合は何もしない
@@ -358,9 +358,9 @@ impl<H: EventHandler + Clone> extract::Sink for Sink<H> {
         self.event_handler.on_service_changed(service);
     }
 
-    fn on_stream_changed(&mut self, changed: extract::StreamChanged) {
+    fn on_stream_changed(&mut self, immediate: bool, changed: extract::StreamChanged) {
         // ストリームに変化があったということはサービスは選択されている
-        match self.reset(changed.clone()) {
+        match self.reset(immediate, changed.clone()) {
             Ok(()) => self.event_handler.on_stream_changed(changed),
             Err(e) => self.event_handler.on_stream_error(e.into()),
         }

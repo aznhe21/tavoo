@@ -70,7 +70,10 @@ pub trait Sink {
     fn on_service_changed(&mut self, service: &Service);
 
     /// 選択中サービスのストリームについて何かが変更された際に呼ばれる。
-    fn on_stream_changed(&mut self, changed: StreamChanged);
+    ///
+    /// `immediate`はストリームを即座に切り替える必要がある場合（サービス切り替えやシーク時など）に
+    /// `true`となる。
+    fn on_stream_changed(&mut self, immediate: bool, changed: StreamChanged);
 
     /// 選択中サービスで映像パケットを受信した際に呼ばれる。
     fn on_video_packet(&mut self, pos: Option<Duration>, payload: &[u8]);
@@ -582,7 +585,7 @@ impl<R: Read + Seek, T: Sink> Selector<R, T> {
         if self.seek_info.is_none() {
             self.sink.on_service_changed(service);
             if changed.any() {
-                self.sink.on_stream_changed(changed);
+                self.sink.on_stream_changed(true, changed);
             }
         }
     }
@@ -617,7 +620,7 @@ impl<R: Read + Seek, T: Sink> Selector<R, T> {
 
         // シーク中はイベント発生を保留
         if self.seek_info.is_none() && (changed.video_pid || changed.video_type) {
-            self.sink.on_stream_changed(changed);
+            self.sink.on_stream_changed(false, changed);
         }
     }
 
@@ -651,7 +654,7 @@ impl<R: Read + Seek, T: Sink> Selector<R, T> {
 
         // シーク中はイベント発生を保留
         if self.seek_info.is_none() && (changed.audio_pid || changed.audio_type) {
-            self.sink.on_stream_changed(changed);
+            self.sink.on_stream_changed(false, changed);
         }
     }
 
@@ -688,7 +691,7 @@ impl<R: Read + Seek, T: Sink> Selector<R, T> {
         };
         // シーク中はイベント発生を保留
         if self.seek_info.is_none() && changed.any() {
-            self.sink.on_stream_changed(changed);
+            self.sink.on_stream_changed(false, changed);
         }
     }
 
@@ -725,6 +728,7 @@ impl<R: Read + Seek, T: Sink> Selector<R, T> {
                 ),
                 None => (None, None),
             };
+
             let changed = StreamChanged::new(
                 old_streams,
                 (&selected_stream.video_stream, &selected_stream.audio_stream),
@@ -735,7 +739,7 @@ impl<R: Read + Seek, T: Sink> Selector<R, T> {
                     .on_service_changed(&state.services[&selected_stream.service_id]);
             }
             if changed.any() {
-                self.sink.on_stream_changed(changed);
+                self.sink.on_stream_changed(true, changed);
             }
         }
 
