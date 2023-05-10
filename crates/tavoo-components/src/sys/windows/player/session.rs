@@ -445,7 +445,8 @@ impl Inner {
         status.ok()?;
 
         if let Some(pos) = self.seeking_pos.take() {
-            self.event_handler.on_seek_completed(pos);
+            self.event_handler
+                .on_seek_completed(pos, self.op_request.pos.is_some());
         }
 
         self.update_playback_status(State::Started, Status::Started)?;

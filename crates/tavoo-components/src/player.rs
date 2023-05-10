@@ -34,8 +34,9 @@ pub trait EventHandler: Send + 'static {
 
     /// プレイヤーのシークが完了した際に呼ばれる。
     ///
-    /// 引数`position`はシーク先、つまり直後に再生が開始される位置である。
-    fn on_seek_completed(&self, position: Duration);
+    /// 引数`position`はシーク先、つまり直後に再生が開始される位置、
+    /// 引数`pending`はまだ処理すべきシーク要求が残っているかどうかである。
+    fn on_seek_completed(&self, position: Duration, pending: bool);
 
     /// 再生速度の変更が完了した際に呼ばれる。
     ///
