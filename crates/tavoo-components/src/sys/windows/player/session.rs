@@ -357,7 +357,7 @@ impl Inner {
             let wait_result =
                 MutexGuard::unlocked(this, || close_mutex.try_lock_for(Duration::from_secs(5)));
             if !wait_result {
-                log::trace!("Session::shutdown: timeout");
+                log::debug!("Session::shutdown: timeout");
             }
 
             let _ = unsafe { this.source.intf().Shutdown() };
@@ -594,9 +594,11 @@ impl Inner {
 
         let start_pos = if self.state == State::Stopped {
             // 停止状態からの再生は最初から
-            self.extract_handler
-                .reset()
-                .map_err(|_| MF::MF_E_INVALIDREQUEST)?;
+            if let Err(e) = self.extract_handler.reset() {
+                log::trace!("停止状態からTSのリセットに失敗：{}", e);
+                return Err(MF::MF_E_INVALIDREQUEST.into());
+            }
+
             PropVariant::I64(0)
         } else {
             // それ以外は位置を保持
@@ -614,7 +616,10 @@ impl Inner {
         match self.state {
             State::Paused | State::Stopped => {}
             State::Started => return Ok(()),
-            _ => return Err(MF::MF_E_INVALIDREQUEST.into()),
+            _ => {
+                log::trace!("{:?}状態に開始要求", self.state);
+                return Err(MF::MF_E_INVALIDREQUEST.into());
+            }
         }
 
         if self.is_pending {
@@ -630,7 +635,10 @@ impl Inner {
         match self.state {
             State::Started => {}
             State::Paused => return Ok(()),
-            _ => return Err(MF::MF_E_INVALIDREQUEST.into()),
+            _ => {
+                log::trace!("{:?}状態に一時停止要求", self.state);
+                return Err(MF::MF_E_INVALIDREQUEST.into());
+            }
         }
 
         if self.is_pending {
@@ -649,7 +657,10 @@ impl Inner {
         match self.state {
             State::Started | State::Paused => {}
             State::Stopped => return Ok(()),
-            _ => return Err(MF::MF_E_INVALIDREQUEST.into()),
+            _ => {
+                log::trace!("{:?}状態に停止要求", self.state);
+                return Err(MF::MF_E_INVALIDREQUEST.into());
+            }
         }
 
         if self.is_pending {
@@ -760,6 +771,7 @@ impl Inner {
 
     fn set_volume_internal(&self, value: f32) -> WinResult<()> {
         let Some(audio_volume) = &self.audio_volume else {
+            log::trace!("audio_volumeがないのに音量設定");
             return Err(MF::MF_E_INVALIDREQUEST.into());
         };
 
@@ -778,6 +790,7 @@ impl Inner {
 
     fn set_muted_internal(&self, mute: bool) -> WinResult<()> {
         let Some(audio_volume) = &self.audio_volume else {
+            log::trace!("audio_volumeがないのにミュート設定");
             return Err(MF::MF_E_INVALIDREQUEST.into());
         };
 
@@ -796,6 +809,7 @@ impl Inner {
 
     pub fn rate_range(&self) -> WinResult<RangeInclusive<f32>> {
         let Some(rate_support) = &self.rate_support else {
+            log::trace!("rate_supportがないのに速度取得");
             return Err(MF::MF_E_INVALIDREQUEST.into());
         };
 
@@ -806,6 +820,7 @@ impl Inner {
 
     fn set_rate_internal(&self, value: f32) -> WinResult<()> {
         let Some(rate_control) = &self.rate_control else {
+            log::trace!("rate_controlがないのに速度設定");
             return Err(MF::MF_E_INVALIDREQUEST.into());
         };
 

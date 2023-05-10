@@ -465,11 +465,11 @@ impl Inner {
             log::trace!("TransportStream::do_start");
 
             let start_pos = if let Some(start_pos) = start_pos {
-                if this
+                if let Err(e) = this
                     .extract_handler
                     .set_position(Duration::from_nanos((start_pos as u64) * 100))
-                    .is_err()
                 {
+                    log::trace!("TSの位置設定に失敗：{}", e);
                     break 'r Err(MF::MF_E_INVALIDREQUEST.into());
                 }
 
@@ -781,6 +781,7 @@ impl MF::IMFMediaSource_Impl for Outer {
 
             Some(PropVariant::I64(v)) => {
                 if !matches!(inner.state, State::Init | State::Stopped) {
+                    log::trace!("{:?}状態からシーク要求", inner.state);
                     return Err(MF::MF_E_INVALIDREQUEST.into());
                 }
 
