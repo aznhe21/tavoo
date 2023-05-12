@@ -804,7 +804,11 @@ impl Inner {
     }
 
     pub fn set_volume(&mut self, value: f32) -> WinResult<()> {
-        let r = self.set_volume_internal(value);
+        let r = if self.state != State::Closed {
+            self.set_volume_internal(value)
+        } else {
+            Ok(())
+        };
         if r.is_ok() {
             self.player_state.lock().volume = value;
         }
@@ -823,7 +827,11 @@ impl Inner {
     }
 
     pub fn set_muted(&mut self, mute: bool) -> WinResult<()> {
-        let r = self.set_muted_internal(mute);
+        let r = if self.state != State::Closed {
+            self.set_muted_internal(mute)
+        } else {
+            Ok(())
+        };
         if r.is_ok() {
             self.player_state.lock().muted = mute;
         }
@@ -855,7 +863,7 @@ impl Inner {
     pub fn set_rate(&mut self, value: f32) -> WinResult<()> {
         if self.is_pending {
             self.op_request.rate = Some(value);
-        } else {
+        } else if self.state != State::Closed {
             self.set_rate_internal(value)?;
         }
         self.player_state.lock().rate = value;
