@@ -391,7 +391,10 @@ impl Inner {
         if self.state == new_state && self.is_pending {
             self.is_pending = false;
 
-            self.set_status(new_status);
+            // 保留中の処理がある場合はイベントを発生させない
+            if self.op_request.command.is_none() {
+                self.set_status(new_status);
+            }
 
             // 保留中の処理を実行
 
