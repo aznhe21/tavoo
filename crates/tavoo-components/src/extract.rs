@@ -6,7 +6,6 @@ use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 
-use fxhash::FxHashMap;
 use isdb::filters::sorter::{Service, ServiceMap, Stream};
 use isdb::psi::table::ServiceId;
 use isdb::time::Timestamp;
@@ -429,14 +428,6 @@ struct PlaybackTime {
 }
 
 impl PlaybackTime {
-    #[inline]
-    pub fn with_offset(offset: Duration) -> PlaybackTime {
-        PlaybackTime {
-            prev_ts: None,
-            duration: offset,
-        }
-    }
-
     /// 現在の再生時間を更新する。
     ///
     /// 前パケットとの差分を積分していくことでラップアラウンドを回避する。
@@ -500,8 +491,6 @@ struct Selector<R, T> {
     es2svc: isdb::pid::PidTable<Option<ServiceId>>,
     /// 既定サービスのPCRを元にした再生位置。
     pcr_time: PlaybackTime,
-    /// 各サービスのPTSを元にした再生位置。
-    pts_times: FxHashMap<ServiceId, PlaybackTime>,
     /// シーク中の情報。シークが完了したら`None`が設定される。
     seek_info: Option<SeekInfo>,
 }
@@ -516,7 +505,6 @@ impl<R: Read + Seek, T: Sink> Selector<R, T> {
             state,
             es2svc: isdb::pid::PidTable::from_fn(|_| None),
             pcr_time: PlaybackTime::default(),
-            pts_times: FxHashMap::default(),
             seek_info: None,
         }
     }
@@ -813,25 +801,13 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
 
     fn on_video_packet(
         &mut self,
-        _: &ServiceMap,
+        services: &ServiceMap,
         pid: isdb::Pid,
         pts: Option<Timestamp>,
         _: Option<Timestamp>,
         payload: &[u8],
     ) {
         let Some(service_id) = self.es2svc[pid] else { return };
-
-        // シーク中も再生時間は更新
-        let pos = if let Some(pts) = pts {
-            let time = self
-                .pts_times
-                .entry(service_id)
-                .or_insert_with(|| PlaybackTime::with_offset(self.pcr_time.duration));
-            time.update(pts);
-            Some(time.duration)
-        } else {
-            None
-        };
 
         // シーク中はパケットを処理しない
         if self.seek_info.is_some() {
@@ -844,30 +820,24 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
                 return;
             }
         }
+
+        // 選択中サービスのPCRと既定サービスのPCRが同じ時刻と見做して位置を計算する
+        let pos = pts.and_then(|pts| {
+            let pcr = services.get(&service_id)?.pcr()?;
+            Some(self.pcr_time.duration + (pts - pcr).to_duration())
+        });
         self.sink.on_video_packet(pos, payload);
     }
 
     fn on_audio_packet(
         &mut self,
-        _: &ServiceMap,
+        services: &ServiceMap,
         pid: isdb::Pid,
         pts: Option<Timestamp>,
         _: Option<Timestamp>,
         payload: &[u8],
     ) {
         let Some(service_id) = self.es2svc[pid] else { return };
-
-        // シーク中も再生時間は更新
-        let pos = if let Some(pts) = pts {
-            let time = self
-                .pts_times
-                .entry(service_id)
-                .or_insert_with(|| PlaybackTime::with_offset(self.pcr_time.duration));
-            time.update(pts);
-            Some(time.duration)
-        } else {
-            None
-        };
 
         // シーク中はパケットを処理しない
         if self.seek_info.is_some() {
@@ -880,6 +850,12 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
                 return;
             }
         }
+
+        // 選択中サービスのPCRと既定サービスのPCRが同じ時刻と見做して位置を計算する
+        let pos = pts.and_then(|pts| {
+            let pcr = services.get(&service_id)?.pcr()?;
+            Some(self.pcr_time.duration + (pts - pcr).to_duration())
+        });
         self.sink.on_audio_packet(pos, payload);
     }
 
