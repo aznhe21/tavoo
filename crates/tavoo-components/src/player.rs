@@ -38,6 +38,11 @@ pub trait EventHandler: Send + 'static {
     /// 引数`pending`はまだ処理すべきシーク要求が残っているかどうかである。
     fn on_seek_completed(&self, position: Duration, pending: bool);
 
+    /// 音量が変更された際に呼ばれる。
+    ///
+    /// 引数`volume`は新しい音量、`muted`は新しいミュート状態である。
+    fn on_volume_changed(&self, volume: f32, muted: bool);
+
     /// 再生速度の変更が完了した際に呼ばれる。
     ///
     /// 引数`rate`は新しい再生速度である。

@@ -422,6 +422,7 @@ impl Inner {
             MF::MESessionPaused => self.on_session_paused(status, &event)?,
             MF::MESessionStopped => self.on_session_stopped(status, &event)?,
             MF::MESessionRateChanged => self.on_session_rate_changed(status, &event)?,
+            MF::MEAudioSessionVolumeChanged => self.on_session_volume_changed(status, &event)?,
 
             MF::MESessionTopologyStatus => self.on_topology_status(status, &event)?,
             MF::MEEndOfPresentation => self.on_presentation_ended(status, &event)?,
@@ -498,6 +499,28 @@ impl Inner {
         }
 
         self.event_handler.on_rate_changed(player_state.rate);
+
+        Ok(())
+    }
+
+    fn on_session_volume_changed(
+        &mut self,
+        status: C::HRESULT,
+        _event: &MF::IMFMediaEvent,
+    ) -> WinResult<()> {
+        log::trace!("Session::on_session_volume_changed");
+        status.ok()?;
+
+        if let Some(audio_volume) = &self.audio_volume {
+            if let Ok(volume) = unsafe { audio_volume.GetMasterVolume() } {
+                if let Ok(muted) = unsafe { audio_volume.GetMute().map(|b| b.as_bool()) } {
+                    let mut player_state = self.player_state.lock();
+                    player_state.volume = volume;
+                    player_state.muted = muted;
+                    self.event_handler.on_volume_changed(volume, muted);
+                }
+            }
+        }
 
         Ok(())
     }
