@@ -1184,10 +1184,12 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
             return;
         };
 
+        let target_pos = pos.saturating_sub(IDLE_MIN);
+
         // パケットを読み飛ばすのに必要な情報を設定
         let orig_stream = self.selector().state.read().selected_stream.clone();
         self.selector().seek_info = Some(SeekInfo {
-            target_pos: pos.saturating_sub(IDLE_MIN),
+            target_pos,
             orig_stream,
             pat_updated: false,
             pmt_updated: SortedSet::new(),
@@ -1198,32 +1200,32 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
         let start_ts = self.selector().pcr_time.prev_ts.unwrap_or(length.first_pcr);
 
         let current_pos = self.selector().pcr_time.duration;
-        let (mut diff, mut dir, target_pcr_min, target_pcr_max) = if pos >= current_pos {
-            let diff = pos - current_pos;
+        let (mut diff, mut dir, target_pcr_min, target_pcr_max) = if target_pos >= current_pos {
+            let diff = target_pos - current_pos;
             if diff <= IDLE_MAX {
                 // 近めへの早送りは読み飛ばすだけ
                 return;
             }
 
-            // diffはIDLE_MAXより大きいためアンダーフローはしない
             (
-                diff - IDLE_MIN,
+                diff,
                 Direction::Forward,
+                // diffはIDLE_MAXより大きいためアンダーフローはしない
                 start_ts + (diff - IDLE_MAX),
-                start_ts + (diff - IDLE_MIN),
+                start_ts + diff,
             )
         } else {
-            if pos <= HEAD_MAX_POS {
+            if target_pos <= HEAD_MAX_POS {
                 // 先頭へのシークは常に行き過ぎ判定に入るため確定で頭出し
                 return self.reset();
             }
 
-            let diff = current_pos - pos;
+            let diff = current_pos - target_pos;
             (
-                diff + IDLE_MIN,
+                diff,
                 Direction::Backward,
                 start_ts - (diff + IDLE_MAX),
-                start_ts - (diff + IDLE_MIN),
+                start_ts - diff,
             )
         };
 
@@ -1250,18 +1252,20 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
                     if pcr < target_pcr_min {
                         diff = (target_pcr_max - pcr).to_duration();
                         dir = Direction::Forward;
-                        log::trace!("シーク：足りない（{:?}前）", diff);
+                        log::trace!("シーク：足りない（{:?}の{:?}前）", target_pos, diff);
                     } else if pcr > target_pcr_max {
                         diff = (pcr - target_pcr_max).to_duration();
                         dir = Direction::Backward;
-                        log::trace!("シーク：行き過ぎ（{:?}後）", diff);
+                        log::trace!("シーク：行き過ぎ（{:?}の{:?}後）", target_pos, diff);
                     } else {
                         let diff = (target_pcr_max - pcr).to_duration();
-                        log::trace!("シーク：確定（{:?}前）", diff);
+                        log::trace!("シーク：確定（{:?}の{:?}前）", target_pos, diff);
                         self.on_restored();
                         self.selector().pcr_time = PlaybackTime {
                             prev_ts: Some(pcr),
-                            duration: pos.saturating_sub(diff),
+                            // 同じ位置へのシークを繰り返すと約-75ナノ秒ずつズレていくっぽいが、
+                            // この程度なら誤差としたい（complete_seekで観測できる）
+                            duration: target_pos.saturating_sub(diff),
                         };
                         self.demuxer.reset_packets();
 
