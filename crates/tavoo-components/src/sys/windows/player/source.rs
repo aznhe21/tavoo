@@ -227,15 +227,14 @@ impl TransportStream {
         };
 
         let presentation_descriptor = unsafe {
-            MF::MFCreatePresentationDescriptor(Some(&[
+            let pd = MF::MFCreatePresentationDescriptor(Some(&[
                 Some(video_sd.clone()),
                 Some(audio_sd.clone()),
-            ]))?
+            ]))?;
+            pd.SelectStream(0)?;
+            pd.SelectStream(1)?;
+            pd
         };
-        unsafe {
-            presentation_descriptor.SelectStream(SID_VIDEO)?;
-            presentation_descriptor.SelectStream(SID_AUDIO)?;
-        }
         if let Some(duration) = extract_handler.duration() {
             let duration = (duration.as_nanos() / 100) as u64;
             unsafe { presentation_descriptor.SetUINT64(&MF::MF_PD_DURATION, duration)? };
