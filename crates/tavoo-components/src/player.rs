@@ -48,6 +48,14 @@ pub trait EventHandler: Send + 'static {
     /// 引数`rate`は新しい再生速度である。
     fn on_rate_changed(&self, rate: f32);
 
+    /// サービスの変更や解像度の変更によるストリームの切り替えが開始した。
+    ///
+    /// `on_switching_ended`が呼ばれるまで再生が進まない可能性がある。
+    fn on_switching_started(&self);
+
+    /// `on_switching_started`で開始したストリームの切り替えが終了した。
+    fn on_switching_ended(&self);
+
     /// TSのサービス一覧が更新された際に呼ばれる。
     ///
     /// サービスの選択状態によってはこの直後にサービスが変更される可能性がある。

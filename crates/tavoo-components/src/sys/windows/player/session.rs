@@ -633,6 +633,7 @@ impl Inner {
         this.is_switching = true;
         this.is_pending = true;
         let old_status = this.status;
+        this.event_handler.on_switching_started();
 
         Inner::reset(
             this,
@@ -973,7 +974,10 @@ impl Inner {
         log::trace!("Session::on_session_started");
         status.ok()?;
 
-        self.is_switching = false;
+        if self.is_switching {
+            self.event_handler.on_switching_ended();
+            self.is_switching = false;
+        }
 
         if let Some(pos) = self.seeking_pos.take() {
             self.event_handler
