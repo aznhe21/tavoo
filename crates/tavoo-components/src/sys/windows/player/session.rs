@@ -356,10 +356,10 @@ impl Outer {
 
 impl Inner {
     fn close(this: &mut MutexGuard<Inner>) -> WinResult<()> {
-        this.video_display.take();
-        this.audio_volume.take();
-        this.rate_control.take();
-        this.rate_support.take();
+        this.video_display = None;
+        this.audio_volume = None;
+        this.rate_control = None;
+        this.rate_support = None;
 
         let r = 'r: {
             // Outer::Invokeが呼ばれるために必要
