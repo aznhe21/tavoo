@@ -268,11 +268,27 @@ impl Timestamp {
     const WRAP_THRESH: u64 = Self::MAX.0 / 2;
 
     /// 90kHZの`base`と27MHzの`extension`から`Timestamp`を生成する。
+    ///
+    /// # パニック
+    ///
+    /// `base`が8589934591を、または`extension`が299を超える時、このメソッドはパニックを起こす。
     #[inline]
     pub const fn new(base: u64, extension: u16) -> Timestamp {
         assert!(base < 2u64.pow(33), "baseがオーバーフロー");
         assert!(extension < 300, "extensionがオーバーフロー");
         Timestamp(base * 300 + extension as u64)
+    }
+
+    /// 90kHZの`base`と27MHzの`extension`から`Timestamp`を生成する。
+    ///
+    /// `base`が8589934591を、または`extension`が299を超える場合は`None`を返す。
+    #[inline]
+    pub const fn try_new(base: u64, extension: u16) -> Option<Timestamp> {
+        if base < 2u64.pow(33) && extension < 300 {
+            Some(Timestamp(base * 300 + extension as u64))
+        } else {
+            None
+        }
     }
 
     /// 27MHz単位で表現されるタイムスタンプから`Timestamp`を生成する。
