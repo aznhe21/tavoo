@@ -350,21 +350,25 @@ impl Timestamp {
     }
 
     /// PCRを格納する`data`から`Timestamp`を読み取る。
+    ///
+    /// `data`が不正な場合は`None`を返す。
     #[inline]
-    pub fn read_pcr(data: &[u8; 6]) -> Timestamp {
+    pub fn read_pcr(data: &[u8; 6]) -> Option<Timestamp> {
         let base =
             ((data[0..=3].read_be_32() as u64) << 1) | (((data[4] & 0b10000000) >> 7) as u64);
         let extension = data[4..=5].read_be_16() & 0b0000_0001_1111_1111;
-        Timestamp::new(base, extension)
+        Timestamp::try_new(base, extension)
     }
 
     /// PTS・DTSを格納する`data`から`Timestamp`を読み取る。
+    ///
+    /// `data`が不正な場合は`None`を返す。
     #[inline]
-    pub fn read_pts(data: &[u8; 5]) -> Timestamp {
+    pub fn read_pts(data: &[u8; 5]) -> Option<Timestamp> {
         let timestamp = ((data[0] & 0b00001110) as u64) << 29
             | (((data[1..=2].read_be_16() & 0b11111111_11111110) as u64) << 14)
             | ((data[3..=4].read_be_16() >> 1) as u64);
-        Timestamp::new(timestamp, 0)
+        Timestamp::try_new(timestamp, 0)
     }
 
     /// 27MHz単位で表現されるタイムスタンプを取得する。

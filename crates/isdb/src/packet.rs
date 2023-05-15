@@ -398,7 +398,7 @@ impl<'a> AdaptationField<'a> {
         self.pcr_offset()
             .and_then(|offset| self.0.get(offset..offset + 6))
             .map(|slice| slice.try_into().unwrap())
-            .map(Timestamp::read_pcr)
+            .and_then(Timestamp::read_pcr)
     }
 
     /// オリジナルPCRを返す。
@@ -406,7 +406,7 @@ impl<'a> AdaptationField<'a> {
         self.opcr_offset()
             .and_then(|offset| self.0.get(offset..offset + 6))
             .map(|slice| slice.try_into().unwrap())
-            .map(Timestamp::read_pcr)
+            .and_then(Timestamp::read_pcr)
     }
 
     /// スプライスカウントダウンを返す。

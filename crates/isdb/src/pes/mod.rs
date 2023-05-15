@@ -177,7 +177,7 @@ impl<'a> PesPacket<'a> {
                 }
 
                 let pts = Timestamp::read_pts(data[9..=13].try_into().unwrap());
-                (Some(pts), Some(pts))
+                (pts, pts)
             } else if pts_dts_flags == 0b11 {
                 if data.len() < 9 + 5 + 5 {
                     return Err(PesError::Corrupted);
@@ -185,7 +185,7 @@ impl<'a> PesPacket<'a> {
 
                 let pts = Timestamp::read_pts(data[9..=13].try_into().unwrap());
                 let dts = Timestamp::read_pts(data[14..=18].try_into().unwrap());
-                (Some(pts), Some(dts))
+                (pts, dts)
             } else {
                 (None, None)
             };
