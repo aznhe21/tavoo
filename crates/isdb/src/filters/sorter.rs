@@ -64,6 +64,16 @@ pub trait Shooter {
     fn on_pcr(&mut self, services: &ServiceMap, service_ids: &[ServiceId]) {
         let _ = (services, service_ids);
     }
+
+    /// TOTが更新された際に呼ばれる。
+    fn on_tot(
+        &mut self,
+        services: &ServiceMap,
+        datetime: time::DateTime,
+        time_offset: Option<psi::desc::LocalTimeOffsetEntry>,
+    ) {
+        let _ = (services, datetime, time_offset);
+    }
 }
 
 /// PMTで送出されるストリーム情報。
@@ -418,6 +428,7 @@ mod sealed {
         Pmt,
         Sdt,
         Eit,
+        Tot,
 
         // PES
         Video,
@@ -440,6 +451,7 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
         table.set_as_psi(Pid::SDT, Tag::Sdt);
         table.set_as_psi(Pid::H_EIT, Tag::Eit);
         table.set_as_psi(Pid::L_EIT, Tag::Eit);
+        table.set_as_psi(Pid::TOT, Tag::Tot);
     }
 
     fn on_packet_storing(&mut self, ctx: &mut demux::Context<Self::Tag>) {
@@ -741,6 +753,20 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                         events.1 = event;
                     }
                 }
+            }
+            Tag::Tot => {
+                let Some(tot) = self.repo.read::<psi::table::Tot>(psi) else {
+                    return;
+                };
+
+                // ARIB TR-B14によりローカル時間オフセット記述子は1個のみである
+                let time_offset = tot
+                    .descriptors
+                    .get::<psi::desc::LocalTimeOffsetDescriptor>()
+                    .and_then(|ltod| ltod.time_offsets.get(0).cloned());
+
+                self.shooter
+                    .on_tot(&self.services, tot.jst_time, time_offset);
             }
             tag @ _ => {
                 log::error!("invalid tag: {:?}", tag);
