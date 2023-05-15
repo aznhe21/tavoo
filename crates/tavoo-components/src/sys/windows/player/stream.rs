@@ -190,7 +190,7 @@ impl Inner {
             }
 
             if this.samples.is_empty() && this.is_eos {
-                log::trace!("sample exhausted ({:p})", this);
+                log::trace!("sample exhausted ({:p})", &**this);
                 unsafe {
                     tri!('r, this.event_queue.QueueEventParamVar(
                         MF::MEEndOfStream.0 as u32,
@@ -353,17 +353,16 @@ impl MF::IMFMediaStream_Impl for Outer {
     }
 
     fn GetStreamDescriptor(&self) -> WinResult<MF::IMFStreamDescriptor> {
-        log::trace!("ElementaryStream::GetStreamDescriptor ({:p})", self);
-
         let inner = self.inner.lock();
+        log::trace!("ElementaryStream::GetStreamDescriptor ({:p})", &*inner);
+
         inner.check_shutdown()?;
         Ok(inner.stream_descriptor.clone())
     }
 
     fn RequestSample(&self, ptoken: Option<&C::IUnknown>) -> WinResult<()> {
-        log::trace!("ElementaryStream::RequestSample {:p}", self);
-
         let mut inner = self.inner.lock();
+        log::trace!("ElementaryStream::RequestSample {:p}", &*inner);
 
         let r: WinResult<()> = 'r: {
             tri!('r, inner.check_shutdown());
