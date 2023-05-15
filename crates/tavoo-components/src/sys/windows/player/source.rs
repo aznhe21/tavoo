@@ -211,13 +211,21 @@ pub struct TransportStream(MF::IMFMediaSource);
 unsafe impl Send for TransportStream {}
 
 impl TransportStream {
-    pub fn new(
-        extract_handler: ExtractHandler,
-        video_stream: &isdb::filters::sorter::Stream,
-        audio_stream: &isdb::filters::sorter::Stream,
-    ) -> WinResult<TransportStream> {
-        let video_sd = create_video_sd(video_stream)?;
-        let audio_sd = create_audio_sd(audio_stream)?;
+    /// サービスが選択されている必要がある。
+    pub fn new(extract_handler: ExtractHandler) -> WinResult<TransportStream> {
+        let (video_sd, audio_sd) = {
+            let selected_stream = extract_handler.selected_stream();
+            let Some(selected_stream) = &*selected_stream else {
+                log::trace!("サービス未選択");
+                return Err(MF::MF_E_INVALIDREQUEST.into());
+            };
+
+            (
+                create_video_sd(&selected_stream.video_stream)?,
+                create_audio_sd(&selected_stream.audio_stream)?,
+            )
+        };
+
         let presentation_descriptor = unsafe {
             MF::MFCreatePresentationDescriptor(Some(&[
                 Some(video_sd.clone()),

@@ -20,8 +20,6 @@ use winit::platform::windows::WindowExtWindows;
 use crate::extract::{self, ExtractHandler};
 use crate::player::EventHandler;
 
-use self::source::TransportStream;
-
 #[derive(Debug, Clone)]
 pub struct PlayerEvent(MF::IMFMediaEvent);
 
@@ -310,7 +308,7 @@ impl<H> Drop for Player<H> {
 }
 
 impl<H: EventHandler + Clone> Sink<H> {
-    /// サービスが未選択の場合はパニックする。
+    /// サービスが選択されている必要がある。
     fn reset(&self, _immediate: bool, changed: extract::StreamChanged) -> WinResult<()> {
         let mut guard = self.session.lock();
         if let Some(session) = &*guard {
@@ -323,19 +321,10 @@ impl<H: EventHandler + Clone> Sink<H> {
             *guard = None;
         }
 
-        let selected_stream = self.extract_handler.selected_stream();
-        let selected_stream = selected_stream.as_ref().expect("サービス未選択");
-        let source = TransportStream::new(
-            self.extract_handler.clone(),
-            &selected_stream.video_stream,
-            &selected_stream.audio_stream,
-        )?;
-
         *guard = Some(session::Session::new(
             self.player_state.clone(),
             self.event_handler.clone(),
             self.extract_handler.clone(),
-            source,
         )?);
         Ok(())
     }

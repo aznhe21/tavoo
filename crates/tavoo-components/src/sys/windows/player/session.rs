@@ -131,14 +131,13 @@ pub struct Session(MF::IMFAsyncCallback);
 unsafe impl Send for Session {}
 
 impl Session {
+    /// サービスが選択されている必要がある。
     pub(super) fn new<H: EventHandler>(
         player_state: Arc<Mutex<PlayerState>>,
         event_handler: H,
         extract_handler: ExtractHandler,
-        source: TransportStream,
     ) -> WinResult<Session> {
-        let close_mutex = Arc::new(parking_lot::RawMutex::INIT);
-        close_mutex.lock();
+        let source = TransportStream::new(extract_handler.clone())?;
 
         let session = unsafe { MF::MFCreateMediaSession(None)? };
         let presentation_clock = unsafe { session.GetClock()?.cast()? };
@@ -148,6 +147,9 @@ impl Session {
         let topology =
             create_playback_topology(source.intf(), &source_pd, player_state.lock().hwnd_video)?;
         unsafe { session.SetTopology(0, &topology)? };
+
+        let close_mutex = Arc::new(parking_lot::RawMutex::INIT);
+        close_mutex.lock();
 
         let inner = Mutex::new(Inner {
             close_mutex,
