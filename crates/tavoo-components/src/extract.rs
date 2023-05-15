@@ -1217,7 +1217,8 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
         } else {
             if target_pos <= HEAD_MAX_POS {
                 // 先頭へのシークは常に行き過ぎ判定に入るため確定で頭出し
-                return self.reset();
+                self.rewind();
+                return;
             }
 
             let diff = current_pos - target_pos;
@@ -1307,21 +1308,39 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
         } else {
             // 巻き戻しでは先頭から探す
             log::info!("ビットレートによるシークに失敗。頭出しにより再検索");
-            self.reset();
+            self.rewind();
         }
     }
 
-    fn reset(&mut self) {
+    /// TSの頭出しをする。
+    ///
+    /// シーク情報は設定されないため呼び出し側で適宜設定すること。
+    fn rewind(&mut self) -> bool {
         match self.selector().read.rewind() {
             Ok(_) => {
                 self.on_restored();
                 self.selector().pcr_time = PlaybackTime::default();
                 self.demuxer.reset_packets();
+                true
             }
             Err(e) => {
                 // TODO: リアルタイム視聴中はエラーではない
                 self.on_error(e);
+                false
             }
+        }
+    }
+
+    fn reset(&mut self) {
+        if self.rewind() {
+            let orig_stream = self.selector().state.read().selected_stream.clone();
+            self.selector().seek_info = Some(SeekInfo {
+                target_pos: Duration::ZERO,
+                orig_stream,
+                pat_updated: false,
+                pmt_updated: SortedSet::new(),
+                eit_updated: SortedSet::new(),
+            });
         }
     }
 
