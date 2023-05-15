@@ -87,7 +87,7 @@ impl MjdDate {
 
     /// `MjdDate`から`Date`に変換する。
     ///
-    /// 無効な日付（1970年3月1日より前など）の場合は`None`が返る。
+    /// 無効な日付（1900年3月1日より前など）の場合は`None`が返る。
     pub fn to_date(&self) -> Option<Date> {
         if self.0 == u16::MAX || self.0 < 15079 {
             return None;
