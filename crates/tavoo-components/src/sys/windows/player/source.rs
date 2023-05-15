@@ -746,7 +746,7 @@ impl MF::IMFMediaSource_Impl for Outer {
         inner.check_shutdown()?;
 
         // TODO: リアルタイム視聴では0？
-        Ok(MF::MFMEDIASOURCE_CAN_PAUSE.0 as u32)
+        Ok(MF::MFMEDIASOURCE_CAN_SEEK.0 as u32 | MF::MFMEDIASOURCE_CAN_PAUSE.0 as u32)
     }
 
     fn CreatePresentationDescriptor(&self) -> WinResult<MF::IMFPresentationDescriptor> {
@@ -824,6 +824,9 @@ impl MF::IMFMediaSource_Impl for Outer {
 
         let inner = self.inner.lock();
         inner.check_shutdown()?;
+        if inner.state != State::Started {
+            return Err(MF::MF_E_INVALID_STATE_TRANSITION.into());
+        }
 
         self.enqueue_op(move |outer| Inner::do_pause(&mut outer.inner.lock()))?;
 
