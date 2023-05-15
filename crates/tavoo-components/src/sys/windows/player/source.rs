@@ -485,7 +485,7 @@ impl Inner {
                 PropVariant::Empty
             };
 
-            tri!('r, Inner::select_streams(this, pd, Some(&start_pos)));
+            tri!('r, Inner::select_streams(this, pd, &start_pos));
 
             this.state = State::Started;
 
@@ -500,7 +500,7 @@ impl Inner {
 
             Ok(())
         };
-        if let Err(ref e) = r {
+        if let Err(e) = &r {
             log::debug!("error[do_start]: {}", e);
             let _ = unsafe {
                 this.event_queue.QueueEventParamVar(
@@ -576,7 +576,7 @@ impl Inner {
     fn select_streams(
         this: &mut MutexGuard<Self>,
         _pd: &MF::IMFPresentationDescriptor,
-        start_pos: Option<&PropVariant>,
+        start_pos: &PropVariant,
     ) -> WinResult<()> {
         let event = if this.state == State::Init {
             log::trace!("TransportStream: MENewStream");
@@ -777,9 +777,7 @@ impl MF::IMFMediaSource_Impl for Outer {
         let inner = self.inner.lock();
 
         let pd = pd.ok_or(F::E_INVALIDARG)?;
-        let Some(start_pos) = start_pos else {
-            return Err(F::E_INVALIDARG.into());
-        };
+        let start_pos = start_pos.ok_or(F::E_INVALIDARG)?;
         if matches!(time_format, Some(tf) if *tf != GUID_NULL) {
             return Err(MF::MF_E_UNSUPPORTED_TIME_FORMAT.into());
         }

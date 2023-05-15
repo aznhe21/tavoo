@@ -76,7 +76,7 @@ impl ElementaryStream {
     }
 
     #[inline]
-    pub fn start(&self, start_pos: Option<&PropVariant>) -> WinResult<()> {
+    pub fn start(&self, start_pos: &PropVariant) -> WinResult<()> {
         let mut inner = self.inner();
         inner.check_shutdown()?;
         Inner::start(&mut inner, start_pos)
@@ -216,15 +216,12 @@ impl Inner {
         r
     }
 
-    fn start(this: &mut MutexGuard<Self>, start_pos: Option<&PropVariant>) -> WinResult<()> {
+    fn start(this: &mut MutexGuard<Self>, start_pos: &PropVariant) -> WinResult<()> {
         this.queue_event(
             MF::MEStreamStarted.0 as u32,
             &GUID_NULL,
             F::S_OK,
-            match start_pos {
-                Some(start_pos) => &start_pos.to_raw(),
-                None => std::ptr::null(),
-            },
+            &start_pos.to_raw(),
         )?;
         this.is_eos = false;
         this.state = State::Started;
