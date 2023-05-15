@@ -368,13 +368,13 @@ impl<H: EventHandler + Clone> extract::Sink for Sink<H> {
 
     fn on_video_packet(&mut self, pos: Option<Duration>, payload: &[u8]) {
         if let Some(session) = self.session.lock().as_ref() {
-            session.source().deliver_video_packet(pos, payload);
+            session.deliver_video_packet(pos, payload);
         }
     }
 
     fn on_audio_packet(&mut self, pos: Option<Duration>, payload: &[u8]) {
         if let Some(session) = self.session.lock().as_ref() {
-            session.source().deliver_audio_packet(pos, payload);
+            session.deliver_audio_packet(pos, payload);
         }
     }
 
@@ -388,7 +388,7 @@ impl<H: EventHandler + Clone> extract::Sink for Sink<H> {
 
     fn on_end_of_stream(&mut self) {
         if let Some(session) = self.session.lock().as_ref() {
-            let _ = session.source().end_of_mpeg_stream();
+            let _ = session.end_of_mpeg_stream();
         }
 
         self.event_handler.on_end_of_stream();
@@ -401,7 +401,7 @@ impl<H: EventHandler + Clone> extract::Sink for Sink<H> {
 
     fn needs_es(&self) -> bool {
         if let Some(session) = self.session.lock().as_ref() {
-            session.source().streams_need_data()
+            session.streams_need_data()
         } else {
             false
         }

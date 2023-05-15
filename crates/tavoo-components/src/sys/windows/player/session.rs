@@ -190,8 +190,23 @@ impl Session {
     }
 
     #[inline]
-    pub fn source(&self) -> TransportStream {
-        self.inner().source.clone()
+    pub fn deliver_video_packet(&self, pos: Option<Duration>, payload: &[u8]) {
+        self.inner().source.deliver_video_packet(pos, payload)
+    }
+
+    #[inline]
+    pub fn deliver_audio_packet(&self, pos: Option<Duration>, payload: &[u8]) {
+        self.inner().source.deliver_audio_packet(pos, payload)
+    }
+
+    #[inline]
+    pub fn end_of_mpeg_stream(&self) -> WinResult<()> {
+        self.inner().source.end_of_mpeg_stream()
+    }
+
+    #[inline]
+    pub fn streams_need_data(&self) -> bool {
+        self.inner().source.streams_need_data()
     }
 
     #[inline]
