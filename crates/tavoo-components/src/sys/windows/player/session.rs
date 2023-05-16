@@ -1,16 +1,18 @@
+use std::io;
+use std::mem::ManuallyDrop;
 use std::ops::RangeInclusive;
-use std::ptr;
+use std::ptr::{self, NonNull};
 use std::sync::Arc;
 use std::time::Duration;
 
 use parking_lot::lock_api::{RawMutex, RawMutexTimed};
-use parking_lot::{Mutex, MutexGuard};
-use windows::core::{self as C, implement, AsImpl, ComInterface, Result as WinResult};
+use parking_lot::{MappedMutexGuard, Mutex, MutexGuard};
+use windows::core::{self as C, implement, AsImpl, ComInterface, Interface, Result as WinResult};
 use windows::Win32::Foundation as F;
 use windows::Win32::Media::KernelStreaming::GUID_NULL;
 use windows::Win32::Media::MediaFoundation as MF;
 
-use crate::extract::ExtractHandler;
+use crate::extract::{self, ExtractHandler, Sink};
 use crate::player::{EventHandler, PlayerEvent};
 use crate::sys::com::PropVariant;
 use crate::sys::wrap;
@@ -123,7 +125,7 @@ fn create_playback_topology(
     Ok(topology)
 }
 
-/// IMFMediaSessionのラッパー。
+/// 単一のIOストリームと対応する再生管理用セッション。
 #[derive(Debug, Clone)]
 pub struct Session(MF::IMFAsyncCallback);
 
@@ -132,33 +134,25 @@ unsafe impl Send for Session {}
 
 impl Session {
     /// サービスが選択されている必要がある。
-    pub(super) fn new<H: EventHandler>(
+    pub(super) fn new<H: EventHandler, R: io::Read + io::Seek + Send + 'static>(
         player_state: Arc<Mutex<PlayerState>>,
         event_handler: H,
-        extract_handler: ExtractHandler,
+        read: R,
     ) -> WinResult<Session> {
-        let source = TransportStream::new(extract_handler.clone())?;
-
-        let session = unsafe { MF::MFCreateMediaSession(None)? };
-        let presentation_clock = unsafe { session.GetClock()?.cast()? };
-
-        let source_pd = unsafe { source.intf().CreatePresentationDescriptor()? };
-
-        let topology =
-            create_playback_topology(source.intf(), &source_pd, player_state.lock().hwnd_video)?;
-        unsafe { session.SetTopology(0, &topology)? };
-
-        let close_mutex = Arc::new(parking_lot::RawMutex::INIT);
-        close_mutex.lock();
+        let extractor = extract::Extractor::new();
 
         let inner = Mutex::new(Inner {
-            close_mutex,
-            player_state,
-            extract_handler,
+            // Safety: 不正なポインタだが使われないまま解放もされず上書きされる
+            intf: ManuallyDrop::new(unsafe {
+                MF::IMFAsyncCallback::from_raw(NonNull::dangling().as_ptr())
+            }),
 
-            session,
-            source,
-            presentation_clock,
+            close_mutex: Arc::new(parking_lot::RawMutex::INIT),
+            player_state,
+            extract_handler: extractor.handler(),
+            thread_handle: None,
+
+            presentation: None,
             video_display: None,
             audio_volume: None,
             rate_control: None,
@@ -178,42 +172,34 @@ impl Session {
         });
         let this = Session(Outer { inner }.into());
 
-        unsafe { this.inner().session.BeginGetEvent(&this.0, None)? };
+        let thread_handle = extractor.spawn(read, this.clone());
+
+        {
+            let mut inner = this.inner();
+
+            // Safety: 参照カウントそのままコピーするがManuallyDropによりUse-After-Freeすることはない
+            inner.intf = ManuallyDrop::new(unsafe {
+                MF::IMFAsyncCallback::from_raw(std::mem::transmute_copy(&this.0))
+            });
+            inner.thread_handle = Some(thread_handle);
+        }
 
         Ok(this)
     }
-}
 
-impl Session {
-    #[inline]
-    fn inner(&self) -> parking_lot::MutexGuard<Inner> {
+    fn inner(&self) -> MutexGuard<Inner> {
         let outer: &Outer = self.0.as_impl();
         outer.inner.lock()
     }
 
     #[inline]
-    pub fn deliver_video_packet(&self, pos: Option<Duration>, payload: &[u8]) {
-        self.inner().source.deliver_video_packet(pos, payload)
-    }
-
-    #[inline]
-    pub fn deliver_audio_packet(&self, pos: Option<Duration>, payload: &[u8]) {
-        self.inner().source.deliver_audio_packet(pos, payload)
-    }
-
-    #[inline]
-    pub fn end_of_mpeg_stream(&self) -> WinResult<()> {
-        self.inner().source.end_of_mpeg_stream()
-    }
-
-    #[inline]
-    pub fn streams_need_data(&self) -> bool {
-        self.inner().source.streams_need_data()
-    }
-
-    #[inline]
     pub fn close(&self) -> WinResult<()> {
         Inner::close(&mut self.inner())
+    }
+
+    #[inline]
+    pub fn extract_handler(&self) -> MappedMutexGuard<ExtractHandler> {
+        MutexGuard::map(self.inner(), |inner| &mut inner.extract_handler)
     }
 
     #[inline]
@@ -277,6 +263,85 @@ impl Session {
     }
 }
 
+impl Sink for Session {
+    fn on_services_updated(&mut self, services: &isdb::filters::sorter::ServiceMap) {
+        self.inner().event_handler.on_services_updated(services);
+    }
+
+    fn on_streams_updated(&mut self, service: &isdb::filters::sorter::Service) {
+        self.inner().event_handler.on_streams_updated(service);
+    }
+
+    fn on_event_updated(&mut self, service: &isdb::filters::sorter::Service, is_present: bool) {
+        self.inner()
+            .event_handler
+            .on_event_updated(service, is_present);
+    }
+
+    fn on_service_changed(&mut self, service: &isdb::filters::sorter::Service) {
+        self.inner().event_handler.on_service_changed(service);
+    }
+
+    fn on_stream_changed(&mut self, immediate: bool, changed: extract::StreamChanged) {
+        // ストリームに変化があったということはサービスは選択されている
+        match Inner::reset(&mut self.inner(), immediate, changed.clone()) {
+            Ok(()) => self.inner().event_handler.on_stream_changed(changed),
+            Err(e) => self.inner().event_handler.on_stream_error(e.into()),
+        }
+    }
+
+    fn on_video_packet(&mut self, pos: Option<Duration>, payload: &[u8]) {
+        if let Some(pres) = &self.inner().presentation {
+            pres.source.deliver_video_packet(pos, payload);
+        }
+    }
+
+    fn on_audio_packet(&mut self, pos: Option<Duration>, payload: &[u8]) {
+        if let Some(pres) = &self.inner().presentation {
+            pres.source.deliver_audio_packet(pos, payload);
+        }
+    }
+
+    fn on_caption(&mut self, caption: &isdb::filters::sorter::Caption) {
+        self.inner().event_handler.on_caption(caption);
+    }
+
+    fn on_superimpose(&mut self, caption: &isdb::filters::sorter::Caption) {
+        self.inner().event_handler.on_superimpose(caption);
+    }
+
+    fn on_timestamp_updated(&mut self, timestamp: Duration) {
+        self.inner().event_handler.on_timestamp_updated(timestamp);
+    }
+
+    fn on_end_of_stream(&mut self) {
+        if let Some(pres) = &self.inner().presentation {
+            let _ = pres.source.end_of_mpeg_stream();
+        }
+
+        self.inner().event_handler.on_end_of_stream();
+    }
+
+    fn on_stream_error(&mut self, error: io::Error) {
+        self.on_end_of_stream();
+        self.inner().event_handler.on_stream_error(error.into());
+    }
+
+    fn needs_es(&self) -> bool {
+        if let Some(pres) = &self.inner().presentation {
+            pres.source.streams_need_data()
+        } else {
+            false
+        }
+    }
+}
+
+struct Presentation {
+    session: MF::IMFMediaSession,
+    source: TransportStream,
+    presentation_clock: MF::IMFPresentationClock,
+}
+
 /// セッションに要求している状態。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum State {
@@ -318,14 +383,15 @@ struct Outer {
 }
 
 struct Inner {
+    intf: ManuallyDrop<MF::IMFAsyncCallback>,
+
     // セッションが閉じられたらロック解除されるミューテックス
     close_mutex: Arc<parking_lot::RawMutex>,
     player_state: Arc<Mutex<PlayerState>>,
     extract_handler: ExtractHandler,
+    thread_handle: Option<std::thread::JoinHandle<()>>,
 
-    session: MF::IMFMediaSession,
-    source: TransportStream,
-    presentation_clock: MF::IMFPresentationClock,
+    presentation: Option<Presentation>,
     video_display: Option<MF::IMFVideoDisplayControl>,
     audio_volume: Option<MF::IMFSimpleAudioVolume>,
     rate_control: Option<MF::IMFRateControl>,
@@ -356,6 +422,23 @@ impl Outer {
 
 impl Inner {
     fn close(this: &mut MutexGuard<Inner>) -> WinResult<()> {
+        this.extract_handler.shutdown();
+
+        let r = Inner::close_pres(this);
+
+        if let Some(thread_handle) = this.thread_handle.take() {
+            let _ = thread_handle.join();
+        }
+
+        r
+    }
+
+    fn close_pres(this: &mut MutexGuard<Inner>) -> WinResult<()> {
+        let (session, source) = match &this.presentation {
+            None => return Ok(()),
+            Some(pres) => (pres.session.clone(), pres.source.clone()),
+        };
+
         this.video_display = None;
         this.audio_volume = None;
         this.rate_control = None;
@@ -363,10 +446,10 @@ impl Inner {
 
         let r = 'r: {
             // Outer::Invokeが呼ばれるために必要
-            let _ = this.source.end_of_mpeg_stream();
+            let _ = source.end_of_mpeg_stream();
 
             this.state = State::Closing;
-            unsafe { tri!('r, this.session.Close()) };
+            unsafe { tri!('r, session.Close()) };
 
             // IMFMediaSession::Close()の呼び出しでOuter::Invokeが呼ばれるため、
             // 閉じるのを待つ間はロックを解除する
@@ -377,17 +460,60 @@ impl Inner {
                 log::debug!("Session::shutdown: timeout");
             }
 
-            let _ = unsafe { this.source.intf().Shutdown() };
-            let _ = unsafe { this.session.Shutdown() };
+            let _ = unsafe { source.intf().Shutdown() };
+            let _ = unsafe { session.Shutdown() };
 
             Ok(())
         };
 
+        this.presentation = None;
+
         unsafe { this.close_mutex.unlock() };
         this.state = State::Closed;
         this.status = Status::Closed;
+        this.is_pending = false;
 
         r
+    }
+
+    fn reset(
+        this: &mut MutexGuard<Inner>,
+        _immediate: bool,
+        changed: extract::StreamChanged,
+    ) -> WinResult<()> {
+        if this.presentation.is_some() {
+            // 音声種別が変わらない場合は何もしない
+            if !changed.video_type && !changed.video_pid && !changed.audio_type {
+                return Ok(());
+            }
+
+            Inner::close_pres(this)?;
+        }
+
+        let source = TransportStream::new(this.extract_handler.clone())?;
+
+        let session = unsafe { MF::MFCreateMediaSession(None)? };
+        let presentation_clock = unsafe { session.GetClock()?.cast()? };
+
+        let source_pd = unsafe { source.intf().CreatePresentationDescriptor()? };
+
+        let topology = create_playback_topology(
+            source.intf(),
+            &source_pd,
+            this.player_state.lock().hwnd_video,
+        )?;
+        unsafe { session.SetTopology(0, &topology)? };
+
+        unsafe { session.BeginGetEvent(&*this.intf, None)? };
+
+        assert!(this.close_mutex.try_lock(), "セッションの状態が不正");
+        this.presentation = Some(Presentation {
+            session,
+            source,
+            presentation_clock,
+        });
+
+        Ok(())
     }
 
     fn set_status(&mut self, new_status: Status) {
@@ -545,28 +671,32 @@ impl Inner {
         Ok(())
     }
 
-    fn get_service<T: ComInterface>(&self, guid: &C::GUID) -> WinResult<T> {
-        let mut ptr = ptr::null_mut();
-        unsafe { MF::MFGetService(&self.session, guid, &T::IID, &mut ptr)? };
-        debug_assert!(!ptr.is_null());
-        Ok(unsafe { T::from_raw(ptr) })
-    }
-
     fn on_topology_status(
         &mut self,
         status: C::HRESULT,
         event: &MF::IMFMediaEvent,
     ) -> WinResult<()> {
+        fn get_service<T: ComInterface>(
+            session: &MF::IMFMediaSession,
+            guid: &C::GUID,
+        ) -> WinResult<T> {
+            let mut ptr = ptr::null_mut();
+            unsafe { MF::MFGetService(session, guid, &T::IID, &mut ptr)? };
+            debug_assert!(!ptr.is_null());
+            Ok(unsafe { T::from_raw(ptr) })
+        }
+
         status.ok()?;
 
         let status = unsafe { event.GetUINT32(&MF::MF_EVENT_TOPOLOGY_STATUS)? };
         if status == MF::MF_TOPOSTATUS_READY.0 as u32 {
             log::trace!("Session::on_topology_ready");
 
-            self.video_display = self.get_service(&MF::MR_VIDEO_RENDER_SERVICE).ok();
-            self.audio_volume = self.get_service(&MF::MR_POLICY_VOLUME_SERVICE).ok();
-            self.rate_control = self.get_service(&MF::MF_RATE_CONTROL_SERVICE).ok();
-            self.rate_support = self.get_service(&MF::MF_RATE_CONTROL_SERVICE).ok();
+            let pres = self.presentation.as_ref().expect("presentationが必要");
+            self.video_display = get_service(&pres.session, &MF::MR_VIDEO_RENDER_SERVICE).ok();
+            self.audio_volume = get_service(&pres.session, &MF::MR_POLICY_VOLUME_SERVICE).ok();
+            self.rate_control = get_service(&pres.session, &MF::MF_RATE_CONTROL_SERVICE).ok();
+            self.rate_support = get_service(&pres.session, &MF::MF_RATE_CONTROL_SERVICE).ok();
 
             {
                 let player_state = self.player_state.lock();
@@ -623,10 +753,12 @@ impl Inner {
         log::trace!("Session::on_new_presentation");
         status.ok()?;
 
+        let pres = self.presentation.as_ref().expect("presentationが必要");
+
         let pd = get_event_object(event)?;
         let topology =
-            create_playback_topology(self.source.intf(), &pd, self.player_state.lock().hwnd_video)?;
-        unsafe { self.session.SetTopology(0, &topology)? };
+            create_playback_topology(pres.source.intf(), &pd, self.player_state.lock().hwnd_video)?;
+        unsafe { pres.session.SetTopology(0, &topology)? };
 
         self.state = State::OpenPending;
 
@@ -635,6 +767,7 @@ impl Inner {
 
     fn start_playback(&mut self) -> WinResult<()> {
         log::trace!("Session::start_playback");
+        let pres = self.presentation.as_ref().ok_or(MF::MF_E_SHUTDOWN)?;
 
         let start_pos = if self.state == State::Stopped {
             // 停止状態からの再生は最初から
@@ -648,7 +781,7 @@ impl Inner {
             // それ以外は位置を保持
             PropVariant::Empty
         };
-        unsafe { self.session.Start(&GUID_NULL, &start_pos.to_raw())? };
+        unsafe { pres.session.Start(&GUID_NULL, &start_pos.to_raw())? };
 
         self.state = State::Started;
         self.is_pending = true;
@@ -688,7 +821,8 @@ impl Inner {
         if self.is_pending {
             self.op_request.command = Some(Command::Pause);
         } else {
-            unsafe { self.session.Pause()? };
+            let pres = self.presentation.as_ref().expect("presentationが必要");
+            unsafe { pres.session.Pause()? };
 
             self.state = State::Paused;
             self.is_pending = true;
@@ -710,7 +844,8 @@ impl Inner {
         if self.is_pending {
             self.op_request.command = Some(Command::Stop);
         } else {
-            unsafe { self.session.Stop()? };
+            let pres = self.presentation.as_ref().expect("presentationが必要");
+            unsafe { pres.session.Stop()? };
 
             self.state = State::Stopped;
             self.is_pending = true;
@@ -761,10 +896,12 @@ impl Inner {
     }
 
     pub fn position(&self) -> WinResult<Duration> {
+        let pres = self.presentation.as_ref().ok_or(MF::MF_E_INVALIDREQUEST)?;
+
         let pos = if let Some(pos) = self.op_request.pos.or(self.seeking_pos) {
             pos
         } else {
-            Duration::from_nanos(unsafe { self.presentation_clock.GetTime()? } as u64 * 100)
+            Duration::from_nanos(unsafe { pres.presentation_clock.GetTime()? } as u64 * 100)
         };
 
         Ok(pos)
@@ -775,9 +912,11 @@ impl Inner {
             return self.stop();
         }
 
+        let pres = self.presentation.as_ref().ok_or(MF::MF_E_INVALIDREQUEST)?;
+
         let time = (pos.as_nanos() / 100) as i64;
         unsafe {
-            self.session
+            pres.session
                 .Start(&GUID_NULL, &PropVariant::I64(time).to_raw())?
         };
 
@@ -790,7 +929,7 @@ impl Inner {
             }
 
             (Some(Command::Pause), _) | (None, State::Paused) => {
-                unsafe { self.session.Pause()? };
+                unsafe { pres.session.Pause()? };
                 self.state = State::Paused;
             }
 
@@ -902,13 +1041,14 @@ impl MF::IMFAsyncCallback_Impl for Outer {
     fn Invoke(&self, presult: Option<&MF::IMFAsyncResult>) -> WinResult<()> {
         log::trace!("Session::Invoke");
         let inner = self.inner.lock();
+        let pres = inner.presentation.as_ref().ok_or(MF::MF_E_SHUTDOWN)?;
 
-        let event = unsafe { inner.session.EndGetEvent(presult)? };
+        let event = unsafe { pres.session.EndGetEvent(presult)? };
         let me_type = unsafe { event.GetType()? };
         if me_type == MF::MESessionClosed.0 as u32 {
             unsafe { inner.close_mutex.unlock() };
         } else {
-            unsafe { inner.session.BeginGetEvent(&self.intf(), None)? };
+            unsafe { pres.session.BeginGetEvent(&self.intf(), None)? };
         }
 
         if inner.state != State::Closing {
