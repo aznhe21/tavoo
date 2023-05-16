@@ -152,6 +152,12 @@ impl<H: EventHandler + Clone> Player<H> {
         self.inner.duration()
     }
 
+    /// TOTとPCRによって計算される、1900年1月1日からの経過時間を返す。
+    #[inline]
+    pub fn timestamp(&self) -> Option<Duration> {
+        self.inner.timestamp()
+    }
+
     /// 再生位置を取得する。
     #[inline]
     pub fn position(&mut self) -> Result<Duration> {

@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use isdb::filters::sorter::{Service, ServiceMap, Stream};
 use isdb::psi::table::ServiceId;
-use isdb::time::Timestamp;
+use isdb::time::{DateTime, Timestamp};
 use parking_lot::RwLock;
 
 /// 映像・音声ストリームの変更通知。
@@ -134,6 +134,7 @@ struct State {
     length: Option<StreamLength>,
     services: ServiceMap,
     selected_stream: Option<SelectedStream>,
+    tot: Option<Tot>,
 }
 
 /// TSを処理するオブジェクト。
@@ -270,6 +271,17 @@ impl ExtractHandler {
     #[inline]
     pub fn duration(&self) -> Option<Duration> {
         self.state.read().length.as_ref().map(|br| br.duration())
+    }
+
+    /// TOTとPCRによって計算される、1900年1月1日からの経過時間を返す。
+    pub fn timestamp(&self) -> Option<Duration> {
+        let state = self.state.read();
+        let tot = state.tot.as_ref()?;
+
+        let (_, default_service) = state.services.first()?;
+        let pcr = default_service.pcr()?;
+
+        Some(tot.timestamp(pcr))
     }
 
     /// 現在のサービス一覧を返す。
@@ -464,6 +476,24 @@ impl StreamLength {
     /// 時間からファイルサイズを推定する。
     pub fn estimate_size(&self, dur: Duration) -> u64 {
         (self.size as f64 * (dur.as_secs_f64() / self.duration().as_secs_f64())) as u64
+    }
+}
+
+#[derive(Debug)]
+struct Tot {
+    datetime: DateTime,
+    base_pcr: Timestamp,
+}
+
+impl Tot {
+    fn timestamp(&self, pcr: Timestamp) -> Duration {
+        const NANOS_PER_SECS: u64 = 1_000_000_000;
+
+        let diff = (pcr - self.base_pcr).as_nanos();
+        let secs = self.datetime.ntp_timestamp() + diff / NANOS_PER_SECS;
+        let nanos = (diff % NANOS_PER_SECS) as u32;
+
+        Duration::new(secs, nanos)
     }
 }
 
@@ -914,6 +944,17 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
         self.pcr_time.update(service.pcr().expect("PCRは更新済み"));
         self.complete_seek();
     }
+
+    fn on_tot(
+        &mut self,
+        _: &ServiceMap,
+        datetime: DateTime,
+        _: Option<isdb::psi::desc::LocalTimeOffsetEntry>,
+    ) {
+        if let Some(base_pcr) = self.pcr_time.prev_ts {
+            self.state.write().tot = Some(Tot { datetime, base_pcr });
+        }
+    }
 }
 
 /// 現在位置が記録される[`Read`]。
@@ -1034,6 +1075,13 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
     #[inline]
     fn on_restored(&mut self) {
         self.did_error = false;
+    }
+
+    fn on_rewinded(&mut self, pcr_time: PlaybackTime) {
+        self.on_restored();
+        self.selector().pcr_time = pcr_time;
+        self.selector().state.write().tot = None;
+        self.demuxer.reset_packets();
     }
 
     /// ストリームを確定させる。
@@ -1261,14 +1309,12 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
                     } else {
                         let diff = (target_pcr_max - pcr).to_duration();
                         log::trace!("シーク：確定（{:?}の{:?}前）", target_pos, diff);
-                        self.on_restored();
-                        self.selector().pcr_time = PlaybackTime {
+                        self.on_rewinded(PlaybackTime {
                             prev_ts: Some(pcr),
                             // 同じ位置へのシークを繰り返すと約-75ナノ秒ずつズレていくっぽいが、
                             // この程度なら誤差としたい（complete_seekで観測できる）
                             duration: target_pos.saturating_sub(diff),
-                        };
-                        self.demuxer.reset_packets();
+                        });
 
                         return;
                     }
@@ -1318,9 +1364,7 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
     fn rewind(&mut self) -> bool {
         match self.selector().read.rewind() {
             Ok(_) => {
-                self.on_restored();
-                self.selector().pcr_time = PlaybackTime::default();
-                self.demuxer.reset_packets();
+                self.on_rewinded(PlaybackTime::default());
                 true
             }
             Err(e) => {

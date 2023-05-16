@@ -243,6 +243,11 @@ impl<H: EventHandler + Clone> Player<H> {
         opened.sink.extract_handler.duration()
     }
 
+    pub fn timestamp(&self) -> Option<Duration> {
+        let opened = self.opened.as_ref()?;
+        opened.sink.extract_handler.timestamp()
+    }
+
     pub fn position(&self) -> Result<Duration> {
         let pos = self.session_must()?.position()?;
         Ok(pos)
