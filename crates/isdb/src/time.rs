@@ -177,6 +177,19 @@ impl DateTime {
             second,
         }
     }
+
+    /// この日付時刻の1900年1月1日からの経過秒数を返す。
+    #[inline]
+    pub fn ntp_timestamp(&self) -> u64 {
+        // 1900/1/1の修正ユリウス日
+        const EPOCH_JULIAN_DAY: u64 = 15020;
+
+        let days = self.date.0 as u64 - EPOCH_JULIAN_DAY;
+        let hours = days * 24 + self.hour as u64;
+        let minutes = hours * 60 + self.minute as u64;
+        let seconds = minutes * 60 + self.second as u64;
+        seconds
+    }
 }
 
 impl fmt::Display for DateTime {
@@ -658,5 +671,6 @@ mod tests {
         assert_eq!(dt.second, 56);
         assert_eq!(dt.to_string(), "1982-09-06 12:34:56");
         assert_eq!(format!("{:?}", dt), "1982-09-06 (Mon) 12:34:56");
+        assert_eq!(dt.ntp_timestamp(), 2609152496);
     }
 }
