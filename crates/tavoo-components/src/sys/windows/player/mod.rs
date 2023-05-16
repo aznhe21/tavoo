@@ -380,6 +380,10 @@ impl<H: EventHandler + Clone> extract::Sink for Sink<H> {
         self.event_handler.on_superimpose(caption);
     }
 
+    fn on_timestamp_updated(&mut self, timestamp: Duration) {
+        self.event_handler.on_timestamp_updated(timestamp);
+    }
+
     fn on_end_of_stream(&mut self) {
         if let Some(session) = self.session.lock().as_ref() {
             let _ = session.end_of_mpeg_stream();

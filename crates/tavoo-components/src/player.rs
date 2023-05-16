@@ -71,6 +71,11 @@ pub trait EventHandler: Send + 'static {
     /// 選択中サービスで文字スーパーのパケットを受信した際に呼ばれる。
     fn on_superimpose(&self, caption: &isdb::filters::sorter::Caption);
 
+    /// TS内の日付時刻が更新された際に呼ばれる。
+    ///
+    /// `timestamp`は更新された日付時刻で、1900年1月1日からの経過時間によって表される。
+    fn on_timestamp_updated(&mut self, timestamp: Duration);
+
     /// TSを終端まで読み終えた際に呼ばれる。
     fn on_end_of_stream(&self);
 

@@ -86,6 +86,11 @@ pub trait Sink {
     /// 選択中サービスで文字スーパーのパケットを受信した際に呼ばれる。
     fn on_superimpose(&mut self, caption: &isdb::filters::sorter::Caption);
 
+    /// TS内の日付時刻が更新された際に呼ばれる。ただし[`ExtractHandler::timestamp`]はより細かい間隔で更新される。
+    ///
+    /// `timestamp`は更新された日付時刻で、1900年1月1日からの経過時間によって表される。
+    fn on_timestamp_updated(&mut self, timestamp: Duration);
+
     /// TSを終端まで読み終えた際に呼ばれる。
     fn on_end_of_stream(&mut self);
 
@@ -953,6 +958,11 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
     ) {
         if let Some(base_pcr) = self.pcr_time.prev_ts {
             self.state.write().tot = Some(Tot { datetime, base_pcr });
+
+            if self.seek_info.is_none() {
+                self.sink
+                    .on_timestamp_updated(Duration::from_secs(datetime.ntp_timestamp()));
+            }
         }
     }
 }
