@@ -14,6 +14,7 @@ fxhash = "0.2.1"
 http = "0.2.9"
 isdb = { path = "../isdb" }
 log = "0.4.17"
+memchr = "2.5.0"
 parking_lot = "0.12.1"
 winit = "0.28.3"
 
