@@ -34,10 +34,7 @@ fn create_media_sink_activate(
             match unsafe { media_type.GetGUID(&MF::MF_MT_SUBTYPE)? } {
                 MF::MFVideoFormat_MPEG2 => "MPEG-2",
                 MF::MFVideoFormat_H264 => "H.264",
-                MF::MFVideoFormat_H265 => "H.265",
-                MF::MFAudioFormat_MPEG => "MPEG Audio",
                 MF::MFAudioFormat_AAC => "AAC",
-                MF::MFAudioFormat_Dolby_AC3 => "AC3",
                 _ => "Unknown",
             }
         );

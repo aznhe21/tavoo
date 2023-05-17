@@ -68,12 +68,6 @@ fn create_video_sd(stream: &isdb::filters::sorter::Stream) -> WinResult<MF::IMFS
             media_type.SetUINT32(&MF::MF_MT_FIXED_SIZE_SAMPLES, 0)?;
             media_type.SetUINT32(&MF::MF_MT_COMPRESSED, 1)?;
         },
-        StreamType::H265 => unsafe {
-            media_type.SetGUID(&MF::MF_MT_MAJOR_TYPE, &MF::MFMediaType_Video)?;
-            media_type.SetGUID(&MF::MF_MT_SUBTYPE, &MF::MFVideoFormat_H265)?;
-            media_type.SetUINT32(&MF::MF_MT_FIXED_SIZE_SAMPLES, 0)?;
-            media_type.SetUINT32(&MF::MF_MT_COMPRESSED, 1)?;
-        },
 
         _ => return Err(F::E_INVALIDARG.into()),
     }
@@ -100,11 +94,6 @@ fn create_audio_sd(stream: &isdb::filters::sorter::Stream) -> WinResult<MF::IMFS
 
     use isdb::psi::desc::StreamType;
     match stream.stream_type() {
-        StreamType::MPEG1_AUDIO | StreamType::MPEG2_AUDIO => {
-            // media_type.SetGUID(&MF::MF_MT_MAJOR_TYPE, &MF::MFMediaType_Audio)?;
-            // media_type.SetGUID(&MF::MF_MT_SUBTYPE, &MF::MFAudioFormat_MPEG)?;
-            todo!()
-        }
         StreamType::AAC => {
             unsafe {
                 media_type.SetGUID(&MF::MF_MT_MAJOR_TYPE, &MF::MFMediaType_Audio)?;
@@ -174,11 +163,6 @@ fn create_audio_sd(stream: &isdb::filters::sorter::Stream) -> WinResult<MF::IMFS
             unsafe {
                 media_type.SetBlob(&MF::MF_MT_USER_DATA, &USER_DATA)?;
             }
-        }
-        StreamType::AC3 => {
-            // media_type.SetGUID(&MF::MF_MT_MAJOR_TYPE, &MF::MFMediaType_Audio)?;
-            // media_type.SetGUID(&MF::MF_MT_SUBTYPE, &MF::MFAudioFormat_Dolby_AC3)?;
-            todo!()
         }
 
         _ => return Err(F::E_INVALIDARG.into()),
