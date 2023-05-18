@@ -424,7 +424,7 @@ impl Inner {
         let r = Inner::close_pres(this);
 
         if let Some(thread_handle) = this.thread_handle.take() {
-            let _ = thread_handle.join();
+            let _ = MutexGuard::unlocked(this, || thread_handle.join());
         }
 
         r
