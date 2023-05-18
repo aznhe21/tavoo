@@ -71,8 +71,13 @@ impl ElementaryStream {
     }
 
     #[inline]
-    pub fn deliver_payload(&self, sample: MF::IMFSample) -> WinResult<()> {
-        Inner::deliver_payload(&mut self.inner(), sample)
+    pub fn push_sample(&self, sample: MF::IMFSample) {
+        self.inner().push_sample(sample);
+    }
+
+    #[inline]
+    pub fn dispatch_samples(&self) -> WinResult<()> {
+        Inner::dispatch_samples(&mut self.inner())
     }
 
     #[inline]
@@ -158,11 +163,8 @@ impl Inner {
         Ok(())
     }
 
-    fn deliver_payload(this: &mut MutexGuard<Self>, sample: MF::IMFSample) -> WinResult<()> {
-        this.samples.push_back(sample);
-        Inner::dispatch_samples(this)?;
-
-        Ok(())
+    fn push_sample(&mut self, sample: MF::IMFSample) {
+        self.samples.push_back(sample);
     }
 
     fn dispatch_samples(this: &mut MutexGuard<Self>) -> WinResult<()> {

@@ -1,3 +1,4 @@
+use std::fmt;
 use std::io;
 use std::mem::ManuallyDrop;
 use std::ops::RangeInclusive;
@@ -5,6 +6,7 @@ use std::ptr::{self, NonNull};
 use std::sync::Arc;
 use std::time::Duration;
 
+use isdb::psi::desc::StreamType;
 use parking_lot::lock_api::{RawMutex, RawMutexTimed};
 use parking_lot::{MappedMutexGuard, Mutex, MutexGuard};
 use windows::core::{self as C, implement, AsImpl, ComInterface, Interface, Result as WinResult};
@@ -12,13 +14,20 @@ use windows::Win32::Foundation as F;
 use windows::Win32::Media::KernelStreaming::GUID_NULL;
 use windows::Win32::Media::MediaFoundation as MF;
 
+use crate::codec;
 use crate::extract::{self, ExtractHandler, Sink};
 use crate::player::{EventHandler, PlayerEvent};
 use crate::sys::com::PropVariant;
 use crate::sys::wrap;
 
-use super::source::TransportStream;
+use super::source::{AudioCodecInfo, TransportStream, VideoCodecInfo};
 use super::PlayerState;
+
+fn iter_packets(
+    packets: &[(Option<Duration>, Box<[u8]>)],
+) -> impl Iterator<Item = (Option<Duration>, &[u8])> {
+    packets.iter().map(|&(pos, ref payload)| (pos, &**payload))
+}
 
 fn create_media_sink_activate(
     source_sd: &MF::IMFStreamDescriptor,
@@ -27,31 +36,11 @@ fn create_media_sink_activate(
     let handler = unsafe { source_sd.GetMediaTypeHandler()? };
     let major_type = unsafe { handler.GetMajorType()? };
 
-    if log::log_enabled!(log::Level::Trace) {
-        let media_type = unsafe { handler.GetCurrentMediaType()? };
-        log::trace!(
-            "codec: {}",
-            match unsafe { media_type.GetGUID(&MF::MF_MT_SUBTYPE)? } {
-                MF::MFVideoFormat_MPEG2 => "MPEG-2",
-                MF::MFVideoFormat_H264 => "H.264",
-                MF::MFAudioFormat_AAC => "AAC",
-                _ => "Unknown",
-            }
-        );
-        if let Ok(size) = unsafe { media_type.GetUINT64(&MF::MF_MT_FRAME_SIZE) } {
-            log::trace!("size: {}x{}", (size >> 32) as u32, size as u32);
-        }
-        if let Ok(ratio) = unsafe { media_type.GetUINT64(&MF::MF_MT_PIXEL_ASPECT_RATIO) } {
-            log::trace!("ratio: {}/{}", (ratio >> 32) as u32, ratio as u32);
-        }
-    }
-
     let activate = match major_type {
         MF::MFMediaType_Audio => unsafe { MF::MFCreateAudioRendererActivate()? },
         MF::MFMediaType_Video => unsafe { MF::MFCreateVideoRendererActivate(hwnd_video)? },
         _ => return Err(F::E_FAIL.into()),
     };
-
     Ok(activate)
 }
 
@@ -148,6 +137,9 @@ impl Session {
             player_state,
             extract_handler: extractor.handler(),
             thread_handle: None,
+
+            incoming_video_stream: None,
+            incoming_audio_stream: None,
 
             presentation: None,
             video_display: None,
@@ -281,20 +273,59 @@ impl Sink for Session {
 
     fn on_stream_changed(&mut self, immediate: bool, changed: extract::StreamChanged) {
         // ストリームに変化があったということはサービスは選択されている
-        match Inner::reset(&mut self.inner(), immediate, changed.clone()) {
-            Ok(()) => self.inner().event_handler.on_stream_changed(changed),
-            Err(e) => self.inner().event_handler.on_stream_error(e.into()),
+        let mut inner = self.inner();
+        match Inner::prepare_streams_changing(&mut inner, immediate, changed.clone()) {
+            Ok(()) => inner.event_handler.on_stream_changed(changed),
+            Err(e) => inner.event_handler.on_stream_error(e),
         }
     }
 
     fn on_video_packet(&mut self, pos: Option<Duration>, payload: &[u8]) {
-        if let Some(pres) = &self.inner().presentation {
+        let mut inner = self.inner();
+        if let Some(ivs) = &mut inner.incoming_video_stream {
+            ivs.packets.push((pos, payload.into()));
+
+            if ivs.codec_info.is_none() {
+                match ivs.stream.stream_type() {
+                    StreamType::MPEG2_VIDEO => {
+                        let Some(seq) = codec::video::mpeg::Sequence::find(payload) else {
+                            return;
+                        };
+
+                        ivs.codec_info = Some(VideoCodecInfo::Mpeg2(seq));
+                    }
+                    StreamType::H264 => ivs.codec_info = Some(VideoCodecInfo::H264),
+                    _ => unreachable!(),
+                }
+
+                // 映像のコーデック情報が手に入ったので切り替えてみる
+                Inner::try_change_streams(&mut inner);
+            }
+        } else if let Some(pres) = &inner.presentation {
             pres.source.deliver_video_packet(pos, payload);
         }
     }
 
     fn on_audio_packet(&mut self, pos: Option<Duration>, payload: &[u8]) {
-        if let Some(pres) = &self.inner().presentation {
+        let mut inner = self.inner();
+        if let Some(ias) = &mut inner.incoming_audio_stream {
+            ias.packets.push((pos, payload.into()));
+
+            if ias.codec_info.is_none() {
+                match ias.stream.stream_type() {
+                    StreamType::AAC => {
+                        let Some(header) = codec::audio::adts::Header::find(payload) else {
+                            return;
+                        };
+                        ias.codec_info = Some(AudioCodecInfo::Aac(header));
+                    }
+                    _ => unreachable!(),
+                }
+
+                // 音声のコーデック情報が手に入ったので切り替えてみる
+                Inner::try_change_streams(&mut inner);
+            }
+        } else if let Some(pres) = &inner.presentation {
             pres.source.deliver_audio_packet(pos, payload);
         }
     }
@@ -325,10 +356,14 @@ impl Sink for Session {
     }
 
     fn needs_es(&self) -> bool {
-        if let Some(pres) = &self.inner().presentation {
-            pres.source.streams_need_data()
-        } else {
-            false
+        let inner = self.inner();
+        match (&inner.incoming_video_stream, &inner.incoming_audio_stream) {
+            (Some(ivs), Some(ias)) => ivs.codec_info.is_none() || ias.codec_info.is_none(),
+            (Some(ivs), None) => ivs.codec_info.is_none(),
+            (None, Some(ias)) => ias.codec_info.is_none(),
+            (None, None) => {
+                matches!(&inner.presentation, Some(pres) if pres.source.streams_need_data())
+            }
         }
     }
 }
@@ -337,6 +372,15 @@ struct Presentation {
     session: MF::IMFMediaSession,
     source: TransportStream,
     presentation_clock: MF::IMFPresentationClock,
+
+    video_codec_info: VideoCodecInfo,
+    audio_codec_info: AudioCodecInfo,
+}
+
+struct IncomingStream<T> {
+    stream: isdb::filters::sorter::Stream,
+    codec_info: Option<T>,
+    packets: Vec<(Option<Duration>, Box<[u8]>)>,
 }
 
 /// セッションに要求している状態。
@@ -374,6 +418,23 @@ struct OpRequest {
     pos: Option<Duration>,
 }
 
+#[derive(Debug)]
+enum UnknownStreamError {
+    Video(StreamType),
+    Audio(StreamType),
+}
+
+impl fmt::Display for UnknownStreamError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            UnknownStreamError::Video(st) => write!(f, "不明な映像ストリーム：0x{:02X}", st.0),
+            UnknownStreamError::Audio(st) => write!(f, "不明な音声ストリーム：0x{:02X}", st.0),
+        }
+    }
+}
+
+impl std::error::Error for UnknownStreamError {}
+
 #[implement(MF::IMFAsyncCallback)]
 struct Outer {
     inner: Mutex<Inner>,
@@ -387,6 +448,9 @@ struct Inner {
     player_state: Arc<Mutex<PlayerState>>,
     extract_handler: ExtractHandler,
     thread_handle: Option<std::thread::JoinHandle<()>>,
+
+    incoming_video_stream: Option<IncomingStream<VideoCodecInfo>>,
+    incoming_audio_stream: Option<IncomingStream<AudioCodecInfo>>,
 
     presentation: Option<Presentation>,
     video_display: Option<MF::IMFVideoDisplayControl>,
@@ -475,19 +539,32 @@ impl Inner {
 
     fn reset(
         this: &mut MutexGuard<Inner>,
-        _immediate: bool,
-        changed: extract::StreamChanged,
+        video_codec_info: VideoCodecInfo,
+        audio_codec_info: AudioCodecInfo,
+        video_packets: &[(Option<Duration>, Box<[u8]>)],
+        audio_packets: &[(Option<Duration>, Box<[u8]>)],
     ) -> WinResult<()> {
-        if this.presentation.is_some() {
-            // 音声種別が変わらない場合は何もしない
-            if !changed.video_type && !changed.video_pid && !changed.audio_type {
-                return Ok(());
+        if log::log_enabled!(log::Level::Trace) {
+            log::trace!("切り替え");
+            if let Some(pres) = &this.presentation {
+                log::trace!("旧映像：{:?}", pres.video_codec_info);
+                log::trace!("旧音声：{:?}", pres.audio_codec_info);
             }
-
-            Inner::close_pres(this)?;
+            log::trace!("新映像：{:?}", video_codec_info);
+            log::trace!("新音声：{:?}", audio_codec_info);
         }
 
-        let source = TransportStream::new(this.extract_handler.clone())?;
+        // セッションを切り替えるため問答無用で古いセッションを閉じる
+        let _ = Inner::close_pres(this);
+
+        let source = TransportStream::new(
+            this.extract_handler.clone(),
+            &video_codec_info,
+            &audio_codec_info,
+        )?;
+
+        source.deliver_video_packets(iter_packets(video_packets));
+        source.deliver_audio_packets(iter_packets(audio_packets));
 
         let session = unsafe { MF::MFCreateMediaSession(None)? };
         let presentation_clock = unsafe { session.GetClock()?.cast()? };
@@ -508,9 +585,193 @@ impl Inner {
             session,
             source,
             presentation_clock,
+
+            video_codec_info,
+            audio_codec_info,
         });
 
         Ok(())
+    }
+
+    /// サービスが未選択の場合はパニックする。
+    fn prepare_streams_changing(
+        this: &mut MutexGuard<Inner>,
+        _immediate: bool,
+        changed: extract::StreamChanged,
+    ) -> anyhow::Result<()> {
+        let (video_stream, audio_stream) = {
+            let selected_stream = this.extract_handler.selected_stream();
+            let selected_stream = selected_stream.as_ref().expect("サービス未選択");
+            (
+                selected_stream.video_stream.clone(),
+                selected_stream.audio_stream.clone(),
+            )
+        };
+
+        if changed.video_pid || changed.video_type {
+            if !matches!(
+                video_stream.stream_type(),
+                StreamType::MPEG2_VIDEO | StreamType::H264
+            ) {
+                this.incoming_video_stream = None;
+                this.incoming_audio_stream = None;
+                return Err(UnknownStreamError::Video(video_stream.stream_type()).into());
+            }
+
+            this.incoming_video_stream = Some(IncomingStream {
+                stream: video_stream,
+                codec_info: None,
+                packets: Vec::new(),
+            });
+        }
+
+        if changed.audio_pid || changed.audio_type {
+            if !matches!(audio_stream.stream_type(), StreamType::AAC) {
+                this.incoming_video_stream = None;
+                this.incoming_audio_stream = None;
+                return Err(UnknownStreamError::Audio(audio_stream.stream_type()).into());
+            }
+
+            this.incoming_audio_stream = Some(IncomingStream {
+                stream: audio_stream,
+                codec_info: None,
+                packets: Vec::new(),
+            });
+        }
+
+        // コーデック情報を集めるためESを要求
+        this.extract_handler
+            .request_es()
+            .expect("Extractorは稼働中");
+
+        Ok(())
+    }
+
+    fn try_change_streams(this: &mut MutexGuard<Inner>) {
+        fn needs_reset_by_video(a: &VideoCodecInfo, b: &VideoCodecInfo) -> bool {
+            match (a, b) {
+                // MPEG-2同士では解像度やフレームレートが違えば切り替え
+                (VideoCodecInfo::Mpeg2(a), VideoCodecInfo::Mpeg2(b)) => {
+                    a.horizontal_size != b.horizontal_size
+                        || a.vertical_size != b.vertical_size
+                        || a.frame_rate != b.frame_rate
+                }
+                // H.264同士では切り替え不要
+                (VideoCodecInfo::H264, VideoCodecInfo::H264) => false,
+                // コーデックが変わる場合は切り替え
+                _ => true,
+            }
+        }
+        fn needs_reset_by_audio(a: &AudioCodecInfo, b: &AudioCodecInfo) -> bool {
+            match (a, b) {
+                (AudioCodecInfo::Aac(a), AudioCodecInfo::Aac(b)) => a.chan_config != b.chan_config,
+            }
+        }
+
+        let r = 'r: {
+            let inner = &mut **this;
+            if let Some(pres) = &inner.presentation {
+                match (&inner.incoming_video_stream, &inner.incoming_audio_stream) {
+                    (Some(ivs), Some(ias)) => {
+                        if ivs.codec_info.is_none() || ias.codec_info.is_none() {
+                            // 切り替え中ストリームのコーデック情報が揃うまで待機
+                            break 'r Ok(());
+                        }
+
+                        let ivs = inner.incoming_video_stream.take().unwrap();
+                        let ias = inner.incoming_audio_stream.take().unwrap();
+                        let vci = ivs.codec_info.unwrap();
+                        let aci = ias.codec_info.unwrap();
+
+                        if needs_reset_by_video(&vci, &pres.video_codec_info)
+                            || needs_reset_by_audio(&aci, &pres.audio_codec_info)
+                        {
+                            Inner::reset(this, vci, aci, &*ivs.packets, &*ias.packets)
+                        } else {
+                            log::trace!("リセット不要");
+
+                            // リセットが不要の場合はパケットを放流して終了
+                            pres.source
+                                .deliver_video_packets(iter_packets(&*ivs.packets));
+                            pres.source
+                                .deliver_audio_packets(iter_packets(&*ias.packets));
+                            Ok(())
+                        }
+                    }
+
+                    (Some(ivs), None) => {
+                        if ivs.codec_info.is_none() {
+                            // 切り替え中ストリームのコーデック情報が揃うまで待機
+                            break 'r Ok(());
+                        }
+
+                        let ivs = inner.incoming_video_stream.take().unwrap();
+                        let vci = ivs.codec_info.unwrap();
+
+                        if needs_reset_by_video(&vci, &pres.video_codec_info) {
+                            let aci = pres.audio_codec_info.clone();
+                            Inner::reset(this, vci, aci, &*ivs.packets, &[])
+                        } else {
+                            log::trace!("リセット不要");
+
+                            // リセットが不要の場合はパケットを放流して終了
+                            pres.source
+                                .deliver_video_packets(iter_packets(&*ivs.packets));
+                            Ok(())
+                        }
+                    }
+                    (None, Some(ias)) => {
+                        if ias.codec_info.is_none() {
+                            // 切り替え中ストリームのコーデック情報が揃うまで待機
+                            break 'r Ok(());
+                        }
+
+                        let ias = inner.incoming_audio_stream.take().unwrap();
+                        let aci = ias.codec_info.unwrap();
+
+                        if needs_reset_by_audio(&aci, &pres.audio_codec_info) {
+                            let vci = pres.video_codec_info.clone();
+                            Inner::reset(this, vci, aci, &[], &*ias.packets)
+                        } else {
+                            log::trace!("リセット不要");
+
+                            // リセットが不要の場合はパケットを放流して終了
+                            pres.source
+                                .deliver_audio_packets(iter_packets(&*ias.packets));
+                            Ok(())
+                        }
+                    }
+
+                    // try_change_streamsが呼ばれる状況では少なくとも片方のストリーム切り替えが発生している
+                    (None, None) => unreachable!("要ストリーム切り替え"),
+                }
+            } else {
+                match (&inner.incoming_video_stream, &inner.incoming_audio_stream) {
+                    (None, _) | (_, None) => unreachable!("要ストリーム切り替え"),
+                    (Some(ivs), Some(ias))
+                        if ivs.codec_info.is_none() || ias.codec_info.is_none() =>
+                    {
+                        // セッション開始には映像・音声どちらも情報が揃っている必要がある
+                        break 'r Ok(());
+                    }
+                    (Some(_), Some(_)) => {}
+                }
+
+                // 情報が揃ったのでセッション開始
+                let ivs = inner.incoming_video_stream.take().unwrap();
+                let ias = inner.incoming_audio_stream.take().unwrap();
+                let vci = ivs.codec_info.unwrap();
+                let aci = ias.codec_info.unwrap();
+
+                Inner::reset(this, vci, aci, &*ivs.packets, &*ias.packets)
+            }
+        };
+
+        if let Err(e) = r {
+            this.event_handler.on_stream_error(e.into());
+            this.incoming_video_stream = None;
+            this.incoming_audio_stream = None;
+        }
     }
 
     fn set_status(&mut self, new_status: Status) {
@@ -865,7 +1126,7 @@ impl Inner {
             left: 0.,
             top: 0.,
             right: 1.,
-            bottom: if size.cy == 1088 { 1080. / 1088. } else { 1. },
+            bottom: if size.cy == 1080 { 1080. / 1088. } else { 1. },
         };
         let dst = F::RECT {
             left: left as i32,

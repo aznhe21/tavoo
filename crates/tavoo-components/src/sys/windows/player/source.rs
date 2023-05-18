@@ -6,6 +6,7 @@ use windows::Win32::Foundation as F;
 use windows::Win32::Media::KernelStreaming::GUID_NULL;
 use windows::Win32::Media::MediaFoundation as MF;
 
+use crate::codec;
 use crate::extract::ExtractHandler;
 use crate::sys::com::PropVariant;
 use crate::sys::wrap;
@@ -13,6 +14,18 @@ use crate::sys::wrap;
 use super::dummy;
 use super::queue::AsyncQueue;
 use super::stream::ElementaryStream;
+
+#[derive(Debug, Clone)]
+pub enum VideoCodecInfo {
+    Mpeg2(codec::video::mpeg::Sequence),
+    H264,
+}
+
+// ARIB TR-B14及びARIB TR-B15により音声はAACしか来ない
+#[derive(Debug, Clone)]
+pub enum AudioCodecInfo {
+    Aac(codec::audio::adts::Header),
+}
 
 struct PresentationDescriptor(MF::IMFPresentationDescriptor);
 // Safety: C++のサンプルではスレッドをまたいで使っているので安全なはず
@@ -22,54 +35,34 @@ unsafe impl Send for PresentationDescriptor {}
 const SID_VIDEO: u32 = 0;
 const SID_AUDIO: u32 = 1;
 
-fn create_video_sd(stream: &isdb::filters::sorter::Stream) -> WinResult<MF::IMFStreamDescriptor> {
-    use isdb::psi::desc::StreamType;
-
-    let vef = stream
-        .video_encode_format()
-        .unwrap_or_else(|| isdb::psi::desc::VideoEncodeFormat::from(0b0001));
-
+fn create_video_sd(codec_info: &VideoCodecInfo) -> WinResult<MF::IMFStreamDescriptor> {
     let media_type = unsafe { MF::MFCreateMediaType()? };
-    match stream.stream_type() {
-        StreamType::MPEG2_VIDEO => {
-            unsafe {
-                media_type.SetGUID(&MF::MF_MT_MAJOR_TYPE, &MF::MFMediaType_Video)?;
-                media_type.SetGUID(&MF::MF_MT_SUBTYPE, &MF::MFVideoFormat_MPEG2)?;
-                media_type.SetUINT32(&MF::MF_MT_FIXED_SIZE_SAMPLES, 0)?;
-                media_type.SetUINT32(&MF::MF_MT_COMPRESSED, 1)?;
-            }
-
-            if let Some(info) = VefInfo::new(vef) {
-                unsafe {
-                    media_type.SetUINT64(
-                        &MF::MF_MT_FRAME_SIZE,
-                        (info.width as u64) << 32 | (info.height as u64),
-                    )?;
-                }
-
-                if info.is_interlace {
-                    let (numerator, denominator) = if info.height == 1088 {
-                        (16, 9)
-                    } else {
-                        (info.decoded_width, info.decoded_height)
-                    };
-                    unsafe {
-                        media_type.SetUINT64(
-                            &MF::MF_MT_PIXEL_ASPECT_RATIO,
-                            (numerator as u64) << 32 | (denominator as u64),
-                        )?;
-                    }
-                }
-            }
-        }
-        StreamType::H264 => unsafe {
+    match codec_info {
+        VideoCodecInfo::Mpeg2(seq) => unsafe {
+            media_type.SetGUID(&MF::MF_MT_MAJOR_TYPE, &MF::MFMediaType_Video)?;
+            media_type.SetGUID(&MF::MF_MT_SUBTYPE, &MF::MFVideoFormat_MPEG2)?;
+            media_type.SetUINT32(&MF::MF_MT_FIXED_SIZE_SAMPLES, 0)?;
+            media_type.SetUINT32(&MF::MF_MT_COMPRESSED, 1)?;
+            media_type.SetUINT64(
+                &MF::MF_MT_FRAME_SIZE,
+                (seq.horizontal_size as u64) << 32 | (seq.vertical_size as u64),
+            )?;
+            media_type.SetUINT64(
+                &MF::MF_MT_PIXEL_ASPECT_RATIO,
+                (seq.pixel_aspect_ratio.numerator as u64) << 32
+                    | (seq.pixel_aspect_ratio.denominator as u64),
+            )?;
+            media_type.SetUINT64(
+                &MF::MF_MT_FRAME_RATE,
+                (seq.frame_rate.numerator as u64) << 32 | (seq.frame_rate.denominator as u64),
+            )?;
+        },
+        VideoCodecInfo::H264 => unsafe {
             media_type.SetGUID(&MF::MF_MT_MAJOR_TYPE, &MF::MFMediaType_Video)?;
             media_type.SetGUID(&MF::MF_MT_SUBTYPE, &MF::MFVideoFormat_H264)?;
             media_type.SetUINT32(&MF::MF_MT_FIXED_SIZE_SAMPLES, 0)?;
             media_type.SetUINT32(&MF::MF_MT_COMPRESSED, 1)?;
         },
-
-        _ => return Err(F::E_INVALIDARG.into()),
     }
 
     let stream_descriptor =
@@ -83,89 +76,53 @@ fn create_video_sd(stream: &isdb::filters::sorter::Stream) -> WinResult<MF::IMFS
     Ok(stream_descriptor)
 }
 
-fn create_audio_sd(stream: &isdb::filters::sorter::Stream) -> WinResult<MF::IMFStreamDescriptor> {
-    const SAMPLES_PER_SEC: u32 = 48000;
-    const NUM_CHANNELS: u32 = 2;
-    const BITS_PER_SAMPLE: u32 = 16;
-    const BLOCK_ALIGNMENT: u32 = BITS_PER_SAMPLE * NUM_CHANNELS / 8;
-    const AVG_BYTES_PER_SECOND: u32 = SAMPLES_PER_SEC * BLOCK_ALIGNMENT;
-
+fn create_audio_sd(codec_info: &AudioCodecInfo) -> WinResult<MF::IMFStreamDescriptor> {
     let media_type = unsafe { MF::MFCreateMediaType()? };
 
-    use isdb::psi::desc::StreamType;
-    match stream.stream_type() {
-        StreamType::AAC => {
-            unsafe {
-                media_type.SetGUID(&MF::MF_MT_MAJOR_TYPE, &MF::MFMediaType_Audio)?;
-                media_type.SetGUID(&MF::MF_MT_SUBTYPE, &MF::MFAudioFormat_AAC)?;
-                media_type.SetUINT32(&MF::MF_MT_AUDIO_NUM_CHANNELS, NUM_CHANNELS)?;
-                media_type.SetUINT32(&MF::MF_MT_AUDIO_SAMPLES_PER_SECOND, SAMPLES_PER_SEC)?;
-                media_type
-                    .SetUINT32(&MF::MF_MT_AUDIO_AVG_BYTES_PER_SECOND, AVG_BYTES_PER_SECOND)?;
-                media_type.SetUINT32(&MF::MF_MT_AUDIO_BLOCK_ALIGNMENT, BLOCK_ALIGNMENT)?;
-                media_type.SetUINT32(&MF::MF_MT_AUDIO_BITS_PER_SAMPLE, BITS_PER_SAMPLE)?;
-            }
-
-            // HEAACWAVEINFOとaudioSpecificConfig()
+    match codec_info {
+        AudioCodecInfo::Aac(header) => {
+            // https://learn.microsoft.com/en-us/windows/win32/medfound/aac-decoder
             #[repr(C, packed(1))]
             #[allow(non_snake_case)]
-            struct AacInfo {
+            struct UserData {
+                // HEAACWAVEINFOのwfxを省いた物
+                // https://learn.microsoft.com/en-us/windows/win32/api/mmreg/ns-mmreg-heaacwaveinfo
                 wPayloadType: u16,
                 wAudioProfileLevelIndication: u16,
                 wStructType: u16,
                 wReserved1: u16,
                 dwReserved2: u32,
-                // https://wiki.multimedia.cx/index.php/MPEG-4_Audio
+                // https://wiki.multimedia.cx/index.php/MPEG-4_Audio#Audio_Specific_Config
                 audioSpecificConfig: [u8; 2],
             }
-            const fn audio_specific_config(
-                audio_object_type: u8,
-                freq: u32,
-                channel_configuration: u8,
-            ) -> [u8; 2] {
-                let sampling_frequency_index = match freq {
-                    96000 => 0,
-                    88200 => 1,
-                    64000 => 2,
-                    48000 => 3,
-                    44100 => 4,
-                    32000 => 5,
-                    24000 => 6,
-                    22050 => 7,
-                    16000 => 8,
-                    12000 => 9,
-                    11025 => 10,
-                    8000 => 11,
-                    7350 => 12,
-                    _ => unreachable!(),
-                };
-
-                u16::to_be_bytes(
-                    (audio_object_type as u16) << (16 - 5)
-                        | sampling_frequency_index << (16 - 5 - 4)
-                        | (channel_configuration as u16) << (16 - 5 - 4 - 4),
-                )
-            }
-
-            const AAC_INFO: AacInfo = AacInfo {
-                wPayloadType: 1, // ADTS
-                wAudioProfileLevelIndication: 0x29,
+            let user_data = UserData {
+                wPayloadType: 1,                 // ADTS
+                wAudioProfileLevelIndication: 0, // 不明
                 wStructType: 0,
                 wReserved1: 0,
                 dwReserved2: 0,
-                audioSpecificConfig: audio_specific_config(
-                    2, // AAC LC
-                    SAMPLES_PER_SEC,
-                    NUM_CHANNELS as u8,
+                audioSpecificConfig: u16::to_be_bytes(
+                    // 5 bits: object type（AAC LCのみ）
+                    // 4 bits: frequency index
+                    // 4 bits: channel configuration
+                    (2 << 11)
+                        | ((header.sampling_index as u16) << 7)
+                        | ((header.chan_config as u16) << 3),
                 ),
             };
-            const USER_DATA: [u8; 14] = unsafe { std::mem::transmute(AAC_INFO) };
+
             unsafe {
-                media_type.SetBlob(&MF::MF_MT_USER_DATA, &USER_DATA)?;
+                let user_data: [u8; 14] = std::mem::transmute(user_data);
+
+                media_type.SetGUID(&MF::MF_MT_MAJOR_TYPE, &MF::MFMediaType_Audio)?;
+                media_type.SetGUID(&MF::MF_MT_SUBTYPE, &MF::MFAudioFormat_AAC)?;
+                media_type.SetUINT32(&MF::MF_MT_AUDIO_SAMPLES_PER_SECOND, header.sample_rate())?;
+                media_type
+                    .SetUINT32(&MF::MF_MT_AUDIO_NUM_CHANNELS, header.num_channels() as u32)?;
+                media_type.SetUINT32(&MF::MF_MT_AAC_PAYLOAD_TYPE, 1)?; // ADTS
+                media_type.SetBlob(&MF::MF_MT_USER_DATA, &user_data)?;
             }
         }
-
-        _ => return Err(F::E_INVALIDARG.into()),
     }
 
     let stream_descriptor =
@@ -177,6 +134,26 @@ fn create_audio_sd(stream: &isdb::filters::sorter::Stream) -> WinResult<MF::IMFS
     }
 
     Ok(stream_descriptor)
+}
+
+fn create_sample(payload: &[u8], pos: Option<Duration>) -> WinResult<MF::IMFSample> {
+    unsafe {
+        let buffer = MF::MFCreateMemoryBuffer(payload.len() as u32)?;
+        let mut data = std::ptr::null_mut();
+        buffer.Lock(&mut data, None, None)?;
+        std::ptr::copy_nonoverlapping(payload.as_ptr(), data, payload.len());
+        buffer.Unlock()?;
+        buffer.SetCurrentLength(payload.len() as u32)?;
+
+        let sample = MF::MFCreateSample()?;
+        sample.AddBuffer(&buffer)?;
+
+        if let Some(pos) = pos {
+            sample.SetSampleTime((pos.as_nanos() / 100) as i64)?;
+        }
+
+        Ok(sample)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -195,20 +172,13 @@ pub struct TransportStream(MF::IMFMediaSource);
 unsafe impl Send for TransportStream {}
 
 impl TransportStream {
-    /// サービスが選択されている必要がある。
-    pub fn new(extract_handler: ExtractHandler) -> WinResult<TransportStream> {
-        let (video_sd, audio_sd) = {
-            let selected_stream = extract_handler.selected_stream();
-            let Some(selected_stream) = &*selected_stream else {
-                log::trace!("サービス未選択");
-                return Err(MF::MF_E_INVALIDREQUEST.into());
-            };
-
-            (
-                create_video_sd(&selected_stream.video_stream)?,
-                create_audio_sd(&selected_stream.audio_stream)?,
-            )
-        };
+    pub fn new(
+        extract_handler: ExtractHandler,
+        video_codec_info: &VideoCodecInfo,
+        audio_codec_info: &AudioCodecInfo,
+    ) -> WinResult<TransportStream> {
+        let video_sd = create_video_sd(video_codec_info)?;
+        let audio_sd = create_audio_sd(audio_codec_info)?;
 
         let presentation_descriptor = unsafe {
             let pd = MF::MFCreatePresentationDescriptor(Some(&[
@@ -294,6 +264,30 @@ impl TransportStream {
         let r = Inner::deliver_audio_packet(&mut outer.inner.lock(), pos, payload);
         if let Err(e) = r {
             log::debug!("error[deliver_audio_packet]: {}", e);
+            outer.streaming_error(e);
+        }
+    }
+
+    pub fn deliver_video_packets<'a>(
+        &self,
+        iter: impl IntoIterator<Item = (Option<Duration>, &'a [u8])>,
+    ) {
+        let outer = self.outer();
+        let r = Inner::deliver_video_packets(&mut outer.inner.lock(), iter);
+        if let Err(e) = r {
+            log::debug!("error[deliver_video_packets]: {}", e);
+            outer.streaming_error(e);
+        }
+    }
+
+    pub fn deliver_audio_packets<'a>(
+        &self,
+        iter: impl IntoIterator<Item = (Option<Duration>, &'a [u8])>,
+    ) {
+        let outer = self.outer();
+        let r = Inner::deliver_audio_packets(&mut outer.inner.lock(), iter);
+        if let Err(e) = r {
+            log::debug!("error[deliver_audio_packets]: {}", e);
             outer.streaming_error(e);
         }
     }
@@ -598,33 +592,17 @@ impl Inner {
         Ok(())
     }
 
-    fn create_sample(&self, payload: &[u8], pos: Option<Duration>) -> WinResult<MF::IMFSample> {
-        unsafe {
-            let buffer = MF::MFCreateMemoryBuffer(payload.len() as u32)?;
-            let mut data = std::ptr::null_mut();
-            buffer.Lock(&mut data, None, None)?;
-            std::ptr::copy_nonoverlapping(payload.as_ptr(), data, payload.len());
-            buffer.Unlock()?;
-            buffer.SetCurrentLength(payload.len() as u32)?;
-
-            let sample = MF::MFCreateSample()?;
-            sample.AddBuffer(&buffer)?;
-
-            if let Some(pos) = pos {
-                sample.SetSampleTime((pos.as_nanos() / 100) as i64)?;
-            }
-
-            Ok(sample)
-        }
-    }
-
     fn deliver_video_packet(
         this: &mut MutexGuard<Self>,
         pos: Option<Duration>,
         payload: &[u8],
     ) -> WinResult<()> {
-        let sample = this.create_sample(payload, pos)?;
-        Inner::video_stream_unlocked(this, |es| es.deliver_payload(sample))
+        let sample = create_sample(payload, pos)?;
+        Inner::video_stream_unlocked(this, |es| {
+            es.push_sample(sample);
+            es.dispatch_samples()?;
+            Ok(())
+        })
     }
 
     fn deliver_audio_packet(
@@ -632,8 +610,40 @@ impl Inner {
         pos: Option<Duration>,
         payload: &[u8],
     ) -> WinResult<()> {
-        let sample = this.create_sample(payload, pos)?;
-        Inner::audio_stream_unlocked(this, |es| es.deliver_payload(sample))
+        let sample = create_sample(payload, pos)?;
+        Inner::audio_stream_unlocked(this, |es| {
+            es.push_sample(sample);
+            es.dispatch_samples()?;
+            Ok(())
+        })
+    }
+
+    fn deliver_video_packets<'a>(
+        this: &mut MutexGuard<Self>,
+        iter: impl IntoIterator<Item = (Option<Duration>, &'a [u8])>,
+    ) -> WinResult<()> {
+        Inner::video_stream_unlocked(this, |es| {
+            for (pos, payload) in iter {
+                let sample = create_sample(payload, pos)?;
+                es.push_sample(sample);
+            }
+            es.dispatch_samples()?;
+            Ok(())
+        })
+    }
+
+    fn deliver_audio_packets<'a>(
+        this: &mut MutexGuard<Self>,
+        iter: impl IntoIterator<Item = (Option<Duration>, &'a [u8])>,
+    ) -> WinResult<()> {
+        Inner::audio_stream_unlocked(this, |es| {
+            for (pos, payload) in iter {
+                let sample = create_sample(payload, pos)?;
+                es.push_sample(sample);
+            }
+            es.dispatch_samples()?;
+            Ok(())
+        })
     }
 }
 
@@ -959,127 +969,5 @@ impl MF::IMFRateSupport_Impl for Outer {
         }
 
         Ok(())
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct VefInfo {
-    /// デコード後の幅。
-    pub decoded_width: u32,
-    /// デコード後の高さ。
-    pub decoded_height: u32,
-    /// エンコードされた状態での幅。
-    pub width: u32,
-    /// エンコードされた状態での高さ。
-    pub height: u32,
-    /// FPS。
-    pub fps: u16,
-    /// インターレースかどうか。
-    pub is_interlace: bool,
-}
-
-impl VefInfo {
-    pub fn new(vef: isdb::psi::desc::VideoEncodeFormat) -> Option<VefInfo> {
-        use isdb::psi::desc::VideoEncodeFormat;
-
-        match vef {
-            VideoEncodeFormat::Vef1080P => Some(VefInfo {
-                decoded_width: 1920,
-                decoded_height: 1080,
-                width: 1920,
-                height: 1088,
-                fps: 30,
-                is_interlace: false,
-            }),
-            VideoEncodeFormat::Vef1080I => Some(VefInfo {
-                decoded_width: 1920,
-                decoded_height: 1080,
-                width: 1440,
-                height: 1088,
-                fps: 30,
-                is_interlace: true,
-            }),
-            VideoEncodeFormat::Vef720P => Some(VefInfo {
-                decoded_width: 1280,
-                decoded_height: 720,
-                width: 1280,
-                height: 720,
-                fps: 30,
-                is_interlace: false,
-            }),
-            VideoEncodeFormat::Vef480P => Some(VefInfo {
-                decoded_width: 720,
-                decoded_height: 480,
-                width: 720,
-                height: 480,
-                fps: 30,
-                is_interlace: false,
-            }),
-            VideoEncodeFormat::Vef480I => Some(VefInfo {
-                decoded_width: 720,
-                decoded_height: 480,
-                width: 544,
-                height: 480,
-                fps: 30,
-                is_interlace: true,
-            }),
-            // VideoEncodeFormat::Vef240P => Some(VefInfo {
-            //     decoded_width: todo!(),
-            //     decoded_height: 240,
-            //     width: todo!(),
-            //     height: 240,
-            //     fps: 30,
-            //     is_interlace: false,
-            // }),
-            // VideoEncodeFormat::Vef120P => Some(VefInfo {
-            //     decoded_width: todo!(),
-            //     decoded_height: 120,
-            //     width: todo!(),
-            //     height: 120,
-            //     fps: 30,
-            //     is_interlace: false,
-            // }),
-            VideoEncodeFormat::Vef2160_60P => Some(VefInfo {
-                decoded_width: 3840,
-                decoded_height: 2160,
-                width: 3840,
-                height: 2160,
-                fps: 60,
-                is_interlace: false,
-            }),
-            // VideoEncodeFormat::Vef180P => Some(VefInfo {
-            //     decoded_width: todo!(),
-            //     decoded_height: 180,
-            //     width: todo!(),
-            //     height: 180,
-            //     fps: 30,
-            //     is_interlace: false,
-            // }),
-            VideoEncodeFormat::Vef2160_120P => Some(VefInfo {
-                decoded_width: 3840,
-                decoded_height: 2160,
-                width: 3840,
-                height: 2160,
-                fps: 120,
-                is_interlace: false,
-            }),
-            VideoEncodeFormat::Vef4320_60P => Some(VefInfo {
-                decoded_width: 7680,
-                decoded_height: 4320,
-                width: 7680,
-                height: 4320,
-                fps: 60,
-                is_interlace: false,
-            }),
-            VideoEncodeFormat::Vef4320_120P => Some(VefInfo {
-                decoded_width: 7680,
-                decoded_height: 4320,
-                width: 7680,
-                height: 4320,
-                fps: 120,
-                is_interlace: false,
-            }),
-            _ => None,
-        }
     }
 }
