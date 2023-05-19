@@ -768,11 +768,6 @@ impl Inner {
 
         let start_pos = if self.state == State::Stopped {
             // 停止状態からの再生は最初から
-            if let Err(e) = self.extract_handler.reset() {
-                log::trace!("停止状態からTSのリセットに失敗：{}", e);
-                return Err(MF::MF_E_INVALIDREQUEST.into());
-            }
-
             PropVariant::I64(0)
         } else {
             // それ以外は位置を保持
