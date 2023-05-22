@@ -23,6 +23,11 @@ use crate::sys::wrap;
 use super::source::{AudioCodecInfo, TransportStream, VideoCodecInfo};
 use super::PlayerState;
 
+#[inline]
+fn mf_pos(pos: Duration) -> PropVariant {
+    PropVariant::I64((pos.as_nanos() / 100) as i64)
+}
+
 fn iter_packets(
     packets: &[(Option<Duration>, Box<[u8]>)],
 ) -> impl Iterator<Item = (Option<Duration>, &[u8])> {
@@ -156,6 +161,7 @@ impl Session {
                 rate: None,
                 pos: None,
             },
+            is_switching: false,
 
             event_handler: Box::new(event_handler),
         });
@@ -193,7 +199,7 @@ impl Session {
 
     #[inline]
     pub fn handle_event(&self, event: MF::IMFMediaEvent) -> WinResult<()> {
-        self.inner().handle_event(event)
+        Inner::handle_event(&mut self.inner(), event)
     }
 
     #[inline]
@@ -378,6 +384,7 @@ struct Presentation {
 }
 
 struct IncomingStream<T> {
+    immediate: bool,
     stream: isdb::filters::sorter::Stream,
     codec_info: Option<T>,
     packets: Vec<(Option<Duration>, Box<[u8]>)>,
@@ -409,6 +416,16 @@ enum Command {
     Stop,
     Start,
     Pause,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum StartPos {
+    /// 現在位置から再生開始。
+    Current,
+    /// ストリームの位置を変更しないが位置は通知して再生開始。
+    Notify(Duration),
+    /// ストリームの位置を変更して再生開始。
+    Seek(Duration),
 }
 
 #[derive(Debug)]
@@ -466,6 +483,7 @@ struct Inner {
     is_pending: bool,
     /// 処理待ち中に受け付けた操作要求
     op_request: OpRequest,
+    is_switching: bool,
 
     // #[implement]の制約でOuterをジェネリクスにできないのでBox化
     event_handler: Box<dyn EventHandler>,
@@ -532,7 +550,6 @@ impl Inner {
         unsafe { this.close_mutex.unlock() };
         this.state = State::Closed;
         this.status = Status::Closed;
-        this.is_pending = false;
 
         r
     }
@@ -593,10 +610,46 @@ impl Inner {
         Ok(())
     }
 
+    fn switch(
+        this: &mut MutexGuard<Inner>,
+        video_codec_info: VideoCodecInfo,
+        audio_codec_info: AudioCodecInfo,
+        video_packets: &[(Option<Duration>, Box<[u8]>)],
+        audio_packets: &[(Option<Duration>, Box<[u8]>)],
+    ) -> WinResult<()> {
+        if this.op_request.command.is_none() && !this.is_switching {
+            // 新しい状態が要求されていなければ停止前の状態を保存
+            match this.state {
+                State::Started => this.op_request.command = Some(Command::Start),
+                State::Paused => this.op_request.command = Some(Command::Pause),
+                State::Stopped => this.op_request.command = Some(Command::Stop),
+                State::Closed => {}
+                State::OpenPending | State::Closing => {
+                    log::debug!("{:?}状態に切り替え要求", this.state);
+                }
+            }
+        }
+
+        this.is_switching = true;
+        this.is_pending = true;
+        let old_status = this.status;
+
+        Inner::reset(
+            this,
+            video_codec_info,
+            audio_codec_info,
+            video_packets,
+            audio_packets,
+        )?;
+        this.status = old_status;
+
+        Ok(())
+    }
+
     /// サービスが未選択の場合はパニックする。
     fn prepare_streams_changing(
         this: &mut MutexGuard<Inner>,
-        _immediate: bool,
+        immediate: bool,
         changed: extract::StreamChanged,
     ) -> anyhow::Result<()> {
         let (video_stream, audio_stream) = {
@@ -619,6 +672,7 @@ impl Inner {
             }
 
             this.incoming_video_stream = Some(IncomingStream {
+                immediate,
                 stream: video_stream,
                 codec_info: None,
                 packets: Vec::new(),
@@ -633,6 +687,7 @@ impl Inner {
             }
 
             this.incoming_audio_stream = Some(IncomingStream {
+                immediate,
                 stream: audio_stream,
                 codec_info: None,
                 packets: Vec::new(),
@@ -687,12 +742,26 @@ impl Inner {
 
         let r = 'r: {
             let inner = &mut **this;
-            if let Some(pres) = &inner.presentation {
+            if let Some(pres) = &mut inner.presentation {
                 match (&inner.incoming_video_stream, &inner.incoming_audio_stream) {
                     (Some(ivs), Some(ias)) => {
-                        if ivs.codec_info.is_none() || ias.codec_info.is_none() {
-                            // 切り替え中ストリームのコーデック情報が揃うまで待機
-                            break 'r Ok(());
+                        match (&ivs.codec_info, &ias.codec_info) {
+                            (None, None) | (Some(_), None) | (None, Some(_)) => {
+                                // 切り替え中ストリームのコーデック情報が揃うまで待機
+                                break 'r Ok(());
+                            }
+                            (Some(vci), Some(aci)) => {
+                                if !ivs.immediate
+                                    && !ias.immediate
+                                    && (needs_reset_by_video(vci, &pres.video_codec_info)
+                                        || needs_reset_by_audio(aci, &pres.audio_codec_info))
+                                {
+                                    // リセットが必要だが順次切り替えるため再生が終了するまで待機
+                                    log::trace!("順次切り替え待機");
+                                    tri!('r, pres.source.end_of_mpeg_stream());
+                                    break 'r Ok(());
+                                }
+                            }
                         }
 
                         let ivs = inner.incoming_video_stream.take().unwrap();
@@ -700,17 +769,28 @@ impl Inner {
                         let vci = ivs.codec_info.unwrap();
                         let aci = ias.codec_info.unwrap();
 
+                        let change_type = needs_audio_type_change(&aci, &pres.audio_codec_info);
                         if needs_reset_by_video(&vci, &pres.video_codec_info)
                             || needs_reset_by_audio(&aci, &pres.audio_codec_info)
                         {
-                            Inner::reset(this, vci, aci, &*ivs.packets, &*ias.packets)
-                        } else if needs_audio_type_change(&aci, &pres.audio_codec_info) {
+                            debug_assert!(ivs.immediate || ias.immediate, "順次切り替えが必要");
+
+                            Inner::switch(this, vci, aci, &*ivs.packets, &*ias.packets)
+                        } else if !change_type && (ivs.immediate || ias.immediate) {
+                            Inner::switch(this, vci, aci, &*ivs.packets, &*ias.packets)
+                        } else if change_type {
                             // 音声属性変更時、映像はそのままパケットを放流、
                             // 音声は変更を通知してからパケットを放流
 
+                            if ivs.immediate {
+                                pres.source.clear_video_packets();
+                            }
                             pres.source
                                 .deliver_video_packets(iter_packets(&*ivs.packets));
 
+                            if ias.immediate {
+                                pres.source.clear_audio_packets();
+                            }
                             change_audio_type(pres, aci);
                             pres.source
                                 .deliver_audio_packets(iter_packets(&*ias.packets));
@@ -737,9 +817,9 @@ impl Inner {
                         let ivs = inner.incoming_video_stream.take().unwrap();
                         let vci = ivs.codec_info.unwrap();
 
-                        if needs_reset_by_video(&vci, &pres.video_codec_info) {
+                        if ivs.immediate || needs_reset_by_video(&vci, &pres.video_codec_info) {
                             let aci = pres.audio_codec_info.clone();
-                            Inner::reset(this, vci, aci, &*ivs.packets, &[])
+                            Inner::switch(this, vci, aci, &*ivs.packets, &[])
                         } else {
                             log::trace!("リセット不要");
 
@@ -759,11 +839,17 @@ impl Inner {
                         let ias = inner.incoming_audio_stream.take().unwrap();
                         let aci = ias.codec_info.unwrap();
 
-                        if needs_reset_by_audio(&aci, &pres.audio_codec_info) {
+                        let change_type = needs_audio_type_change(&aci, &pres.audio_codec_info);
+                        if needs_reset_by_audio(&aci, &pres.audio_codec_info)
+                            || (!change_type && ias.immediate)
+                        {
                             let vci = pres.video_codec_info.clone();
-                            Inner::reset(this, vci, aci, &[], &*ias.packets)
-                        } else if needs_audio_type_change(&aci, &pres.audio_codec_info) {
+                            Inner::switch(this, vci, aci, &[], &*ias.packets)
+                        } else if change_type {
                             // 属性変更時は変更を通知してからパケットを放流
+                            if ias.immediate {
+                                pres.source.clear_audio_packets();
+                            }
                             change_audio_type(pres, aci);
                             pres.source
                                 .deliver_audio_packets(iter_packets(&*ias.packets));
@@ -813,6 +899,7 @@ impl Inner {
 
     fn set_status(&mut self, new_status: Status) {
         if self.status != new_status {
+            log::trace!("set_status: {:?} -> {:?}", self.status, new_status);
             self.status = new_status;
 
             match new_status {
@@ -854,20 +941,20 @@ impl Inner {
         Ok(())
     }
 
-    pub fn handle_event(&mut self, event: MF::IMFMediaEvent) -> WinResult<()> {
+    pub fn handle_event(this: &mut MutexGuard<Inner>, event: MF::IMFMediaEvent) -> WinResult<()> {
         let me_type = unsafe { event.GetType()? };
         let status = unsafe { event.GetStatus()? };
 
         match MF::MF_EVENT_TYPE(me_type as i32) {
-            MF::MESessionStarted => self.on_session_started(status, &event)?,
-            MF::MESessionPaused => self.on_session_paused(status, &event)?,
-            MF::MESessionStopped => self.on_session_stopped(status, &event)?,
-            MF::MESessionRateChanged => self.on_session_rate_changed(status, &event)?,
-            MF::MEAudioSessionVolumeChanged => self.on_session_volume_changed(status, &event)?,
+            MF::MESessionStarted => this.on_session_started(status, &event)?,
+            MF::MESessionPaused => this.on_session_paused(status, &event)?,
+            MF::MESessionStopped => this.on_session_stopped(status, &event)?,
+            MF::MESessionRateChanged => this.on_session_rate_changed(status, &event)?,
+            MF::MEAudioSessionVolumeChanged => this.on_session_volume_changed(status, &event)?,
 
-            MF::MESessionTopologyStatus => self.on_topology_status(status, &event)?,
-            MF::MEEndOfPresentation => self.on_presentation_ended(status, &event)?,
-            MF::MENewPresentation => self.on_new_presentation(status, &event)?,
+            MF::MESessionTopologyStatus => this.on_topology_status(status, &event)?,
+            MF::MEEndOfPresentation => Inner::on_presentation_ended(this, status, &event)?,
+            MF::MENewPresentation => this.on_new_presentation(status, &event)?,
 
             me => {
                 log::trace!("media event: {:?}", me);
@@ -885,6 +972,8 @@ impl Inner {
     ) -> WinResult<()> {
         log::trace!("Session::on_session_started");
         status.ok()?;
+
+        self.is_switching = false;
 
         if let Some(pos) = self.seeking_pos.take() {
             self.event_handler
@@ -939,7 +1028,9 @@ impl Inner {
             }
         }
 
-        self.event_handler.on_rate_changed(player_state.rate);
+        if !self.is_switching {
+            self.event_handler.on_rate_changed(player_state.rate);
+        }
 
         Ok(())
     }
@@ -952,13 +1043,15 @@ impl Inner {
         log::trace!("Session::on_session_volume_changed");
         status.ok()?;
 
-        if let Some(audio_volume) = &self.audio_volume {
-            if let Ok(volume) = unsafe { audio_volume.GetMasterVolume() } {
-                if let Ok(muted) = unsafe { audio_volume.GetMute().map(|b| b.as_bool()) } {
-                    let mut player_state = self.player_state.lock();
-                    player_state.volume = volume;
-                    player_state.muted = muted;
-                    self.event_handler.on_volume_changed(volume, muted);
+        if !self.is_switching {
+            if let Some(audio_volume) = &self.audio_volume {
+                if let Ok(volume) = unsafe { audio_volume.GetMasterVolume() } {
+                    if let Ok(muted) = unsafe { audio_volume.GetMute().map(|b| b.as_bool()) } {
+                        let mut player_state = self.player_state.lock();
+                        player_state.volume = volume;
+                        player_state.muted = muted;
+                        self.event_handler.on_volume_changed(volume, muted);
+                    }
                 }
             }
         }
@@ -1011,23 +1104,51 @@ impl Inner {
                 }
             }
 
-            self.set_status(Status::Ready);
+            if self.is_switching {
+                // Extractorへの位置設定要求は切り替え前に行っており対象位置を過ぎている可能性があることから
+                // 再要求はしてはならない。結果としてここでシーク要求（op_request.pos）に応えられなくなるため、
+                // 開始位置はExtractorへ要求済みの位置（seeking_pos）として再生が開始してからシーク要求に応える。
+                let start_pos = self.seeking_pos.map_or(StartPos::Current, StartPos::Notify);
+                self.do_start(start_pos)?;
+            } else {
+                self.set_status(Status::Ready);
+                self.do_start(StartPos::Current)?;
+            }
 
-            self.start_playback()?;
+            self.state = State::Started;
         }
         Ok(())
     }
 
     fn on_presentation_ended(
-        &mut self,
+        this: &mut MutexGuard<Inner>,
         status: C::HRESULT,
         _: &MF::IMFMediaEvent,
     ) -> WinResult<()> {
         log::trace!("Session::on_presentation_ended");
         status.ok()?;
 
-        self.state = State::Stopped;
-        self.set_status(Status::Stopped);
+        match (&this.incoming_video_stream, &this.incoming_audio_stream) {
+            (Some(ivs), Some(ias)) if ivs.codec_info.is_some() && ias.codec_info.is_some() => {
+                // 順次切り替えのための準備完了
+                let ivs = this.incoming_video_stream.take().unwrap();
+                let ias = this.incoming_audio_stream.take().unwrap();
+                let vci = ivs.codec_info.unwrap();
+                let aci = ias.codec_info.unwrap();
+
+                Inner::switch(this, vci, aci, &*ivs.packets, &*ias.packets)?;
+            }
+
+            // 再生終了
+            (None, None) |
+            // 片方だけ切り替え中なまま再生終了、どうせ再生できる内容はないよう
+            (Some(_), None) | (None, Some(_)) |
+            // コーデック未確定なまま再生終了、どうせ再生できる内容はないよう
+            (Some(_), Some(_)) => {
+                this.state = State::Stopped;
+                this.set_status(Status::Stopped);
+            }
+        }
 
         Ok(())
     }
@@ -1060,88 +1181,158 @@ impl Inner {
         Ok(())
     }
 
+    fn do_start(&mut self, pos: StartPos) -> WinResult<()> {
+        log::trace!("Session::do_start: {:?}", pos);
+
+        let Some(pres) = &self.presentation else {
+            log::trace!("presentationがないのにdo_start");
+            return Err(MF::MF_E_INVALIDREQUEST.into());
+        };
+        let start_pos = match pos {
+            StartPos::Seek(pos) => {
+                // コーデック情報や未放流パケットは捨て、新しい位置から再度情報を貯める
+                // これがないとneeds_esが偽を返すためストリームが進まなくなる
+                if let Some(ivs) = &mut self.incoming_video_stream {
+                    ivs.codec_info = None;
+                    ivs.packets.clear();
+                }
+                if let Some(ias) = &mut self.incoming_audio_stream {
+                    ias.codec_info = None;
+                    ias.packets.clear();
+                }
+
+                if let Err(e) = self.extract_handler.set_position(pos) {
+                    log::trace!("TSの位置設定に失敗：{}", e);
+                    return Err(MF::MF_E_INVALIDREQUEST.into());
+                }
+
+                self.seeking_pos = Some(pos);
+                mf_pos(pos)
+            }
+
+            StartPos::Notify(pos) => {
+                self.seeking_pos = Some(pos);
+                mf_pos(pos)
+            }
+
+            StartPos::Current => {
+                // シークするわけではないのでseeking_posは設定しない
+                PropVariant::Empty
+            }
+        };
+
+        unsafe { pres.session.Start(&GUID_NULL, &start_pos.to_raw())? };
+
+        self.is_pending = true;
+
+        Ok(())
+    }
+
     fn start_playback(&mut self) -> WinResult<()> {
         log::trace!("Session::start_playback");
-        let Some(pres) = &self.presentation else {
-            log::trace!("presentationがないのに再生要求");
-            return Err(MF::MF_E_SHUTDOWN.into());
-        };
 
         let start_pos = if self.state == State::Stopped {
             // 停止状態からの再生は最初から
-            PropVariant::I64(0)
+            StartPos::Seek(Duration::ZERO)
         } else {
             // それ以外は位置を保持
-            PropVariant::Empty
+            StartPos::Current
         };
-        unsafe { pres.session.Start(&GUID_NULL, &start_pos.to_raw())? };
+        self.do_start(start_pos)?;
 
         self.state = State::Started;
-        self.is_pending = true;
 
         Ok(())
     }
 
     pub fn play(&mut self) -> WinResult<()> {
         match self.state {
-            State::Paused | State::Stopped => {}
-            State::Started => return Ok(()),
-            _ => {
+            _ if self.is_switching => {
+                // 切り替え中セッションへの再生要求
+                self.op_request.command = Some(Command::Start);
+            }
+            State::Paused | State::Stopped => {
+                if self.is_pending {
+                    self.op_request.command = Some(Command::Start);
+                } else {
+                    self.start_playback()?;
+                }
+            }
+            State::Started => {}
+            State::OpenPending | State::Closing | State::Closed => {
                 log::trace!("{:?}状態に開始要求", self.state);
                 return Err(MF::MF_E_INVALIDREQUEST.into());
             }
         }
 
-        if self.is_pending {
-            self.op_request.command = Some(Command::Start);
-        } else {
-            self.start_playback()?;
-        }
+        Ok(())
+    }
+
+    fn do_pause(&mut self) -> WinResult<()> {
+        log::trace!("Session::do_pause");
+
+        let pres = self.presentation.as_ref().expect("presentationが必要");
+        unsafe { pres.session.Pause()? };
+
+        self.is_pending = true;
 
         Ok(())
     }
 
     pub fn pause(&mut self) -> WinResult<()> {
         match self.state {
-            State::Started => {}
-            State::Paused => return Ok(()),
-            _ => {
+            _ if self.is_switching => {
+                // 切り替え中セッションへの一時停止要求
+                self.op_request.command = Some(Command::Pause);
+            }
+            State::Started => {
+                if self.is_pending {
+                    self.op_request.command = Some(Command::Pause);
+                } else {
+                    self.do_pause()?;
+                    self.state = State::Paused;
+                }
+            }
+            State::Paused => {}
+            State::Stopped | State::OpenPending | State::Closing | State::Closed => {
                 log::trace!("{:?}状態に一時停止要求", self.state);
                 return Err(MF::MF_E_INVALIDREQUEST.into());
             }
         }
 
-        if self.is_pending {
-            self.op_request.command = Some(Command::Pause);
-        } else {
-            let pres = self.presentation.as_ref().expect("presentationが必要");
-            unsafe { pres.session.Pause()? };
+        Ok(())
+    }
 
-            self.state = State::Paused;
-            self.is_pending = true;
-        }
+    fn do_stop(&mut self) -> WinResult<()> {
+        log::trace!("Session::do_stop");
+
+        let pres = self.presentation.as_ref().expect("presentationが必要");
+        unsafe { pres.session.Stop()? };
+
+        self.is_pending = true;
 
         Ok(())
     }
 
     pub fn stop(&mut self) -> WinResult<()> {
         match self.state {
-            State::Started | State::Paused => {}
-            State::Stopped => return Ok(()),
+            _ if self.is_switching => {
+                // 切り替え中セッションへの停止要求
+                self.op_request.command = Some(Command::Stop);
+            }
+            State::Started | State::Paused => {
+                if self.is_pending {
+                    self.op_request.command = Some(Command::Stop);
+                } else {
+                    self.do_stop()?;
+                    self.state = State::Stopped;
+                }
+            }
+            State::Stopped => {}
             _ => {
                 log::trace!("{:?}状態に停止要求", self.state);
                 return Err(MF::MF_E_INVALIDREQUEST.into());
             }
-        }
-
-        if self.is_pending {
-            self.op_request.command = Some(Command::Stop);
-        } else {
-            let pres = self.presentation.as_ref().expect("presentationが必要");
-            unsafe { pres.session.Stop()? };
-
-            self.state = State::Stopped;
-            self.is_pending = true;
         }
 
         Ok(())
@@ -1200,16 +1391,7 @@ impl Inner {
             return self.stop();
         }
 
-        let Some(pres) = &self.presentation else {
-            log::trace!("presentationがないのに位置設定要求");
-            return Err(MF::MF_E_INVALIDREQUEST.into());
-        };
-
-        let time = (pos.as_nanos() / 100) as i64;
-        unsafe {
-            pres.session
-                .Start(&GUID_NULL, &PropVariant::I64(time).to_raw())?
-        };
+        self.do_start(StartPos::Seek(pos))?;
 
         // 要求されている状態や現在の状態によって遷移
         match (command, self.state) {
@@ -1220,15 +1402,13 @@ impl Inner {
             }
 
             (Some(Command::Pause), _) | (None, State::Paused) => {
+                let pres = self.presentation.as_ref().expect("presentationが必要");
                 unsafe { pres.session.Pause()? };
                 self.state = State::Paused;
             }
 
             (None, _) => log::debug!("シーク時に不明な状態：{:?}", self.state),
         }
-
-        self.seeking_pos = Some(pos);
-        self.is_pending = true;
 
         Ok(())
     }

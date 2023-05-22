@@ -801,16 +801,7 @@ impl MF::IMFMediaSource_Impl for Outer {
         }
         let start_pos = match PropVariant::new(start_pos) {
             Some(PropVariant::Empty) => None,
-
-            Some(PropVariant::I64(v)) => {
-                if !matches!(inner.state, State::Init | State::Stopped) {
-                    log::trace!("{:?}状態からシーク要求", inner.state);
-                    return Err(MF::MF_E_INVALIDREQUEST.into());
-                }
-
-                Some(v)
-            }
-
+            Some(PropVariant::I64(v)) => Some(v),
             _ => return Err(MF::MF_E_UNSUPPORTED_TIME_FORMAT.into()),
         };
 
