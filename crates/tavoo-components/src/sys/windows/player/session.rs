@@ -1025,7 +1025,10 @@ impl Inner {
 
     fn start_playback(&mut self) -> WinResult<()> {
         log::trace!("Session::start_playback");
-        let pres = self.presentation.as_ref().ok_or(MF::MF_E_SHUTDOWN)?;
+        let Some(pres) = &self.presentation else {
+            log::trace!("presentationがないのに再生要求");
+            return Err(MF::MF_E_SHUTDOWN.into());
+        };
 
         let start_pos = if self.state == State::Stopped {
             // 停止状態からの再生は最初から
@@ -1141,7 +1144,10 @@ impl Inner {
     }
 
     pub fn position(&self) -> WinResult<Duration> {
-        let pres = self.presentation.as_ref().ok_or(MF::MF_E_INVALIDREQUEST)?;
+        let Some(pres) = &self.presentation else {
+            log::trace!("presentationがないのに位置要求");
+            return Err(MF::MF_E_INVALIDREQUEST.into());
+        };
 
         let pos = if let Some(pos) = self.op_request.pos.or(self.seeking_pos) {
             pos
@@ -1157,7 +1163,10 @@ impl Inner {
             return self.stop();
         }
 
-        let pres = self.presentation.as_ref().ok_or(MF::MF_E_INVALIDREQUEST)?;
+        let Some(pres) = &self.presentation else {
+            log::trace!("presentationがないのに位置設定要求");
+            return Err(MF::MF_E_INVALIDREQUEST.into());
+        };
 
         let time = (pos.as_nanos() / 100) as i64;
         unsafe {
@@ -1286,7 +1295,10 @@ impl MF::IMFAsyncCallback_Impl for Outer {
     fn Invoke(&self, presult: Option<&MF::IMFAsyncResult>) -> WinResult<()> {
         log::trace!("Session::Invoke");
         let inner = self.inner.lock();
-        let pres = inner.presentation.as_ref().ok_or(MF::MF_E_SHUTDOWN)?;
+        let Some(pres) = &inner.presentation else {
+            log::trace!("presentationがないのにInvoke");
+            return Err(MF::MF_E_SHUTDOWN.into());
+        };
 
         let event = unsafe { pres.session.EndGetEvent(presult)? };
         let me_type = unsafe { event.GetType()? };
