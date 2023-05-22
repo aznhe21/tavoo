@@ -667,6 +667,23 @@ impl Inner {
                 (AudioCodecInfo::Aac(a), AudioCodecInfo::Aac(b)) => a.chan_config != b.chan_config,
             }
         }
+        fn needs_audio_type_change(a: &AudioCodecInfo, b: &AudioCodecInfo) -> bool {
+            match (a, b) {
+                (AudioCodecInfo::Aac(a), AudioCodecInfo::Aac(b)) => {
+                    a.object_type != b.object_type || a.sampling_index != b.sampling_index
+                }
+            }
+        }
+
+        fn change_audio_type(pres: &mut Presentation, codec_info: AudioCodecInfo) {
+            log::trace!("音声属性変更");
+            log::trace!("旧音声：{:?}", pres.audio_codec_info);
+            log::trace!("新音声：{:?}", codec_info);
+
+            // 属性変更してパケットを放流
+            pres.source.change_audio_type(&codec_info);
+            pres.audio_codec_info = codec_info;
+        }
 
         let r = 'r: {
             let inner = &mut **this;
@@ -687,6 +704,18 @@ impl Inner {
                             || needs_reset_by_audio(&aci, &pres.audio_codec_info)
                         {
                             Inner::reset(this, vci, aci, &*ivs.packets, &*ias.packets)
+                        } else if needs_audio_type_change(&aci, &pres.audio_codec_info) {
+                            // 音声属性変更時、映像はそのままパケットを放流、
+                            // 音声は変更を通知してからパケットを放流
+
+                            pres.source
+                                .deliver_video_packets(iter_packets(&*ivs.packets));
+
+                            change_audio_type(pres, aci);
+                            pres.source
+                                .deliver_audio_packets(iter_packets(&*ias.packets));
+
+                            Ok(())
                         } else {
                             log::trace!("リセット不要");
 
@@ -720,6 +749,7 @@ impl Inner {
                             Ok(())
                         }
                     }
+
                     (None, Some(ias)) => {
                         if ias.codec_info.is_none() {
                             // 切り替え中ストリームのコーデック情報が揃うまで待機
@@ -732,6 +762,13 @@ impl Inner {
                         if needs_reset_by_audio(&aci, &pres.audio_codec_info) {
                             let vci = pres.video_codec_info.clone();
                             Inner::reset(this, vci, aci, &[], &*ias.packets)
+                        } else if needs_audio_type_change(&aci, &pres.audio_codec_info) {
+                            // 属性変更時は変更を通知してからパケットを放流
+                            change_audio_type(pres, aci);
+                            pres.source
+                                .deliver_audio_packets(iter_packets(&*ias.packets));
+
+                            Ok(())
                         } else {
                             log::trace!("リセット不要");
 

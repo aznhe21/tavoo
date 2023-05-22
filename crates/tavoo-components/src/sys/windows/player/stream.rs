@@ -38,7 +38,7 @@ impl ElementaryStream {
             state: State::Stopped,
             is_eos: false,
 
-            samples: VecDeque::new(),
+            queue: VecDeque::new(),
             requests: VecDeque::new(),
         });
         Ok(ElementaryStream(Outer { inner }.into()))
@@ -76,8 +76,18 @@ impl ElementaryStream {
     }
 
     #[inline]
+    pub fn clear_samples(&self) {
+        self.inner().clear_samples();
+    }
+
+    #[inline]
     pub fn dispatch_samples(&self) -> WinResult<()> {
         Inner::dispatch_samples(&mut self.inner())
+    }
+
+    #[inline]
+    pub fn change_media_type(&self, media_type: MF::IMFMediaType) -> WinResult<()> {
+        Inner::change_media_type(&mut self.inner(), media_type)
     }
 
     #[inline]
@@ -112,6 +122,11 @@ impl ElementaryStream {
 // Safety: 内包するIMFMediaStreamはOuterであり、OuterはSendであるため安全
 unsafe impl Send for ElementaryStream {}
 
+enum Message {
+    Sample(MF::IMFSample),
+    MediaType(MF::IMFMediaType),
+}
+
 #[implement(MF::IMFMediaStream)]
 struct Outer {
     inner: Mutex<Inner>,
@@ -126,7 +141,7 @@ struct Inner {
     state: State,
     is_eos: bool,
 
-    samples: VecDeque<MF::IMFSample>,
+    queue: VecDeque<Message>,
     requests: VecDeque<Option<C::IUnknown>>,
 }
 
@@ -153,18 +168,40 @@ impl Inner {
     }
 
     fn needs_data(&self) -> bool {
-        !self.is_eos && self.samples.len() < SAMPLE_QUEUE
+        !self.is_eos && self.queue.len() < SAMPLE_QUEUE
     }
 
     fn end_of_stream(this: &mut MutexGuard<Self>) -> WinResult<()> {
-        this.is_eos = true;
-        Inner::dispatch_samples(this)?;
+        if !this.is_eos {
+            this.is_eos = true;
+            Inner::dispatch_samples(this)?;
+        }
 
         Ok(())
     }
 
     fn push_sample(&mut self, sample: MF::IMFSample) {
-        self.samples.push_back(sample);
+        self.queue.push_back(Message::Sample(sample));
+    }
+
+    fn clear_samples(&mut self) {
+        self.queue.retain(|m| !matches!(m, Message::Sample(_)));
+
+        // 古い種別変更も消す
+        while self.queue.len() >= 2 {
+            let _front = self.queue.pop_front();
+            debug_assert!(matches!(_front.unwrap(), Message::MediaType(_)));
+        }
+    }
+
+    fn change_media_type(
+        this: &mut MutexGuard<Self>,
+        media_type: MF::IMFMediaType,
+    ) -> WinResult<()> {
+        this.queue.push_back(Message::MediaType(media_type));
+        Inner::dispatch_samples(this)?;
+
+        Ok(())
     }
 
     fn dispatch_samples(this: &mut MutexGuard<Self>) -> WinResult<()> {
@@ -173,25 +210,38 @@ impl Inner {
                 break 'r Ok(());
             }
 
-            while !this.samples.is_empty() && !this.requests.is_empty() {
-                let sample = this.samples.pop_front().unwrap();
-                let token = this.requests.pop_front().unwrap();
+            while !this.queue.is_empty() && !this.requests.is_empty() {
+                match this.queue.pop_front().unwrap() {
+                    Message::Sample(sample) => {
+                        let token = this.requests.pop_front().unwrap();
 
-                if let Some(token) = token {
-                    unsafe { tri!('r, sample.SetUnknown(&MF::MFSampleExtension_Token, &token)) };
+                        if let Some(token) = token {
+                            unsafe {
+                                tri!('r, sample.SetUnknown(&MF::MFSampleExtension_Token, &token))
+                            };
+                        }
+
+                        unsafe {
+                            tri!('r, this.event_queue.QueueEventParamUnk(
+                                MF::MEMediaSample.0 as u32,
+                                &GUID_NULL,
+                                F::S_OK,
+                                &sample,
+                            ))
+                        };
+                    }
+                    Message::MediaType(media_type) => unsafe {
+                        tri!('r, this.event_queue.QueueEventParamUnk(
+                            MF::MEStreamFormatChanged.0 as u32,
+                            &GUID_NULL,
+                            F::S_OK,
+                            &media_type,
+                        ))
+                    },
                 }
-
-                unsafe {
-                    tri!('r, this.event_queue.QueueEventParamUnk(
-                        MF::MEMediaSample.0 as u32,
-                        &GUID_NULL,
-                        F::S_OK,
-                        &sample,
-                    ))
-                };
             }
 
-            if this.samples.is_empty() && this.is_eos {
+            if this.queue.is_empty() && this.is_eos {
                 log::trace!("sample exhausted ({:p})", &**this);
                 unsafe {
                     tri!('r, this.event_queue.QueueEventParamVar(
@@ -249,7 +299,7 @@ impl Inner {
 
     fn stop(this: &mut MutexGuard<Self>) -> WinResult<()> {
         this.requests.clear();
-        this.samples.clear();
+        this.queue.clear();
 
         this.state = State::Stopped;
         this.queue_event(
@@ -267,7 +317,7 @@ impl Inner {
 
         let _ = unsafe { this.event_queue.Shutdown() };
 
-        this.samples.clear();
+        this.queue.clear();
         this.requests.clear();
 
         Ok(())
@@ -371,7 +421,7 @@ impl MF::IMFMediaStream_Impl for Outer {
             if inner.state == State::Stopped {
                 break 'r Err(MF::MF_E_INVALIDREQUEST.into());
             }
-            if inner.is_eos && inner.samples.is_empty() {
+            if inner.is_eos && inner.queue.is_empty() {
                 break 'r Err(MF::MF_E_END_OF_STREAM.into());
             }
 

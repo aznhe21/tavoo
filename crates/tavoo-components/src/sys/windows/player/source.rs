@@ -35,7 +35,7 @@ unsafe impl Send for PresentationDescriptor {}
 const SID_VIDEO: u32 = 0;
 const SID_AUDIO: u32 = 1;
 
-fn create_video_sd(codec_info: &VideoCodecInfo) -> WinResult<MF::IMFStreamDescriptor> {
+fn create_video_mt(codec_info: &VideoCodecInfo) -> WinResult<MF::IMFMediaType> {
     let media_type = unsafe { MF::MFCreateMediaType()? };
     match codec_info {
         VideoCodecInfo::Mpeg2(seq) => {
@@ -72,18 +72,10 @@ fn create_video_sd(codec_info: &VideoCodecInfo) -> WinResult<MF::IMFStreamDescri
         },
     }
 
-    let stream_descriptor =
-        unsafe { MF::MFCreateStreamDescriptor(SID_VIDEO, &[Some(media_type.clone())])? };
-
-    unsafe {
-        let handler = stream_descriptor.GetMediaTypeHandler()?;
-        handler.SetCurrentMediaType(&media_type)?;
-    }
-
-    Ok(stream_descriptor)
+    Ok(media_type)
 }
 
-fn create_audio_sd(codec_info: &AudioCodecInfo) -> WinResult<MF::IMFStreamDescriptor> {
+fn create_audio_mt(codec_info: &AudioCodecInfo) -> WinResult<MF::IMFMediaType> {
     let media_type = unsafe { MF::MFCreateMediaType()? };
 
     match codec_info {
@@ -132,8 +124,12 @@ fn create_audio_sd(codec_info: &AudioCodecInfo) -> WinResult<MF::IMFStreamDescri
         }
     }
 
+    Ok(media_type)
+}
+
+fn create_sd(sid: u32, media_type: MF::IMFMediaType) -> WinResult<MF::IMFStreamDescriptor> {
     let stream_descriptor =
-        unsafe { MF::MFCreateStreamDescriptor(SID_AUDIO, &[Some(media_type.clone())])? };
+        unsafe { MF::MFCreateStreamDescriptor(sid, &[Some(media_type.clone())])? };
 
     unsafe {
         let handler = stream_descriptor.GetMediaTypeHandler()?;
@@ -184,8 +180,8 @@ impl TransportStream {
         video_codec_info: &VideoCodecInfo,
         audio_codec_info: &AudioCodecInfo,
     ) -> WinResult<TransportStream> {
-        let video_sd = create_video_sd(video_codec_info)?;
-        let audio_sd = create_audio_sd(audio_codec_info)?;
+        let video_sd = create_sd(SID_VIDEO, create_video_mt(video_codec_info)?)?;
+        let audio_sd = create_sd(SID_AUDIO, create_audio_mt(audio_codec_info)?)?;
 
         let presentation_descriptor = unsafe {
             let pd = MF::MFCreatePresentationDescriptor(Some(&[
@@ -257,6 +253,14 @@ impl TransportStream {
         self.outer().inner.lock()
     }
 
+    pub fn clear_video_packets(&self) {
+        Inner::clear_video_packets(&mut self.inner());
+    }
+
+    pub fn clear_audio_packets(&self) {
+        Inner::clear_audio_packets(&mut self.inner());
+    }
+
     pub fn deliver_video_packet(&self, pos: Option<Duration>, payload: &[u8]) {
         let outer = self.outer();
         let r = Inner::deliver_video_packet(&mut outer.inner.lock(), pos, payload);
@@ -295,6 +299,15 @@ impl TransportStream {
         let r = Inner::deliver_audio_packets(&mut outer.inner.lock(), iter);
         if let Err(e) = r {
             log::debug!("error[deliver_audio_packets]: {}", e);
+            outer.streaming_error(e);
+        }
+    }
+
+    pub fn change_audio_type(&self, codec_info: &AudioCodecInfo) {
+        let outer = self.outer();
+        let r = Inner::change_audio_type(&mut outer.inner.lock(), codec_info);
+        if let Err(e) = r {
+            log::debug!("error[change_audio_type]: {}", e);
             outer.streaming_error(e);
         }
     }
@@ -456,19 +469,7 @@ impl Inner {
         let r: WinResult<()> = 'r: {
             log::trace!("TransportStream::do_start");
 
-            let start_pos = if let Some(start_pos) = start_pos {
-                if let Err(e) = this
-                    .extract_handler
-                    .set_position(Duration::from_nanos((start_pos as u64) * 100))
-                {
-                    log::trace!("TSの位置設定に失敗：{}", e);
-                    break 'r Err(MF::MF_E_INVALIDREQUEST.into());
-                }
-
-                PropVariant::I64(start_pos)
-            } else {
-                PropVariant::Empty
-            };
+            let start_pos = start_pos.map_or(PropVariant::Empty, PropVariant::I64);
 
             tri!('r, Inner::select_streams(this, pd, &start_pos));
 
@@ -599,6 +600,14 @@ impl Inner {
         Ok(())
     }
 
+    fn clear_video_packets(this: &mut MutexGuard<Self>) {
+        Inner::video_stream_unlocked(this, |es| es.clear_samples());
+    }
+
+    fn clear_audio_packets(this: &mut MutexGuard<Self>) {
+        Inner::audio_stream_unlocked(this, |es| es.clear_samples());
+    }
+
     fn deliver_video_packet(
         this: &mut MutexGuard<Self>,
         pos: Option<Duration>,
@@ -651,6 +660,14 @@ impl Inner {
             es.dispatch_samples()?;
             Ok(())
         })
+    }
+
+    pub fn change_audio_type(
+        this: &mut MutexGuard<Self>,
+        codec_info: &AudioCodecInfo,
+    ) -> WinResult<()> {
+        let mt = create_audio_mt(codec_info)?;
+        Inner::audio_stream_unlocked(this, |es| es.change_media_type(mt))
     }
 }
 
