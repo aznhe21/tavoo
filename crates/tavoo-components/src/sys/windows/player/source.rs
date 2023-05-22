@@ -38,25 +38,32 @@ const SID_AUDIO: u32 = 1;
 fn create_video_sd(codec_info: &VideoCodecInfo) -> WinResult<MF::IMFStreamDescriptor> {
     let media_type = unsafe { MF::MFCreateMediaType()? };
     match codec_info {
-        VideoCodecInfo::Mpeg2(seq) => unsafe {
-            media_type.SetGUID(&MF::MF_MT_MAJOR_TYPE, &MF::MFMediaType_Video)?;
-            media_type.SetGUID(&MF::MF_MT_SUBTYPE, &MF::MFVideoFormat_MPEG2)?;
-            media_type.SetUINT32(&MF::MF_MT_FIXED_SIZE_SAMPLES, 0)?;
-            media_type.SetUINT32(&MF::MF_MT_COMPRESSED, 1)?;
-            media_type.SetUINT64(
-                &MF::MF_MT_FRAME_SIZE,
-                (seq.horizontal_size as u64) << 32 | (seq.vertical_size as u64),
-            )?;
-            media_type.SetUINT64(
-                &MF::MF_MT_PIXEL_ASPECT_RATIO,
-                (seq.pixel_aspect_ratio.numerator as u64) << 32
-                    | (seq.pixel_aspect_ratio.denominator as u64),
-            )?;
-            media_type.SetUINT64(
-                &MF::MF_MT_FRAME_RATE,
-                (seq.frame_rate.numerator as u64) << 32 | (seq.frame_rate.denominator as u64),
-            )?;
-        },
+        VideoCodecInfo::Mpeg2(seq) => {
+            let (width, height) = match (seq.horizontal_size, seq.vertical_size) {
+                (width, 1080) => (width, 1088),
+                (width, height) => (width, height),
+            };
+
+            unsafe {
+                media_type.SetGUID(&MF::MF_MT_MAJOR_TYPE, &MF::MFMediaType_Video)?;
+                media_type.SetGUID(&MF::MF_MT_SUBTYPE, &MF::MFVideoFormat_MPEG2)?;
+                media_type.SetUINT32(&MF::MF_MT_FIXED_SIZE_SAMPLES, 0)?;
+                media_type.SetUINT32(&MF::MF_MT_COMPRESSED, 1)?;
+                media_type.SetUINT64(
+                    &MF::MF_MT_FRAME_SIZE,
+                    ((width as u64) << 32) | (height as u64),
+                )?;
+                media_type.SetUINT64(
+                    &MF::MF_MT_PIXEL_ASPECT_RATIO,
+                    (seq.pixel_aspect_ratio.numerator as u64) << 32
+                        | (seq.pixel_aspect_ratio.denominator as u64),
+                )?;
+                media_type.SetUINT64(
+                    &MF::MF_MT_FRAME_RATE,
+                    (seq.frame_rate.numerator as u64) << 32 | (seq.frame_rate.denominator as u64),
+                )?;
+            }
+        }
         VideoCodecInfo::H264 => unsafe {
             media_type.SetGUID(&MF::MF_MT_MAJOR_TYPE, &MF::MFMediaType_Video)?;
             media_type.SetGUID(&MF::MF_MT_SUBTYPE, &MF::MFVideoFormat_H264)?;

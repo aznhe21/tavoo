@@ -1120,21 +1120,13 @@ impl Inner {
             return Ok(());
         };
 
-        let size = wrap::wrap(|a| unsafe { video_display.GetNativeVideoSize(a, ptr::null_mut()) })?;
-
-        let src = MF::MFVideoNormalizedRect {
-            left: 0.,
-            top: 0.,
-            right: 1.,
-            bottom: if size.cy == 1080 { 1080. / 1088. } else { 1. },
-        };
         let dst = F::RECT {
             left: left as i32,
             top: top as i32,
             right: right as i32,
             bottom: bottom as i32,
         };
-        unsafe { video_display.SetVideoPosition(&src, &dst)? };
+        unsafe { video_display.SetVideoPosition(std::ptr::null(), &dst)? };
 
         Ok(())
     }
