@@ -225,7 +225,10 @@ impl Inner {
             F::S_OK,
             &start_pos.to_raw(),
         )?;
-        this.is_eos = false;
+        if matches!(start_pos, PropVariant::I64(_)) {
+            // シーク後にEOSのままでいられると再生できない
+            this.is_eos = false;
+        }
         this.state = State::Started;
         Inner::dispatch_samples(this)?;
 
