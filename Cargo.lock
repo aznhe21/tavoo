@@ -1159,6 +1159,7 @@ name = "tavoo-components"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "arrayvec",
  "cfg-if",
  "crossbeam-utils",
  "fxhash",

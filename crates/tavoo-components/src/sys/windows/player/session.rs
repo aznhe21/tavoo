@@ -320,10 +320,10 @@ impl Sink for Session {
             if ias.codec_info.is_none() {
                 match ias.stream.stream_type() {
                     StreamType::AAC => {
-                        let Some(header) = codec::audio::adts::Header::find(payload) else {
+                        let Some(frame) = codec::audio::adts::Frame::find(payload) else {
                             return;
                         };
-                        ias.codec_info = Some(AudioCodecInfo::Aac(header));
+                        ias.codec_info = Some(AudioCodecInfo::Aac(frame));
                     }
                     _ => unreachable!(),
                 }
@@ -720,13 +720,15 @@ impl Inner {
         }
         fn needs_reset_by_audio(a: &AudioCodecInfo, b: &AudioCodecInfo) -> bool {
             match (a, b) {
-                (AudioCodecInfo::Aac(a), AudioCodecInfo::Aac(b)) => a.chan_config != b.chan_config,
+                (AudioCodecInfo::Aac(a), AudioCodecInfo::Aac(b)) => {
+                    a.channel_configuration != b.channel_configuration
+                }
             }
         }
         fn needs_audio_type_change(a: &AudioCodecInfo, b: &AudioCodecInfo) -> bool {
             match (a, b) {
                 (AudioCodecInfo::Aac(a), AudioCodecInfo::Aac(b)) => {
-                    a.object_type != b.object_type || a.sampling_index != b.sampling_index
+                    a.sampling_frequency != b.sampling_frequency
                 }
             }
         }

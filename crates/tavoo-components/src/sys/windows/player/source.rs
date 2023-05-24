@@ -24,7 +24,7 @@ pub enum VideoCodecInfo {
 // ARIB TR-B14及びARIB TR-B15により音声はAACしか来ない
 #[derive(Debug, Clone)]
 pub enum AudioCodecInfo {
-    Aac(codec::audio::adts::Header),
+    Aac(codec::audio::adts::Frame),
 }
 
 struct PresentationDescriptor(MF::IMFPresentationDescriptor);
@@ -79,7 +79,7 @@ fn create_audio_mt(codec_info: &AudioCodecInfo) -> WinResult<MF::IMFMediaType> {
     let media_type = unsafe { MF::MFCreateMediaType()? };
 
     match codec_info {
-        AudioCodecInfo::Aac(header) => {
+        AudioCodecInfo::Aac(frame) => {
             // https://learn.microsoft.com/en-us/windows/win32/medfound/aac-decoder
             #[repr(C, packed(1))]
             #[allow(non_snake_case)]
@@ -105,8 +105,8 @@ fn create_audio_mt(codec_info: &AudioCodecInfo) -> WinResult<MF::IMFMediaType> {
                     // 4 bits: frequency index
                     // 4 bits: channel configuration
                     (2 << 11)
-                        | ((header.sampling_index as u16) << 7)
-                        | ((header.chan_config as u16) << 3),
+                        | ((frame.sampling_frequency.index() as u16) << 7)
+                        | ((frame.channel_configuration as u16) << 3),
                 ),
             };
 
@@ -115,9 +115,11 @@ fn create_audio_mt(codec_info: &AudioCodecInfo) -> WinResult<MF::IMFMediaType> {
 
                 media_type.SetGUID(&MF::MF_MT_MAJOR_TYPE, &MF::MFMediaType_Audio)?;
                 media_type.SetGUID(&MF::MF_MT_SUBTYPE, &MF::MFAudioFormat_AAC)?;
-                media_type.SetUINT32(&MF::MF_MT_AUDIO_SAMPLES_PER_SECOND, header.sample_rate())?;
-                media_type
-                    .SetUINT32(&MF::MF_MT_AUDIO_NUM_CHANNELS, header.num_channels() as u32)?;
+                media_type.SetUINT32(
+                    &MF::MF_MT_AUDIO_SAMPLES_PER_SECOND,
+                    frame.sampling_frequency.to_u32(),
+                )?;
+                media_type.SetUINT32(&MF::MF_MT_AUDIO_NUM_CHANNELS, frame.num_channels() as u32)?;
                 media_type.SetUINT32(&MF::MF_MT_AAC_PAYLOAD_TYPE, 1)?; // ADTS
                 media_type.SetBlob(&MF::MF_MT_USER_DATA, &user_data)?;
             }
