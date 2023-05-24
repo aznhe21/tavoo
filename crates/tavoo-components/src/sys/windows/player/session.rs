@@ -718,17 +718,11 @@ impl Inner {
                 _ => true,
             }
         }
-        fn needs_reset_by_audio(a: &AudioCodecInfo, b: &AudioCodecInfo) -> bool {
-            match (a, b) {
-                (AudioCodecInfo::Aac(a), AudioCodecInfo::Aac(b)) => {
-                    a.channel_configuration != b.channel_configuration
-                }
-            }
-        }
         fn needs_audio_type_change(a: &AudioCodecInfo, b: &AudioCodecInfo) -> bool {
             match (a, b) {
                 (AudioCodecInfo::Aac(a), AudioCodecInfo::Aac(b)) => {
-                    a.sampling_frequency != b.sampling_frequency
+                    a.channel_configuration != b.channel_configuration
+                        || a.sampling_frequency != b.sampling_frequency
                 }
             }
         }
@@ -753,11 +747,10 @@ impl Inner {
                                 // 切り替え中ストリームのコーデック情報が揃うまで待機
                                 break 'r Ok(());
                             }
-                            (Some(vci), Some(aci)) => {
+                            (Some(vci), Some(_)) => {
                                 if !ivs.immediate
                                     && !ias.immediate
-                                    && (needs_reset_by_video(vci, &pres.video_codec_info)
-                                        || needs_reset_by_audio(aci, &pres.audio_codec_info))
+                                    && needs_reset_by_video(vci, &pres.video_codec_info)
                                 {
                                     // リセットが必要だが順次切り替えるため再生が終了するまで待機
                                     log::trace!("順次切り替え待機");
@@ -773,9 +766,7 @@ impl Inner {
                         let aci = ias.codec_info.unwrap();
 
                         let change_type = needs_audio_type_change(&aci, &pres.audio_codec_info);
-                        if needs_reset_by_video(&vci, &pres.video_codec_info)
-                            || needs_reset_by_audio(&aci, &pres.audio_codec_info)
-                        {
+                        if needs_reset_by_video(&vci, &pres.video_codec_info) {
                             debug_assert!(ivs.immediate || ias.immediate, "順次切り替えが必要");
 
                             Inner::switch(this, vci, aci, &*ivs.packets, &*ias.packets)
@@ -843,9 +834,7 @@ impl Inner {
                         let aci = ias.codec_info.unwrap();
 
                         let change_type = needs_audio_type_change(&aci, &pres.audio_codec_info);
-                        if needs_reset_by_audio(&aci, &pres.audio_codec_info)
-                            || (!change_type && ias.immediate)
-                        {
+                        if !change_type && ias.immediate {
                             let vci = pres.video_codec_info.clone();
                             Inner::switch(this, vci, aci, &[], &*ias.packets)
                         } else if change_type {
