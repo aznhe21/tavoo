@@ -5,6 +5,7 @@
 #[macro_use]
 mod macros;
 
+pub mod bit;
 pub mod codec;
 pub mod extract;
 pub mod player;
