@@ -34,6 +34,16 @@ fn iter_packets(
     packets.iter().map(|&(pos, ref payload)| (pos, &**payload))
 }
 
+fn change_audio_type(pres: &mut Presentation, codec_info: AudioCodecInfo) {
+    log::trace!("音声属性変更");
+    log::trace!("旧音声：{:?}", pres.audio_codec_info);
+    log::trace!("新音声：{:?}", codec_info);
+
+    // 属性変更してパケットを放流
+    pres.source.change_audio_type(&codec_info);
+    pres.audio_codec_info = codec_info;
+}
+
 fn create_media_sink_activate(
     source_sd: &MF::IMFStreamDescriptor,
     hwnd_video: F::HWND,
@@ -331,7 +341,19 @@ impl Sink for Session {
                 // 音声のコーデック情報が手に入ったので切り替えてみる
                 Inner::try_change_streams(&mut inner);
             }
-        } else if let Some(pres) = &inner.presentation {
+        } else if let Some(pres) = &mut inner.presentation {
+            match &pres.audio_codec_info {
+                AudioCodecInfo::Aac(old) => {
+                    if let Some(new) = codec::audio::adts::Frame::find(payload) {
+                        if new.sampling_frequency.index() != old.sampling_frequency.index()
+                            || new.channel_configuration != old.channel_configuration
+                        {
+                            change_audio_type(pres, AudioCodecInfo::Aac(new));
+                        }
+                    }
+                }
+            }
+
             pres.source.deliver_audio_packet(pos, payload);
         }
     }
@@ -725,16 +747,6 @@ impl Inner {
                         || a.sampling_frequency != b.sampling_frequency
                 }
             }
-        }
-
-        fn change_audio_type(pres: &mut Presentation, codec_info: AudioCodecInfo) {
-            log::trace!("音声属性変更");
-            log::trace!("旧音声：{:?}", pres.audio_codec_info);
-            log::trace!("新音声：{:?}", codec_info);
-
-            // 属性変更してパケットを放流
-            pres.source.change_audio_type(&codec_info);
-            pres.audio_codec_info = codec_info;
         }
 
         let r = 'r: {
