@@ -93,6 +93,19 @@ pub trait EventHandler: Send + 'static {
     fn on_stream_error(&self, error: anyhow::Error);
 }
 
+/// デュアルモノラルでの再生方法。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DualMonoMode {
+    /// チャンネル1を左右スピーカーに出力する。
+    Left,
+    /// チャンネル2を左右スピーカーに出力する。
+    Right,
+    /// チャンネル1を左スピーカーに、チャンネル2を右スピーカーに出力する。
+    Stereo,
+    /// チャンネル1とチャンネル2を混合して左右スピーカーに出力する。
+    Mix,
+}
+
 /// TSを再生するためのプレイヤー。
 pub struct Player<H> {
     inner: imp::Player<H>,
@@ -223,6 +236,18 @@ impl<H: EventHandler + Clone> Player<H> {
     #[inline]
     pub fn set_rate(&mut self, value: f32) -> Result<()> {
         self.inner.set_rate(value)
+    }
+
+    /// 現在のデュアルモノラルの再生方法を返す。
+    #[inline]
+    pub fn dual_mono_mode(&mut self) -> Result<Option<DualMonoMode>> {
+        self.inner.dual_mono_mode()
+    }
+
+    /// デュアルモノラルの再生方法を設定する。
+    #[inline]
+    pub fn set_dual_mono_mode(&mut self, mode: DualMonoMode) -> Result<()> {
+        self.inner.set_dual_mono_mode(mode)
     }
 
     /// `Player`を閉じる。

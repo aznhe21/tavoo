@@ -16,7 +16,7 @@ use windows::Win32::Media::MediaFoundation as MF;
 
 use crate::codec;
 use crate::extract::{self, ExtractHandler, Sink};
-use crate::player::{EventHandler, PlayerEvent};
+use crate::player::{DualMonoMode, EventHandler, PlayerEvent};
 use crate::sys::com::PropVariant;
 use crate::sys::wrap;
 
@@ -40,7 +40,7 @@ fn change_audio_type(pres: &mut Presentation, codec_info: AudioCodecInfo) {
     log::trace!("新音声：{:?}", codec_info);
 
     // 属性変更してパケットを放流
-    pres.source.change_audio_type(&codec_info);
+    pres.source.change_audio_type(&codec_info, false);
     pres.audio_codec_info = codec_info;
 }
 
@@ -161,6 +161,7 @@ impl Session {
             audio_volume: None,
             rate_control: None,
             rate_support: None,
+            aac_decoder: None,
 
             state: State::Closed,
             status: Status::Closed,
@@ -265,6 +266,16 @@ impl Session {
     #[inline]
     pub fn set_rate(&self, value: f32) -> WinResult<()> {
         self.inner().set_rate(value)
+    }
+
+    #[inline]
+    pub fn dual_mono_mode(&self) -> WinResult<Option<DualMonoMode>> {
+        self.inner().dual_mono_mode()
+    }
+
+    #[inline]
+    pub fn set_dual_mono_mode(&self, mode: DualMonoMode) -> WinResult<()> {
+        self.inner().set_dual_mono_mode(mode)
     }
 }
 
@@ -496,6 +507,7 @@ struct Inner {
     audio_volume: Option<MF::IMFSimpleAudioVolume>,
     rate_control: Option<MF::IMFRateControl>,
     rate_support: Option<MF::IMFRateSupport>,
+    aac_decoder: Option<MF::IMFTransform>,
 
     state: State,
     status: Status,
@@ -544,6 +556,7 @@ impl Inner {
         this.audio_volume = None;
         this.rate_control = None;
         this.rate_support = None;
+        this.aac_decoder = None;
 
         let r = 'r: {
             // Outer::Invokeが呼ばれるために必要
@@ -1080,6 +1093,19 @@ impl Inner {
             debug_assert!(!ptr.is_null());
             Ok(unsafe { T::from_raw(ptr) })
         }
+        fn find_aac_decoder(topology: &MF::IMFTopology) -> WinResult<MF::IMFTransform> {
+            for i in 0..unsafe { topology.GetNodeCount()? } {
+                let node = unsafe { topology.GetNode(i)? };
+                let Ok(clsid) = (unsafe { node.GetGUID(&MF::MF_TOPONODE_TRANSFORM_OBJECTID) }) else {
+                    continue;
+                };
+                if clsid == MF::CLSID_MSAACDecMFT {
+                    return unsafe { node.GetObject() }.and_then(|obj| obj.cast());
+                }
+            }
+
+            Err(F::E_FAIL.into())
+        }
 
         status.ok()?;
 
@@ -1087,11 +1113,18 @@ impl Inner {
         if status == MF::MF_TOPOSTATUS_READY.0 as u32 {
             log::trace!("Session::on_topology_ready");
 
+            let topology = unsafe { event.GetValue()? };
+            let Some(PropVariant::IUnknown(topology)) = PropVariant::new(&topology) else {
+                return Err(F::E_INVALIDARG.into());
+            };
+            let topology = topology.cast::<MF::IMFTopology>()?;
+
             let pres = self.presentation.as_ref().expect("presentationが必要");
             self.video_display = get_service(&pres.session, &MF::MR_VIDEO_RENDER_SERVICE).ok();
             self.audio_volume = get_service(&pres.session, &MF::MR_POLICY_VOLUME_SERVICE).ok();
             self.rate_control = get_service(&pres.session, &MF::MF_RATE_CONTROL_SERVICE).ok();
             self.rate_support = get_service(&pres.session, &MF::MF_RATE_CONTROL_SERVICE).ok();
+            self.aac_decoder = find_aac_decoder(&topology).ok();
 
             {
                 let player_state = self.player_state.lock();
@@ -1504,6 +1537,45 @@ impl Inner {
             self.set_rate_internal(value)?;
         }
         self.player_state.lock().rate = value;
+
+        Ok(())
+    }
+
+    pub fn dual_mono_mode(&self) -> WinResult<Option<DualMonoMode>> {
+        let aac_decoder = self.aac_decoder.as_ref().ok_or(MF::MF_E_INVALIDREQUEST)?;
+        let attrs = unsafe { aac_decoder.GetAttributes() }?;
+        let dual_mono = unsafe { attrs.GetUINT32(&MF::CODECAPI_AVDecAudioDualMono)? };
+
+        if dual_mono != MF::eAVDecAudioDualMono_IsDualMono.0 as u32 {
+            return Ok(None);
+        }
+
+        let repro_mode = unsafe { attrs.GetUINT32(&MF::CODECAPI_AVDecAudioDualMonoReproMode)? };
+
+        match MF::eAVDecAudioDualMonoReproMode(repro_mode as i32) {
+            MF::eAVDecAudioDualMonoReproMode_LEFT_MONO => Ok(Some(DualMonoMode::Left)),
+            MF::eAVDecAudioDualMonoReproMode_RIGHT_MONO => Ok(Some(DualMonoMode::Right)),
+            MF::eAVDecAudioDualMonoReproMode_STEREO => Ok(Some(DualMonoMode::Stereo)),
+            MF::eAVDecAudioDualMonoReproMode_MIX_MONO => Ok(Some(DualMonoMode::Mix)),
+            _ => Err(F::E_UNEXPECTED.into()),
+        }
+    }
+
+    pub fn set_dual_mono_mode(&mut self, mode: DualMonoMode) -> WinResult<()> {
+        let pres = self.presentation.as_mut().ok_or(MF::MF_E_INVALIDREQUEST)?;
+        let aac_decoder = self.aac_decoder.as_ref().ok_or(MF::MF_E_INVALIDREQUEST)?;
+        let attrs = unsafe { aac_decoder.GetAttributes() }?;
+
+        let value = match mode {
+            DualMonoMode::Left => MF::eAVDecAudioDualMonoReproMode_LEFT_MONO,
+            DualMonoMode::Right => MF::eAVDecAudioDualMonoReproMode_RIGHT_MONO,
+            DualMonoMode::Stereo => MF::eAVDecAudioDualMonoReproMode_STEREO,
+            DualMonoMode::Mix => MF::eAVDecAudioDualMonoReproMode_MIX_MONO,
+        };
+        unsafe { attrs.SetUINT32(&MF::CODECAPI_AVDecAudioDualMonoReproMode, value.0 as u32)? };
+
+        // 変更を反映
+        pres.source.change_audio_type(&pres.audio_codec_info, true);
 
         Ok(())
     }

@@ -86,8 +86,8 @@ impl ElementaryStream {
     }
 
     #[inline]
-    pub fn change_media_type(&self, media_type: MF::IMFMediaType) -> WinResult<()> {
-        Inner::change_media_type(&mut self.inner(), media_type)
+    pub fn change_media_type(&self, media_type: MF::IMFMediaType, now: bool) -> WinResult<()> {
+        Inner::change_media_type(&mut self.inner(), media_type, now)
     }
 
     #[inline]
@@ -197,11 +197,28 @@ impl Inner {
     fn change_media_type(
         this: &mut MutexGuard<Self>,
         media_type: MF::IMFMediaType,
+        now: bool,
     ) -> WinResult<()> {
-        this.queue.push_back(Message::MediaType(media_type));
-        Inner::dispatch_samples(this)?;
+        if now {
+            this.change_stream_format(media_type)?;
+        } else {
+            this.queue.push_back(Message::MediaType(media_type));
+            Inner::dispatch_samples(this)?;
+        }
 
         Ok(())
+    }
+
+    #[inline]
+    fn change_stream_format(&self, media_type: MF::IMFMediaType) -> WinResult<()> {
+        unsafe {
+            self.event_queue.QueueEventParamUnk(
+                MF::MEStreamFormatChanged.0 as u32,
+                &GUID_NULL,
+                F::S_OK,
+                &media_type,
+            )
+        }
     }
 
     fn dispatch_samples(this: &mut MutexGuard<Self>) -> WinResult<()> {
@@ -230,14 +247,9 @@ impl Inner {
                             ))
                         };
                     }
-                    Message::MediaType(media_type) => unsafe {
-                        tri!('r, this.event_queue.QueueEventParamUnk(
-                            MF::MEStreamFormatChanged.0 as u32,
-                            &GUID_NULL,
-                            F::S_OK,
-                            &media_type,
-                        ))
-                    },
+                    Message::MediaType(media_type) => {
+                        tri!('r, this.change_stream_format(media_type))
+                    }
                 }
             }
 

@@ -305,9 +305,9 @@ impl TransportStream {
         }
     }
 
-    pub fn change_audio_type(&self, codec_info: &AudioCodecInfo) {
+    pub fn change_audio_type(&self, codec_info: &AudioCodecInfo, now: bool) {
         let outer = self.outer();
-        let r = Inner::change_audio_type(&mut outer.inner.lock(), codec_info);
+        let r = Inner::change_audio_type(&mut outer.inner.lock(), codec_info, now);
         if let Err(e) = r {
             log::debug!("error[change_audio_type]: {}", e);
             outer.streaming_error(e);
@@ -667,9 +667,10 @@ impl Inner {
     pub fn change_audio_type(
         this: &mut MutexGuard<Self>,
         codec_info: &AudioCodecInfo,
+        now: bool,
     ) -> WinResult<()> {
         let mt = create_audio_mt(codec_info)?;
-        Inner::audio_stream_unlocked(this, |es| es.change_media_type(mt))
+        Inner::audio_stream_unlocked(this, |es| es.change_media_type(mt, now))
     }
 }
 

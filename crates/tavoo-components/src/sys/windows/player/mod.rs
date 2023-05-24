@@ -16,7 +16,7 @@ use windows::Win32::Foundation as F;
 use windows::Win32::Media::MediaFoundation as MF;
 use winit::platform::windows::WindowExtWindows;
 
-use crate::player::EventHandler;
+use crate::player::{DualMonoMode, EventHandler};
 
 #[derive(Debug, Clone)]
 pub struct PlayerEvent(MF::IMFMediaEvent);
@@ -244,6 +244,16 @@ impl<H: EventHandler + Clone> Player<H> {
         } else {
             self.player_state.lock().rate = value;
         }
+        Ok(())
+    }
+
+    pub fn dual_mono_mode(&self) -> Result<Option<DualMonoMode>> {
+        let mode = self.session_must()?.dual_mono_mode()?;
+        Ok(mode)
+    }
+
+    pub fn set_dual_mono_mode(&self, mode: DualMonoMode) -> Result<()> {
+        self.session_must()?.set_dual_mono_mode(mode)?;
         Ok(())
     }
 }
