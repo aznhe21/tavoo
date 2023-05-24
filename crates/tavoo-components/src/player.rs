@@ -48,6 +48,11 @@ pub trait EventHandler: Send + 'static {
     /// 引数`rate`は新しい再生速度である。
     fn on_rate_changed(&self, rate: f32);
 
+    /// デュアルモノラルの再生方法が変更された際に呼ばれる。
+    ///
+    /// 引数`mode`は新しい再生方法。`None`の場合はデュアルモノラルではない。
+    fn on_dual_mono_mode_changed(&self, mode: Option<DualMonoMode>);
+
     /// サービスの変更や解像度の変更によるストリームの切り替えが開始した。
     ///
     /// `on_switching_ended`が呼ばれるまで再生が進まない可能性がある。

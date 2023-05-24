@@ -968,6 +968,9 @@ impl Inner {
             MF::MESessionStopped => this.on_session_stopped(status, &event)?,
             MF::MESessionRateChanged => this.on_session_rate_changed(status, &event)?,
             MF::MEAudioSessionVolumeChanged => this.on_session_volume_changed(status, &event)?,
+            MF::MESessionStreamSinkFormatChanged => {
+                this.on_session_stream_sink_format_changed(status, &event)?
+            }
 
             MF::MESessionTopologyStatus => this.on_topology_status(status, &event)?,
             MF::MEEndOfPresentation => Inner::on_presentation_ended(this, status, &event)?,
@@ -1074,6 +1077,21 @@ impl Inner {
                     }
                 }
             }
+        }
+
+        Ok(())
+    }
+
+    fn on_session_stream_sink_format_changed(
+        &mut self,
+        status: C::HRESULT,
+        _event: &MF::IMFMediaEvent,
+    ) -> WinResult<()> {
+        log::trace!("Session::on_session_stream_sink_format_changed");
+        status.ok()?;
+
+        if let Ok(mode) = self.dual_mono_mode() {
+            self.event_handler.on_dual_mono_mode_changed(mode);
         }
 
         Ok(())
