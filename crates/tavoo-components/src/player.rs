@@ -48,6 +48,11 @@ pub trait EventHandler: Send + 'static {
     /// 引数`rate`は新しい再生速度である。
     fn on_rate_changed(&self, rate: f32);
 
+    /// 映像の解像度が変更された際に呼ばれる。
+    ///
+    /// 引数`width`は新しい映像の幅、`height`は新しい映像の高さである。
+    fn on_video_size_changed(&self, width: u32, height: u32);
+
     /// デュアルモノラルの再生方法が変更された際に呼ばれる。
     ///
     /// 引数`mode`は新しい再生方法。`None`の場合はデュアルモノラルではない。

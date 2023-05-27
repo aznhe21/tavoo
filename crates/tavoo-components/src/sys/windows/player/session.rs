@@ -1090,6 +1090,22 @@ impl Inner {
         log::trace!("Session::on_session_stream_sink_format_changed");
         status.ok()?;
 
+        let pres = self.presentation.as_ref().expect("presentationが必要");
+        if let VideoCodecInfo::Mpeg2(seq) = &pres.video_codec_info {
+            self.event_handler
+                .on_video_size_changed(seq.horizontal_size as u32, seq.vertical_size as u32);
+        } else if let Some(vd) = &self.video_display {
+            match wrap::wrap(|a| unsafe { vd.GetNativeVideoSize(a, ptr::null_mut()) }) {
+                Ok(size) => {
+                    self.event_handler
+                        .on_video_size_changed(size.cx as u32, size.cy as u32);
+                }
+                Err(e) => {
+                    log::warn!("映像サイズを取得できない：{}", e);
+                }
+            }
+        }
+
         if let Ok(mode) = self.dual_mono_mode() {
             self.event_handler.on_dual_mono_mode_changed(mode);
         }
