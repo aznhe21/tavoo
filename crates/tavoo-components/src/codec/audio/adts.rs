@@ -203,7 +203,8 @@ impl Frame {
             return None;
         }
 
-        let crc = br.read::<16>().unwrap() as u16;
+        // 残りちょうど2バイトかもしれないのでread_insideを使う
+        let crc = br.read_inside::<16>().unwrap();
 
         let program_config = if br.read::<3>() == Some(ID_PCE as u16) {
             if br.bits() < 34 {
