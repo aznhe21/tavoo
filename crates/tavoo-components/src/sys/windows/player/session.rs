@@ -382,11 +382,14 @@ impl Sink for Session {
     }
 
     fn on_end_of_stream(&mut self) {
-        if let Some(pres) = &self.inner().presentation {
+        let mut inner = self.inner();
+        inner.incoming_video_stream = None;
+        inner.incoming_audio_stream = None;
+
+        if let Some(pres) = &inner.presentation {
             let _ = pres.source.end_of_mpeg_stream();
         }
-
-        self.inner().event_handler.on_end_of_stream();
+        inner.event_handler.on_end_of_stream();
     }
 
     fn on_stream_error(&mut self, error: io::Error) {
