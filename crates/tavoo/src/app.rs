@@ -138,6 +138,25 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
         });
     }
 
+    fn on_switching_started(&self) {
+        self.0.dispatch_task(|app| {
+            app.send_notification(Notification::SwitchingStarted);
+        });
+    }
+
+    fn on_switching_ended(&self) {
+        self.0.dispatch_task(|app| {
+            app.send_notification(Notification::SwitchingEnded);
+            if !app.seeking {
+                if let Ok(pos) = app.player.position() {
+                    app.send_notification(Notification::Position {
+                        position: pos.as_secs_f64(),
+                    });
+                }
+            }
+        });
+    }
+
     fn on_services_updated(&self, services: &isdb::filters::sorter::ServiceMap) {
         let services = services.values().map(Into::into).collect();
         self.0.dispatch_task(move |app| {

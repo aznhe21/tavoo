@@ -244,6 +244,19 @@ export class Player extends HTMLElement {
         this.dispatchEvent(new PlayerEvent("stream-changed"));
         break;
 
+      case "switching-started":
+        // 現在位置を記録
+        this.#lastPos = this.currentTime;
+        this.#lastPosTime = performance.now();
+        this.#lastTimestamp = this.timestamp?.getTime();
+        this.#lastTimestampTime = performance.now();
+        this.#isSwitching = true;
+        break;
+
+      case "switching-ended":
+        this.#isSwitching = false;
+        break;
+
       case "caption":
         // 字幕
         this.dispatchEvent(new CaptionEvent("caption", { caption: noti.caption }));
@@ -363,6 +376,11 @@ export class Player extends HTMLElement {
   }
 
   /**
+   * ストリームを切り替え中かどうか。
+   */
+  #isSwitching = false;
+
+  /**
    * 現在開かれているファイルのパス。
    */
   #source = null;
@@ -401,7 +419,7 @@ export class Player extends HTMLElement {
    * 秒単位の再生位置。
    */
   get currentTime() {
-    if (this.#state === "playing") {
+    if (!this.#isSwitching && this.#state === "playing") {
       return this.#lastPos + (performance.now() - this.#lastPosTime) / 1000 * this.#playbackRate;
     }
     return this.#lastPos;

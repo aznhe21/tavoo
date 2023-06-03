@@ -50,6 +50,10 @@ pub enum Notification {
     SeekCompleted,
     /// 再生速度が更新された。
     Rate { rate: f64 },
+    /// ストリームの切り替えが開始した。
+    SwitchingStarted,
+    /// ストリームの切り替えが終了した。
+    SwitchingEnded,
     /// 全サービスが更新された。
     Services { services: Vec<service::Service> },
     /// 特定のサービスが更新された。
