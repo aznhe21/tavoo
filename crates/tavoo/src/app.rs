@@ -118,6 +118,15 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
         });
     }
 
+    fn on_volume_changed(&self, volume: f32, muted: bool) {
+        self.0.dispatch_task(move |app| {
+            app.send_notification(Notification::Volume {
+                volume: volume as f64,
+                muted,
+            });
+        });
+    }
+
     fn on_rate_changed(&self, rate: f32) {
         self.0.dispatch_task(move |app| {
             app.send_notification(Notification::Rate { rate: rate as f64 });
@@ -339,6 +348,12 @@ impl App {
                 .as_ref()
                 .map(|path| path.to_string_lossy().into_owned()),
         });
+        if let (Ok(volume), Ok(muted)) = (self.player.volume(), self.player.muted()) {
+            self.send_notification(Notification::Volume {
+                volume: volume as f64,
+                muted,
+            });
+        }
         if let Ok(range) = self.player.rate_range() {
             self.send_notification(Notification::RateRange {
                 slowest: *range.start() as f64,

@@ -159,6 +159,12 @@ export class Player extends HTMLElement {
         this.dispatchEvent(new PlayerEvent("source"));
         break;
 
+      case "volume":
+        this.#volume = noti.volume;
+        this.#muted = noti.muted;
+        this.dispatchEvent(new PlayerEvent("volume"));
+        break;
+
       case "rate-range":
         // 再生速度の範囲
         this.#playbackRateRange.slowest = noti.slowest;

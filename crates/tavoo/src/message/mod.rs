@@ -31,6 +31,8 @@ pub enum Notification {
         /// 開かれたファイルへのパスだが、ファイルが閉じられた場合は`None`（`null`）。
         path: Option<String>,
     },
+    /// 音量。
+    Volume { volume: f64, muted: bool },
     /// 再生速度の範囲。
     RateRange { slowest: f64, fastest: f64 },
     /// 動画の長さ。

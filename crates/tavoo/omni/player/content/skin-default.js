@@ -19,6 +19,7 @@ export class Skin extends HTMLElement {
     this.#player = shadow.getElementById("player");
 
     this.#player.addEventListener("source", this);
+    this.#player.addEventListener("volume", this);
     this.#player.addEventListener("rate-range", this);
     this.#player.addEventListener("duration", this);
     this.#player.addEventListener("state", this);
@@ -40,6 +41,10 @@ export class Skin extends HTMLElement {
         switch (e.type) {
           case "source":
             console.log(`ファイル：${this.#player.source}`);
+            break;
+
+          case "volume":
+            console.log(`音量：${this.#player.volume}`);
             break;
 
           case "rate-range": {
