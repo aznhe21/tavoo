@@ -9,5 +9,6 @@ pub mod bit;
 pub mod codec;
 pub mod extract;
 pub mod player;
+pub mod ring_buf;
 mod sys;
 pub mod webview;
