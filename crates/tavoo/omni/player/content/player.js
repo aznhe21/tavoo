@@ -185,6 +185,10 @@ export class Player extends HTMLElement {
         this.dispatchEvent(new PlayerEvent("position"));
         break;
 
+      case "seek-completed":
+        this.dispatchEvent(new PlayerEvent("seek-completed"));
+        break;
+
       case "rate":
         // 再生速度が更新された
         this.#playbackRate = noti.rate;

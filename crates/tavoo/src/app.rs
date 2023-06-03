@@ -107,10 +107,14 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
         });
     }
 
-    fn on_seek_completed(&self, position: Duration) {
+    fn on_seek_completed(&self, position: Duration, pending: bool) {
         let position = position.as_secs_f64();
         self.0.dispatch_task(move |app| {
             app.send_notification(Notification::Position { position });
+            if !pending {
+                app.seeking = false;
+                app.send_notification(Notification::SeekCompleted);
+            }
         });
     }
 
@@ -235,6 +239,7 @@ pub struct App {
     state: PlaybackState,
 
     player_bounds: Rect,
+    seeking: bool,
     closing: bool,
 }
 
@@ -260,6 +265,7 @@ impl App {
                 right: 1.,
                 bottom: 1.,
             },
+            seeking: false,
             closing: false,
         }
     }
@@ -436,6 +442,7 @@ impl App {
                         .player
                         .set_position(Duration::from_secs_f64(position))
                         .map_err(|e| format!("再生位置を設定できません：{}", e)));
+                    self.seeking = true;
                 }
                 Command::SetVolume { volume } => {
                     tri!('r, self

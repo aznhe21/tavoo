@@ -44,6 +44,8 @@ pub enum Notification {
     State { state: PlaybackState },
     /// 再生位置が更新された。
     Position { position: f64 },
+    /// すべてのシークが完了した。
+    SeekCompleted,
     /// 再生速度が更新された。
     Rate { rate: f64 },
     /// 全サービスが更新された。

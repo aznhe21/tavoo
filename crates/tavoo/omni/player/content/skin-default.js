@@ -23,6 +23,7 @@ export class Skin extends HTMLElement {
     this.#player.addEventListener("duration", this);
     this.#player.addEventListener("state", this);
     this.#player.addEventListener("position", this);
+    this.#player.addEventListener("seek-completed", this);
     this.#player.addEventListener("rate", this);
     this.#player.addEventListener("services", this);
     this.#player.addEventListener("service", this);
@@ -57,6 +58,10 @@ export class Skin extends HTMLElement {
 
           case "position":
             console.log(`再生位置：${this.#player.currentTime}`);
+            break;
+
+          case "seek-completed":
+            console.log("全シーク完了");
             break;
 
           case "rate":
