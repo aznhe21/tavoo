@@ -88,6 +88,11 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
     fn on_paused(&self) {
         self.0.dispatch_task(|app| {
             app.set_state(PlaybackState::Paused);
+            if let Ok(pos) = app.player.position() {
+                app.send_notification(Notification::Position {
+                    position: pos.as_secs_f64(),
+                });
+            }
         });
     }
 
@@ -172,11 +177,6 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
                 app.send_notification(Notification::StreamChanged {
                     video_component_tag,
                     audio_component_tag,
-                });
-            }
-            if let Ok(pos) = app.player.position() {
-                app.send_notification(Notification::Position {
-                    position: pos.as_secs_f64(),
                 });
             }
         });
@@ -413,12 +413,6 @@ impl App {
                         .player
                         .pause()
                         .map_err(|e| format!("一時停止できません：{}", e)));
-
-                    if let Ok(pos) = self.player.position() {
-                        self.send_notification(Notification::Position {
-                            position: pos.as_secs_f64(),
-                        });
-                    }
                 }
                 Command::Stop => {
                     tri!('r, self
