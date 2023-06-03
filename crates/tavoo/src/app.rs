@@ -160,6 +160,14 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
         });
     }
 
+    fn on_dual_mono_mode_changed(&self, mode: Option<player::DualMonoMode>) {
+        self.0.dispatch_task(move |app| {
+            app.send_notification(Notification::DualMonoMode {
+                mode: mode.map(Into::into),
+            });
+        });
+    }
+
     fn on_switching_started(&self) {
         self.0.dispatch_task(|app| {
             app.send_notification(Notification::SwitchingStarted);
@@ -438,6 +446,11 @@ impl App {
         if let Ok(rate) = self.player.rate() {
             self.send_notification(Notification::Rate { rate: rate as f64 });
         }
+        if let Ok(mode) = self.player.dual_mono_mode() {
+            self.send_notification(Notification::DualMonoMode {
+                mode: mode.map(Into::into),
+            });
+        }
         if let Some(services) = self.player.services() {
             self.send_notification(Notification::Services {
                 services: services.values().map(Into::into).collect(),
@@ -542,6 +555,12 @@ impl App {
                         .player
                         .set_rate(rate as f32)
                         .map_err(|e| format!("再生速度を設定できません：{}", e)));
+                }
+                Command::SetDualMonoMode { mode } => {
+                    tri!('r, self
+                        .player
+                        .set_dual_mono_mode(mode.into())
+                        .map_err(|e| format!("デュアルモノラルの再生方法を設定できません：{}", e)));
                 }
                 Command::SelectService { service_id } => {
                     let service_id = service_id.and_then(ServiceId::new);

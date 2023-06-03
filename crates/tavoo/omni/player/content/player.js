@@ -158,6 +158,7 @@ export class Player extends HTMLElement {
         this.#currentServiceId = 0;
         this.#activeVideoTag = null;
         this.#activeAudioTag = null;
+        this.#dualMonoMode = null;
         this.dispatchEvent(new PlayerEvent("source"));
         break;
 
@@ -213,6 +214,12 @@ export class Player extends HTMLElement {
         this.#lastTimestamp = this.timestamp?.getTime();
         this.#lastTimestampTime = performance.now();
         this.dispatchEvent(new PlayerEvent("rate"));
+        break;
+
+      case "dual-mono-mode":
+        // デュアルモノラルの再生方法が更新された
+        this.#dualMonoMode = noti.mode;
+        this.dispatchEvent(new PlayerEvent("dual-mono-mode"));
         break;
 
       case "services":
@@ -538,6 +545,26 @@ export class Player extends HTMLElement {
       slowest: this.#playbackRateRange.slowest,
       fastest: this.#playbackRateRange.fastest,
     };
+  }
+
+  #dualMonoMode = null;
+
+  /**
+   * デュアルモノラルの再生方法。
+   */
+  get dualMonoMode() {
+    return this.#dualMonoMode;
+  }
+
+  set dualMonoMode(value) {
+    if (!["left", "right", "stereo", "mix"].includes(value)) {
+      throw new Error("不正なデュアルモノラルの再生方法");
+    }
+
+    window.chrome.webview.postMessage({
+      command: "set-dual-mono-mode",
+      mode: value,
+    });
   }
 
   /**

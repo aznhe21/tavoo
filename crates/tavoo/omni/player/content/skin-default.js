@@ -26,6 +26,7 @@ export class Skin extends HTMLElement {
     this.#player.addEventListener("position", this);
     this.#player.addEventListener("seek-completed", this);
     this.#player.addEventListener("rate", this);
+    this.#player.addEventListener("dual-mono-mode", this);
     this.#player.addEventListener("services", this);
     this.#player.addEventListener("service", this);
     this.#player.addEventListener("event", this);
@@ -72,6 +73,10 @@ export class Skin extends HTMLElement {
 
           case "rate":
             console.log(`再生速度：${this.#player.playbackRate}`);
+            break;
+
+          case "dual-mono-mode":
+            console.log(`デュアルモノラル：${this.#player.dualMonoMode}`);
             break;
 
           case "services":

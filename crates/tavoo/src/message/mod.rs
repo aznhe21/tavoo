@@ -22,6 +22,41 @@ pub enum PlaybackState {
     Closed,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DualMonoMode {
+    /// チャンネル1を左右スピーカーに出力する。
+    Left,
+    /// チャンネル2を左右スピーカーに出力する。
+    Right,
+    /// チャンネル1を左スピーカーに、チャンネル2を右スピーカーに出力する。
+    Stereo,
+    /// チャンネル1とチャンネル2を混合して左右スピーカーに出力する。
+    Mix,
+}
+
+impl From<tavoo_components::player::DualMonoMode> for DualMonoMode {
+    fn from(mode: tavoo_components::player::DualMonoMode) -> DualMonoMode {
+        match mode {
+            tavoo_components::player::DualMonoMode::Left => DualMonoMode::Left,
+            tavoo_components::player::DualMonoMode::Right => DualMonoMode::Right,
+            tavoo_components::player::DualMonoMode::Stereo => DualMonoMode::Stereo,
+            tavoo_components::player::DualMonoMode::Mix => DualMonoMode::Mix,
+        }
+    }
+}
+
+impl From<DualMonoMode> for tavoo_components::player::DualMonoMode {
+    fn from(mode: DualMonoMode) -> tavoo_components::player::DualMonoMode {
+        match mode {
+            DualMonoMode::Left => tavoo_components::player::DualMonoMode::Left,
+            DualMonoMode::Right => tavoo_components::player::DualMonoMode::Right,
+            DualMonoMode::Stereo => tavoo_components::player::DualMonoMode::Stereo,
+            DualMonoMode::Mix => tavoo_components::player::DualMonoMode::Mix,
+        }
+    }
+}
+
 /// WebViewへの通知。
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(tag = "notification", rename_all = "kebab-case")]
@@ -50,6 +85,8 @@ pub enum Notification {
     SeekCompleted,
     /// 再生速度が更新された。
     Rate { rate: f64 },
+    /// デュアルモノラルの再生方法が更新された。
+    DualMonoMode { mode: Option<DualMonoMode> },
     /// ストリームの切り替えが開始した。
     SwitchingStarted,
     /// ストリームの切り替えが終了した。
@@ -116,6 +153,8 @@ pub enum Command {
     SetMuted { muted: bool },
     /// 再生速度の変更。
     SetRate { rate: f64 },
+    /// デュアルモノラルの再生方法の変更。
+    SetDualMonoMode { mode: DualMonoMode },
     /// サービスの選択。
     SelectService {
         /// `null`や`0`の場合は既定のサービスが選択される。
