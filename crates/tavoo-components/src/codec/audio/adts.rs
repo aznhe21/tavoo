@@ -133,7 +133,7 @@ pub struct Frame {
     /// Frame length (`7..=8191`)
     pub aac_frame_length: u16,
     /// CRC check (16 bits)
-    pub crc: u16,
+    pub crc: Option<u16>,
     /// program_config_element
     pub program_config: Option<ProgramConfig>,
 }
@@ -158,16 +158,13 @@ impl Frame {
         }
 
         let mut br = BitReader::new(buf);
-        if br.bits() < 72 {
+        if br.bits() < 56 {
             log::trace!("ADTSの長さが不足");
             return None;
         }
         br.skip(15); // Syncword + MPEG version + Layer
 
-        if br.read1().unwrap() {
-            log::trace!("protection_absentが'1'");
-            return None;
-        }
+        let protection_absent = br.read1().unwrap();
         let profile = br.read::<2>().unwrap() as u8;
         if profile != 1 {
             log::trace!("profileがLCでない：{}", profile);
@@ -203,8 +200,12 @@ impl Frame {
             return None;
         }
 
-        // 残りちょうど2バイトかもしれないのでread_insideを使う
-        let crc = br.read_inside::<16>().unwrap();
+        let crc = if protection_absent {
+            None
+        } else {
+            // 残りちょうど2バイトかもしれないのでread_insideを使う
+            Some(br.read_inside::<16>()?)
+        };
 
         let program_config = if br.read::<3>() == Some(ID_PCE as u16) {
             if br.bits() < 34 {
