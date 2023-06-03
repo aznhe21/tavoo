@@ -111,6 +111,14 @@ export class Services {
     return this.#services.length;
   }
 
+  find(predicate) {
+    return this.#services.find(predicate);
+  }
+
+  findIndex(predicate) {
+    return this.#services.findIndex(predicate);
+  }
+
   [Symbol.iterator]() {
     return this.#services[Symbol.iterator]();
   }
