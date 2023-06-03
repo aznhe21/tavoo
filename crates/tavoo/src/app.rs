@@ -160,6 +160,12 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
         });
     }
 
+    fn on_video_size_changed(&self, width: u32, height: u32) {
+        self.0.dispatch_task(move |app| {
+            app.send_notification(Notification::VideoSize { width, height });
+        });
+    }
+
     fn on_dual_mono_mode_changed(&self, mode: Option<player::DualMonoMode>) {
         self.0.dispatch_task(move |app| {
             app.send_notification(Notification::DualMonoMode {

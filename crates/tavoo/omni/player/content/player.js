@@ -158,6 +158,8 @@ export class Player extends HTMLElement {
         this.#currentServiceId = 0;
         this.#activeVideoTag = null;
         this.#activeAudioTag = null;
+        this.#videoWidth = 0;
+        this.#videoHeight = 0;
         this.#dualMonoMode = null;
         this.dispatchEvent(new PlayerEvent("source"));
         break;
@@ -214,6 +216,15 @@ export class Player extends HTMLElement {
         this.#lastTimestamp = this.timestamp?.getTime();
         this.#lastTimestampTime = performance.now();
         this.dispatchEvent(new PlayerEvent("rate"));
+        break;
+
+      case "video-size":
+        // 映像の解像度が更新された
+        if (this.#videoWidth !== noti.width || this.#videoHeight !== noti.height) {
+          this.#videoWidth = noti.width;
+          this.#videoHeight = noti.height;
+          this.dispatchEvent(new PlayerEvent("resize"));
+        }
         break;
 
       case "dual-mono-mode":
@@ -545,6 +556,22 @@ export class Player extends HTMLElement {
       slowest: this.#playbackRateRange.slowest,
       fastest: this.#playbackRateRange.fastest,
     };
+  }
+
+  #videoWidth = 0;
+  #videoHeight = 0;
+
+  /**
+   * 映像の幅。
+   */
+  get videoWidth() {
+    return this.#videoWidth;
+  }
+  /**
+   * 映像の高さ。
+   */
+  get videoHeight() {
+    return this.#videoHeight;
   }
 
   #dualMonoMode = null;

@@ -85,6 +85,8 @@ pub enum Notification {
     SeekCompleted,
     /// 再生速度が更新された。
     Rate { rate: f64 },
+    /// 映像の解像度が変更された。
+    VideoSize { width: u32, height: u32 },
     /// デュアルモノラルの再生方法が更新された。
     DualMonoMode { mode: Option<DualMonoMode> },
     /// ストリームの切り替えが開始した。
