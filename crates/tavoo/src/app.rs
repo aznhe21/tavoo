@@ -166,10 +166,8 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
 
     fn on_stream_changed(&self, _: tavoo_components::extract::StreamChanged) {
         self.0.dispatch_task(|app| {
-            if let Some((video_component_tag, audio_component_tag)) = app
-                .player
-                .active_video_tag()
-                .zip(app.player.active_audio_tag())
+            if let (Some(video_component_tag), Some(audio_component_tag)) =
+                (app.player.active_video_tag(), app.player.active_audio_tag())
             {
                 app.send_notification(Notification::StreamChanged {
                     video_component_tag,
