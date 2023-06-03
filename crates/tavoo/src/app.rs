@@ -103,10 +103,10 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
     }
 
     fn on_seek_completed(&self, position: Duration) {
-        let noti = Notification::Position {
-            position: position.as_secs_f64(),
-        };
-        self.0.dispatch_task(move |app| app.send_notification(noti));
+        let position = position.as_secs_f64();
+        self.0.dispatch_task(move |app| {
+            app.send_notification(Notification::Position { position });
+        });
     }
 
     fn on_rate_changed(&self, rate: f32) {
@@ -121,33 +121,36 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
     }
 
     fn on_services_updated(&self, services: &isdb::filters::sorter::ServiceMap) {
-        let noti = Notification::Services {
-            services: services.values().map(Into::into).collect(),
-        };
-        self.0.dispatch_task(move |app| app.send_notification(noti));
+        let services = services.values().map(Into::into).collect();
+        self.0.dispatch_task(move |app| {
+            app.send_notification(Notification::Services { services });
+        });
     }
 
     fn on_streams_updated(&self, service: &isdb::filters::sorter::Service) {
-        let noti = Notification::Service {
-            service: service.into(),
-        };
-        self.0.dispatch_task(move |app| app.send_notification(noti));
+        let service = service.into();
+        self.0.dispatch_task(move |app| {
+            app.send_notification(Notification::Service { service });
+        });
     }
 
     fn on_event_updated(&self, service: &isdb::filters::sorter::Service, is_present: bool) {
+        let service_id = service.service_id().get();
         let event = if is_present {
             service.present_event()
         } else {
             service.following_event()
         }
-        .expect("is_presentで示されるイベントは必須");
-        let noti = Notification::Event {
-            service_id: service.service_id().get(),
-            is_present,
-            event: event.into(),
-        };
+        .expect("is_presentで示されるイベントは必須")
+        .into();
 
-        self.0.dispatch_task(move |app| app.send_notification(noti));
+        self.0.dispatch_task(move |app| {
+            app.send_notification(Notification::Event {
+                service_id,
+                is_present,
+                event,
+            });
+        });
     }
 
     fn on_service_changed(&self, service: &isdb::filters::sorter::Service) {
@@ -162,7 +165,7 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
     }
 
     fn on_stream_changed(&self, _: tavoo_components::extract::StreamChanged) {
-        self.0.dispatch_task(move |app| {
+        self.0.dispatch_task(|app| {
             if let Some((video_component_tag, audio_component_tag)) = app
                 .player
                 .active_video_tag()
@@ -182,26 +185,26 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
     }
 
     fn on_caption(&self, caption: &isdb::filters::sorter::Caption) {
-        let noti = Notification::Caption {
-            caption: caption.into(),
-        };
-        self.0.dispatch_task(move |app| app.send_notification(noti));
+        let caption = caption.into();
+        self.0.dispatch_task(move |app| {
+            app.send_notification(Notification::Caption { caption });
+        });
     }
 
     fn on_superimpose(&self, caption: &isdb::filters::sorter::Caption) {
-        let noti = Notification::Superimpose {
-            caption: caption.into(),
-        };
-        self.0.dispatch_task(move |app| app.send_notification(noti));
+        let caption = caption.into();
+        self.0.dispatch_task(move |app| {
+            app.send_notification(Notification::Superimpose { caption });
+        });
     }
 
     fn on_end_of_stream(&self) {}
 
     fn on_stream_error(&self, error: anyhow::Error) {
-        let noti = Notification::Error {
-            message: error.to_string(),
-        };
-        self.0.dispatch_task(move |app| app.send_notification(noti));
+        let message = error.to_string();
+        self.0.dispatch_task(move |app| {
+            app.send_notification(Notification::Error { message });
+        });
     }
 }
 
