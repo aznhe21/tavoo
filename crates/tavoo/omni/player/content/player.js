@@ -526,8 +526,8 @@ export class Player extends HTMLElement {
 
   #playbackRate = 1.0;
   #playbackRateRange = {
-    slowest: 1.0,
-    fastest: 1.0,
+    slowest: 0.25,
+    fastest: 3.0,
   }
 
   /**
