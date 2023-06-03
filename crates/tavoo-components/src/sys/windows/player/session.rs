@@ -126,6 +126,20 @@ fn create_playback_topology(
     Ok(topology)
 }
 
+/// コーデック情報用に解析する最大のパケット数。
+const MAX_INCOMING_PACKETS: usize = 64;
+
+#[derive(Debug)]
+struct CodecError;
+
+impl fmt::Display for CodecError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("コーデック情報が見つかりません")
+    }
+}
+
+impl std::error::Error for CodecError {}
+
 /// 単一のIOストリームと対応する再生管理用セッション。
 #[derive(Debug, Clone)]
 pub struct Session(MF::IMFAsyncCallback);
@@ -310,6 +324,11 @@ impl Sink for Session {
     fn on_video_packet(&mut self, pos: Option<Duration>, payload: &[u8]) {
         let mut inner = self.inner();
         if let Some(ivs) = &mut inner.incoming_video_stream {
+            if ivs.packets.len() >= MAX_INCOMING_PACKETS {
+                inner.on_stream_error(CodecError.into());
+                return;
+            }
+
             ivs.packets.push((pos, payload.into()));
 
             if ivs.codec_info.is_none() {
@@ -336,6 +355,11 @@ impl Sink for Session {
     fn on_audio_packet(&mut self, pos: Option<Duration>, payload: &[u8]) {
         let mut inner = self.inner();
         if let Some(ias) = &mut inner.incoming_audio_stream {
+            if ias.packets.len() >= MAX_INCOMING_PACKETS {
+                inner.on_stream_error(CodecError.into());
+                return;
+            }
+
             ias.packets.push((pos, payload.into()));
 
             if ias.codec_info.is_none() {
@@ -382,19 +406,11 @@ impl Sink for Session {
     }
 
     fn on_end_of_stream(&mut self) {
-        let mut inner = self.inner();
-        inner.incoming_video_stream = None;
-        inner.incoming_audio_stream = None;
-
-        if let Some(pres) = &inner.presentation {
-            let _ = pres.source.end_of_mpeg_stream();
-        }
-        inner.event_handler.on_end_of_stream();
+        self.inner().on_end_of_stream();
     }
 
     fn on_stream_error(&mut self, error: io::Error) {
-        self.on_end_of_stream();
-        self.inner().event_handler.on_stream_error(error.into());
+        self.inner().on_stream_error(error.into());
     }
 
     fn needs_es(&self) -> bool {
@@ -959,6 +975,21 @@ impl Inner {
         }
 
         Ok(())
+    }
+
+    fn on_end_of_stream(&mut self) {
+        self.incoming_video_stream = None;
+        self.incoming_audio_stream = None;
+
+        if let Some(pres) = &self.presentation {
+            let _ = pres.source.end_of_mpeg_stream();
+        }
+        self.event_handler.on_end_of_stream();
+    }
+
+    fn on_stream_error(&mut self, error: anyhow::Error) {
+        self.on_end_of_stream();
+        self.event_handler.on_stream_error(error);
     }
 
     pub fn handle_event(this: &mut MutexGuard<Inner>, event: MF::IMFMediaEvent) -> WinResult<()> {
