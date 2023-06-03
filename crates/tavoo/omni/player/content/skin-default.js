@@ -33,6 +33,7 @@ export class Skin extends HTMLElement {
     this.#player.addEventListener("stream-changed", this);
     this.#player.addEventListener("caption", this);
     this.#player.addEventListener("superimpose", this);
+    this.#player.addEventListener("timestamp", this);
   }
 
   handleEvent(e) {
@@ -102,6 +103,10 @@ export class Skin extends HTMLElement {
 
           case "superimpose":
             console.log("文字スーパー", e.caption);
+            break;
+
+          case "timestamp":
+            console.log(`日付時刻：${this.#player.timestamp}`);
             break;
         }
         break;

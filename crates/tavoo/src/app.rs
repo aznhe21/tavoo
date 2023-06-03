@@ -6,6 +6,7 @@ use tavoo_components::{player, webview};
 use winit::event::{Event, WindowEvent};
 use winit::window::WindowBuilder;
 
+use crate::message::time::Timestamp;
 use crate::message::{Command, Notification, PlaybackState};
 
 /// 値がエラーの際にラベル付きブロックを抜ける。
@@ -82,6 +83,11 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
                     position: pos.as_secs_f64(),
                 });
             }
+            if let Some(timestamp) = app.player.timestamp() {
+                app.send_notification(Notification::Timestamp {
+                    timestamp: Timestamp(timestamp),
+                });
+            }
         });
     }
 
@@ -91,6 +97,11 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
             if let Ok(pos) = app.player.position() {
                 app.send_notification(Notification::Position {
                     position: pos.as_secs_f64(),
+                });
+            }
+            if let Some(timestamp) = app.player.timestamp() {
+                app.send_notification(Notification::Timestamp {
+                    timestamp: Timestamp(timestamp),
                 });
             }
         });
@@ -115,6 +126,12 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
                 app.seeking = false;
                 app.send_notification(Notification::SeekCompleted);
             }
+
+            if let Some(timestamp) = app.player.timestamp() {
+                app.send_notification(Notification::Timestamp {
+                    timestamp: Timestamp(timestamp),
+                });
+            }
         });
     }
 
@@ -135,6 +152,11 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
                     position: pos.as_secs_f64(),
                 });
             }
+            if let Some(timestamp) = app.player.timestamp() {
+                app.send_notification(Notification::Timestamp {
+                    timestamp: Timestamp(timestamp),
+                });
+            }
         });
     }
 
@@ -151,6 +173,11 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
                 if let Ok(pos) = app.player.position() {
                     app.send_notification(Notification::Position {
                         position: pos.as_secs_f64(),
+                    });
+                }
+                if let Some(timestamp) = app.player.timestamp() {
+                    app.send_notification(Notification::Timestamp {
+                        timestamp: Timestamp(timestamp),
                     });
                 }
             }
@@ -225,6 +252,21 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
         let caption = caption.into();
         self.0.dispatch_task(move |app| {
             app.send_notification(Notification::Superimpose { caption });
+        });
+    }
+
+    fn on_timestamp_updated(&mut self, timestamp: Duration) {
+        self.0.dispatch_task(move |app| {
+            if !app.seeking {
+                if let Ok(pos) = app.player.position() {
+                    app.send_notification(Notification::Position {
+                        position: pos.as_secs_f64(),
+                    });
+                }
+                app.send_notification(Notification::Timestamp {
+                    timestamp: Timestamp(timestamp),
+                });
+            }
         });
     }
 
@@ -386,6 +428,11 @@ impl App {
         if let Ok(pos) = self.player.position() {
             self.send_notification(Notification::Position {
                 position: pos.as_secs_f64(),
+            });
+        }
+        if let Some(timestamp) = self.player.timestamp() {
+            self.send_notification(Notification::Timestamp {
+                timestamp: Timestamp(timestamp),
             });
         }
         if let Ok(rate) = self.player.rate() {

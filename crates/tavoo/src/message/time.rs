@@ -1,7 +1,11 @@
+use std::time::Duration;
+
 /// 修正ユリウス日におけるUNIXエポック。
 const UNIX_EPOCH_MJD_DAY: i64 = 40587;
 /// 日本標準時とUTCの時差。
-const JTC_OFFSET: i64 = 9 * 60 * 60;
+const JTC_OFFSET: Duration = Duration::from_secs(9 * 60 * 60);
+/// NTPのエポックとUNIXエポックの時差。
+const NTP_TO_UNIX: Duration = Duration::from_secs(2_208_988_800);
 
 /// UTCのUNIX時間をシリアライズするためのオブジェクト。
 ///
@@ -15,7 +19,20 @@ impl From<isdb::time::DateTime> for UnixTime {
         let hours = days * 24 + dt.hour as i64;
         let minutes = hours * 60 + dt.minute as i64;
         let seconds = minutes * 60 + dt.second as i64;
-        UnixTime(seconds - JTC_OFFSET)
+        UnixTime(seconds - JTC_OFFSET.as_secs() as i64)
+    }
+}
+
+/// 1900年1月1日からの経過時刻を格納し、ミリ秒単位のUNIX時間としてシリアライズされるタイムスタンプ。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Timestamp(pub Duration);
+
+impl serde::Serialize for Timestamp {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_f64((self.0 - NTP_TO_UNIX - JTC_OFFSET).as_secs_f64() * 1000.)
     }
 }
 

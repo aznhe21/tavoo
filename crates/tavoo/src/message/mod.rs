@@ -79,6 +79,8 @@ pub enum Notification {
     Caption { caption: caption::Caption },
     /// 文字スーパー。
     Superimpose { caption: caption::Caption },
+    /// TSの日付時刻。
+    Timestamp { timestamp: time::Timestamp },
     /// エラーが発生した。
     Error { message: String },
 }

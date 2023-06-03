@@ -151,6 +151,8 @@ export class Player extends HTMLElement {
         this.#source = noti.path;
         this.#lastPos = 0;
         this.#lastPosTime = 0;
+        this.#lastTimestamp = null;
+        this.#lastTimestampTime = 0;
         this.#duration = NaN;
         this.#services._clear();
         this.#currentServiceId = 0;
@@ -181,11 +183,19 @@ export class Player extends HTMLElement {
       case "state":
         // 再生状態が更新された
         this.#state = noti.state;
+        // pause -> playingの場合に一時停止していた時間だけ再生位置が進んでしまうのを防止
+        this.#lastPosTime = performance.now();
+        this.#lastTimestampTime = performance.now();
         this.dispatchEvent(new PlayerEvent("state"));
         break;
 
       case "position":
         // 再生位置が更新された
+        if (this.#lastTimestamp != null) {
+          const diff = noti.position - this.#lastPos;
+          this.#lastTimestamp += diff;
+          this.#lastTimestampTime = performance.now();
+        }
         this.#lastPos = noti.position;
         this.#lastPosTime = performance.now();
         this.dispatchEvent(new PlayerEvent("position"));
@@ -200,6 +210,8 @@ export class Player extends HTMLElement {
         this.#playbackRate = noti.rate;
         this.#lastPos = this.currentTime;
         this.#lastPosTime = performance.now();
+        this.#lastTimestamp = this.timestamp?.getTime();
+        this.#lastTimestampTime = performance.now();
         this.dispatchEvent(new PlayerEvent("rate"));
         break;
 
@@ -265,6 +277,12 @@ export class Player extends HTMLElement {
       case "superimpose":
         // 文字スーパー
         this.dispatchEvent(new CaptionEvent("superimpose", { caption: noti.caption }));
+        break;
+
+      case "timestamp":
+        this.#lastTimestamp = noti.timestamp;
+        this.#lastTimestampTime = performance.now();
+        this.dispatchEvent(new PlayerEvent("timestamp"));
         break;
 
       case "error":
@@ -407,11 +425,11 @@ export class Player extends HTMLElement {
   }
 
   /**
-   * ホストから通知された再生位置
+   * ホストから通知された再生位置。
    */
   #lastPos = 0;
   /**
-   * 再生位置が通知された時刻
+   * 再生位置が通知された時刻。
    */
   #lastPosTime = 0;
 
@@ -430,6 +448,28 @@ export class Player extends HTMLElement {
       command: "set-position",
       position: value,
     });
+  }
+
+  /**
+   * ホストから通知された日付時刻。
+   */
+  #lastTimestamp = null;
+  /**
+   * 日付時刻が通知された時刻。
+   */
+  #lastTimestampTime = 0;
+
+  /**
+   * 日付時刻。
+   */
+  get timestamp() {
+    if (this.#lastTimestamp == null) {
+      return null;
+    }
+    if (!this.#isSwitching && this.#state === "playing") {
+      return new Date(this.#lastTimestamp + (performance.now() - this.#lastTimestampTime) * this.#playbackRate);
+    }
+    return new Date(this.#lastTimestamp);
   }
 
   #volume = 1.0;
