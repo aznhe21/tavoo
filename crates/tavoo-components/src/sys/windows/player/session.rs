@@ -393,12 +393,12 @@ impl Sink for Session {
         }
     }
 
-    fn on_caption(&mut self, caption: &isdb::filters::sorter::Caption) {
-        self.inner().event_handler.on_caption(caption);
+    fn on_caption(&mut self, pos: Option<Duration>, caption: &isdb::filters::sorter::Caption) {
+        self.inner().event_handler.on_caption(pos, caption);
     }
 
-    fn on_superimpose(&mut self, caption: &isdb::filters::sorter::Caption) {
-        self.inner().event_handler.on_superimpose(caption);
+    fn on_superimpose(&mut self, pos: Option<Duration>, caption: &isdb::filters::sorter::Caption) {
+        self.inner().event_handler.on_superimpose(pos, caption);
     }
 
     fn on_timestamp_updated(&mut self, timestamp: Duration) {

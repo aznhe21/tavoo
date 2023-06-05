@@ -81,10 +81,10 @@ pub trait Sink {
     fn on_audio_packet(&mut self, pos: Option<Duration>, payload: &[u8]);
 
     /// 選択中サービスで字幕パケットを受信した際に呼ばれる。
-    fn on_caption(&mut self, caption: &isdb::filters::sorter::Caption);
+    fn on_caption(&mut self, pos: Option<Duration>, caption: &isdb::filters::sorter::Caption);
 
     /// 選択中サービスで文字スーパーのパケットを受信した際に呼ばれる。
-    fn on_superimpose(&mut self, caption: &isdb::filters::sorter::Caption);
+    fn on_superimpose(&mut self, pos: Option<Duration>, caption: &isdb::filters::sorter::Caption);
 
     /// TS内の日付時刻が更新された際に呼ばれる。ただし[`ExtractHandler::timestamp`]はより細かい間隔で更新される。
     ///
@@ -800,6 +800,8 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
             std::iter::empty()
                 .chain(service.video_streams())
                 .chain(service.audio_streams())
+                .chain(service.caption_stream())
+                .chain(service.superimpose_stream())
                 .for_each(|stream| self.es2svc[stream.pid()] = Some(service.service_id()));
         }
 
@@ -896,10 +898,13 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
 
     fn on_caption(
         &mut self,
-        _: &ServiceMap,
+        services: &ServiceMap,
         pid: isdb::Pid,
+        pts: Option<Timestamp>,
         caption: &isdb::filters::sorter::Caption,
     ) {
+        let Some(service_id) = self.es2svc[pid] else { return };
+
         // TODO: シーク完了時点に表示されているであろう字幕はスキップしたくない
         if self.seek_info.is_some() {
             return;
@@ -912,15 +917,23 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
             }
         }
 
-        self.sink.on_caption(caption);
+        // 選択中サービスのPCRと既定サービスのPCRが同じ時刻と見做して位置を計算する
+        let pos = pts.and_then(|pts| {
+            let pcr = services.get(&service_id)?.pcr()?;
+            Some(self.pcr_time.duration + (pts - pcr).to_duration())
+        });
+        self.sink.on_caption(pos, caption);
     }
 
     fn on_superimpose(
         &mut self,
-        _: &ServiceMap,
+        services: &ServiceMap,
         pid: isdb::Pid,
+        pts: Option<Timestamp>,
         caption: &isdb::filters::sorter::Caption,
     ) {
+        let Some(service_id) = self.es2svc[pid] else { return };
+
         // TODO: シーク完了時点に表示されているであろう文字スーパーはスキップしたくない
         if self.seek_info.is_some() {
             return;
@@ -933,7 +946,12 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
             }
         }
 
-        self.sink.on_superimpose(caption);
+        // 選択中サービスのPCRと既定サービスのPCRが同じ時刻と見做して位置を計算する
+        let pos = pts.and_then(|pts| {
+            let pcr = services.get(&service_id)?.pcr()?;
+            Some(self.pcr_time.duration + (pts - pcr).to_duration())
+        });
+        self.sink.on_superimpose(pos, caption);
     }
 
     fn on_pcr(&mut self, services: &ServiceMap, service_ids: &[ServiceId]) {

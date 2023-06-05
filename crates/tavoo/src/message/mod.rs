@@ -115,9 +115,19 @@ pub enum Notification {
         audio_component_tag: u8,
     },
     /// 字幕。
-    Caption { caption: caption::Caption },
+    Caption {
+        /// 字幕を表示すべき再生位置。
+        pos: Option<f64>,
+        /// 字幕データ。
+        caption: caption::Caption,
+    },
     /// 文字スーパー。
-    Superimpose { caption: caption::Caption },
+    Superimpose {
+        /// 文字スーパーを表示すべき再生位置。
+        pos: Option<f64>,
+        /// 文字スーパーのデータ。
+        caption: caption::Caption,
+    },
     /// TSの日付時刻。
     Timestamp { timestamp: time::Timestamp },
     /// エラーが発生した。

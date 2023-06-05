@@ -84,10 +84,10 @@ pub trait EventHandler: Send + 'static {
     fn on_stream_changed(&self, changed: crate::extract::StreamChanged);
 
     /// 選択中サービスで字幕パケットを受信した際に呼ばれる。
-    fn on_caption(&self, caption: &isdb::filters::sorter::Caption);
+    fn on_caption(&self, pos: Option<Duration>, caption: &isdb::filters::sorter::Caption);
 
     /// 選択中サービスで文字スーパーのパケットを受信した際に呼ばれる。
-    fn on_superimpose(&self, caption: &isdb::filters::sorter::Caption);
+    fn on_superimpose(&self, pos: Option<Duration>, caption: &isdb::filters::sorter::Caption);
 
     /// TS内の日付時刻が更新された際に呼ばれる。
     ///

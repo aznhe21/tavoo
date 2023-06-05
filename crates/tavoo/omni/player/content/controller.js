@@ -44,12 +44,17 @@ export class EventEvent extends PlayerEvent {
  */
 export class CaptionEvent extends PlayerEvent {
   /**
+   * 字幕・文字スーパーを表示すべき再生位置。
+   */
+  pos;
+  /**
    * 字幕・文字スーパーのデータ。
    */
   caption;
 
   constructor(type, options) {
     super(type, options);
+    this.pos = options.pos;
     this.caption = options.caption;
   }
 }
@@ -279,12 +284,12 @@ export const gController = new class Controller extends EventTarget {
 
       case "caption":
         // 字幕
-        this.dispatchEvent(new CaptionEvent("caption", { caption: noti.caption }));
+        this.dispatchEvent(new CaptionEvent("caption", { pos: noti.pos, caption: noti.caption }));
         break;
 
       case "superimpose":
         // 文字スーパー
-        this.dispatchEvent(new CaptionEvent("superimpose", { caption: noti.caption }));
+        this.dispatchEvent(new CaptionEvent("superimpose", { pos: noti.pos, caption: noti.caption }));
         break;
 
       case "timestamp":

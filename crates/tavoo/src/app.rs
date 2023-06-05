@@ -255,17 +255,19 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
         });
     }
 
-    fn on_caption(&self, caption: &isdb::filters::sorter::Caption) {
+    fn on_caption(&self, pos: Option<Duration>, caption: &isdb::filters::sorter::Caption) {
+        let pos = pos.map(|pos| pos.as_secs_f64());
         let caption = caption.into();
         self.0.dispatch_task(move |app| {
-            app.send_notification(Notification::Caption { caption });
+            app.send_notification(Notification::Caption { pos, caption });
         });
     }
 
-    fn on_superimpose(&self, caption: &isdb::filters::sorter::Caption) {
+    fn on_superimpose(&self, pos: Option<Duration>, caption: &isdb::filters::sorter::Caption) {
+        let pos = pos.map(|pos| pos.as_secs_f64());
         let caption = caption.into();
         self.0.dispatch_task(move |app| {
-            app.send_notification(Notification::Superimpose { caption });
+            app.send_notification(Notification::Superimpose { pos, caption });
         });
     }
 

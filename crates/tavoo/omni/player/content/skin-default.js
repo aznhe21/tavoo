@@ -443,11 +443,11 @@ export class Skin extends HTMLElement {
             break;
 
           case "caption":
-            console.log("字幕", e.caption);
+            console.log("字幕", e.pos, e.caption);
             break;
 
           case "superimpose":
-            console.log("文字スーパー", e.caption);
+            console.log("文字スーパー", e.pos, e.caption);
             break;
 
           case "timestamp":
