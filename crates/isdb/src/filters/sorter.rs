@@ -53,10 +53,22 @@ pub trait Shooter {
     );
 
     /// 字幕パケットを受信した際に呼ばれる。
-    fn on_caption(&mut self, services: &ServiceMap, pid: Pid, caption: &Caption);
+    fn on_caption(
+        &mut self,
+        services: &ServiceMap,
+        pid: Pid,
+        pts: Option<time::Timestamp>,
+        caption: &Caption,
+    );
 
     /// 文字スーパーのパケットを受信した際に呼ばれる。
-    fn on_superimpose(&mut self, services: &ServiceMap, pid: Pid, caption: &Caption);
+    fn on_superimpose(
+        &mut self,
+        services: &ServiceMap,
+        pid: Pid,
+        pts: Option<time::Timestamp>,
+        caption: &Caption,
+    );
 
     /// PCRが更新された際に呼ばれる。
     ///
@@ -803,10 +815,10 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                 );
             }
             tag @ (Tag::Caption | Tag::Superimpose) => {
-                let Some(pes) = pes::IndependentPes::read(pes.data) else {
+                let Some(ipes) = pes::IndependentPes::read(pes.data) else {
                     return;
                 };
-                let Some(data_group) = pes::caption::DataGroup::read(pes.data().pes_data) else {
+                let Some(data_group) = pes::caption::DataGroup::read(ipes.data().pes_data) else {
                     return;
                 };
 
@@ -827,12 +839,13 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                     Caption::Data(caption)
                 };
 
+                let pts = pes.header.option.as_ref().and_then(|o| o.pts);
                 if matches!(tag, Tag::Caption) {
                     self.shooter
-                        .on_caption(&self.services, ctx.packet().pid(), &caption);
+                        .on_caption(&self.services, ctx.packet().pid(), pts, &caption);
                 } else {
                     self.shooter
-                        .on_superimpose(&self.services, ctx.packet().pid(), &caption);
+                        .on_superimpose(&self.services, ctx.packet().pid(), pts, &caption);
                 }
             }
             tag @ _ => {
