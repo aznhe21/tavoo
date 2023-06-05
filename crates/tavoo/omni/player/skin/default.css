@@ -1,10 +1,152 @@
 :host {
-  display: block;
+  display: grid;
   height: 100%;
+
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "T T T"
+    "L P R"
+    "B B B";
+
+  user-select: none;
+}
+
+#left {
+  grid-area: L;
+}
+
+#top {
+  grid-area: T;
+}
+
+#right {
+  grid-area: R;
+}
+
+#bottom {
+  grid-area: B;
 }
 
 #screen {
-  display: block;
-  width: 100%;
-  height: 100%;
+  grid-area: P;
+}
+
+#seekbar-stack {
+  --seekbar-height: 20px;
+  --time-font-size: 13px;
+
+  display: flex;
+  background: black;
+  height: var(--seekbar-height);
+  line-height: 1;
+
+  #seekbar {
+    flex: 1;
+
+    &::part(slider) {
+      background: gray;
+    }
+
+    &::part(progress) {
+      background: dodgerblue;
+    }
+
+    &::part(scrubber) {
+      background: white;
+    }
+  }
+
+  #position, #duration {
+    flex: none;
+    white-space: pre;
+    user-select: none;
+    font-size: var(--time-font-size);
+    margin-top: calc((var(--seekbar-height) - var(--time-font-size)) / 2);
+  }
+
+  #position {
+    color: white;
+  }
+
+  #duration {
+    color: darkgray;
+    margin-right: 4px;
+  }
+}
+
+#controls {
+  --control-size: 28px;
+
+  display: flex;
+  overflow: hidden;
+  background: white;
+  height: var(--control-size);
+  line-height: var(--control-size);
+
+  & button {
+    border: none;
+    background-color: transparent;
+    color: inherit;
+    text-align: inherit;
+    font-size: 100%;
+    font-family: inherit;
+    cursor: default;
+    line-height: inherit;
+    width: var(--control-size);
+    height: var(--control-size);
+  }
+
+  #play {
+    flex: none;
+  }
+
+  #stop {
+    flex: none;
+  }
+
+  #mute {
+    flex: none;
+  }
+
+  #volume {
+    flex: none;
+    width: 100px;
+    height: 12px;
+    margin: calc((28px - 12px) / 2) 0 0 0;
+  }
+
+  #playback-rate {
+    flex: none;
+    width: 60px;
+
+    & > option:disabled {
+      display: none;
+    }
+  }
+
+  #video-streams {
+    flex: none;
+    font-size: 12px;
+    width: 120px;
+    text-overflow: ellipsis;
+  }
+
+  #audio-streams {
+    flex: none;
+    font-size: 12px;
+    width: 120px;
+    text-overflow: ellipsis;
+  }
+
+  #services {
+    flex: auto;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    width: 0;
+
+    & > option:disabled {
+      display: none;
+    }
+  }
 }
