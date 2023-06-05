@@ -1,4 +1,5 @@
 import { gController } from "tavoo://player/content/controller.js";
+import { Slider } from "tavoo://player/content/slider.js";
 import { Skin as SkinDefault } from "tavoo://player/content/skin-default.js";
 
 /**
@@ -90,6 +91,7 @@ function handleKeyDown(e) {
 
 export function startup() {
   Screen.register();
+  Slider.register();
 
   document.body.addEventListener("keydown", handleKeyDown);
 
