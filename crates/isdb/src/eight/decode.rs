@@ -809,6 +809,11 @@ impl<'a> Decoder<'a> {
             (0x66, &[0]) => ReadResult::Char(AribChar::ExternalCharacterSetStart),
             (0x66, &[1]) => ReadResult::Char(AribChar::ExternalCharacterSetEnd),
 
+            // SCR
+            (0x67, &[p1 @ 0..=4, p2 @ 0..=9]) => {
+                ReadResult::Char(AribChar::ScrollDesignation(p1 as u8, p2 as u8))
+            }
+
             // PRA
             (0x68, &[p1]) => ReadResult::Char(AribChar::BuiltinSoundReplay(p1)),
 
