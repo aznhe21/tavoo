@@ -367,11 +367,8 @@ pub enum DataUnit<'a> {
     /// 付加音。
     SynthesizedSound(&'a [u8]),
 
-    /// 1バイトDRCS。
-    DrcsSb(Drcs<'a>),
-
-    /// 2バイトDRCS。
-    DrcsDb(Drcs<'a>),
+    /// DRCS。
+    Drcs(Drcs<'a>),
 
     /// カラーマップ。
     Colormap(&'a [u8]),
@@ -430,9 +427,9 @@ impl<'a> DataUnit<'a> {
                 // 付加音
                 0x2C => DataUnit::SynthesizedSound(data_unit_data),
                 // 1バイトDRCS
-                0x30 => DataUnit::DrcsSb(Drcs::read(data_unit_data)?),
+                0x30 => DataUnit::Drcs(Drcs::read(data_unit_data, true)?),
                 // 2バイトDRCS
-                0x31 => DataUnit::DrcsDb(Drcs::read(data_unit_data)?),
+                0x31 => DataUnit::Drcs(Drcs::read(data_unit_data, false)?),
                 // カラーマップ
                 0x34 => DataUnit::Colormap(data_unit_data),
                 // ビットマップ
@@ -455,7 +452,7 @@ pub struct Drcs<'a> {
 
 impl<'a> Drcs<'a> {
     /// `data`から`Drcs`を読み取る。
-    pub fn read(data: &'a [u8]) -> Option<Drcs<'a>> {
+    pub fn read(data: &'a [u8], is_sb: bool) -> Option<Drcs<'a>> {
         let [number_of_code, ref rem @ ..] = *data else {
             log::debug!("invalid Drcs::number_of_code");
             return None;
@@ -469,7 +466,32 @@ impl<'a> Drcs<'a> {
                 return None;
             }
 
-            let character_code = data[0..=1].read_be_16();
+            let character_code = if is_sb {
+                let code = data[1];
+                match data[0] {
+                    0x41 => DrcsCharCode::Drcs1(code),
+                    0x42 => DrcsCharCode::Drcs2(code),
+                    0x43 => DrcsCharCode::Drcs3(code),
+                    0x44 => DrcsCharCode::Drcs4(code),
+                    0x45 => DrcsCharCode::Drcs5(code),
+                    0x46 => DrcsCharCode::Drcs6(code),
+                    0x47 => DrcsCharCode::Drcs7(code),
+                    0x48 => DrcsCharCode::Drcs8(code),
+                    0x49 => DrcsCharCode::Drcs9(code),
+                    0x4A => DrcsCharCode::Drcs10(code),
+                    0x4B => DrcsCharCode::Drcs11(code),
+                    0x4C => DrcsCharCode::Drcs12(code),
+                    0x4D => DrcsCharCode::Drcs13(code),
+                    0x4E => DrcsCharCode::Drcs14(code),
+                    0x4F => DrcsCharCode::Drcs15(code),
+                    _ => {
+                        log::debug!("invalid DrcsCharCode: {:02X}", data[0]);
+                        return None;
+                    }
+                }
+            } else {
+                DrcsCharCode::Drcs0(data[0], data[1])
+            };
             let number_of_font = data[2];
             data = &data[3..];
 
@@ -566,9 +588,61 @@ impl<'a> Drcs<'a> {
 #[derive(Debug, PartialEq, Eq)]
 pub struct DrcsCode<'a> {
     /// 外字符号。
-    pub character_code: u16,
+    pub character_code: DrcsCharCode,
     /// 符号における各フォント。
     pub fonts: Vec<DrcsFont<'a>>,
+}
+
+/// DRCSの外字コード。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DrcsCharCode {
+    /// DRCS-0。
+    Drcs0(u8, u8),
+
+    /// DRCS-1。
+    Drcs1(u8),
+
+    /// DRCS-2。
+    Drcs2(u8),
+
+    /// DRCS-3。
+    Drcs3(u8),
+
+    /// DRCS-4。
+    Drcs4(u8),
+
+    /// DRCS-5。
+    Drcs5(u8),
+
+    /// DRCS-6。
+    Drcs6(u8),
+
+    /// DRCS-7。
+    Drcs7(u8),
+
+    /// DRCS-8。
+    Drcs8(u8),
+
+    /// DRCS-9。
+    Drcs9(u8),
+
+    /// DRCS-10。
+    Drcs10(u8),
+
+    /// DRCS-11。
+    Drcs11(u8),
+
+    /// DRCS-12。
+    Drcs12(u8),
+
+    /// DRCS-13。
+    Drcs13(u8),
+
+    /// DRCS-14。
+    Drcs14(u8),
+
+    /// DRCS-15。
+    Drcs15(u8),
 }
 
 /// DRCSにおけるフォント。
@@ -692,11 +766,11 @@ F0 0F 00 00 F0 00 F0 00 00 F0 0F 0F FF FF FF F0
 "
         );
 
-        let drcs = Drcs::read(DRCS1).unwrap();
+        let drcs = Drcs::read(DRCS1, true).unwrap();
         assert_eq!(drcs.codes.len(), 1);
 
         let code = &drcs.codes[0];
-        assert_eq!(code.character_code, 0x4121);
+        assert_eq!(code.character_code, DrcsCharCode::Drcs1(0x21));
         assert_eq!(code.fonts.len(), 1);
 
         let font = &code.fonts[0];
@@ -759,11 +833,11 @@ F0 0F 00 00 F0 00 F0 00 00 F0 0F 0F FF FF FF F0
             "
         );
 
-        let drcs = Drcs::read(DRCS2).unwrap();
+        let drcs = Drcs::read(DRCS2, true).unwrap();
         assert_eq!(drcs.codes.len(), 1);
 
         let code = &drcs.codes[0];
-        assert_eq!(code.character_code, 0x4121);
+        assert_eq!(code.character_code, DrcsCharCode::Drcs1(0x21));
         assert_eq!(code.fonts.len(), 1);
 
         let font = &code.fonts[0];

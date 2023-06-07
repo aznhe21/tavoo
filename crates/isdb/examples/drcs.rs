@@ -264,8 +264,8 @@ impl isdb::demux::Filter for Filter {
         };
 
         for unit in data_units {
-            use isdb::pes::caption::DataUnit;
-            let (DataUnit::DrcsSb(drcs) | DataUnit::DrcsDb(drcs)) = unit else { continue };
+            use isdb::pes::caption::{DataUnit, DrcsCharCode};
+            let DataUnit::Drcs(drcs) = unit else { continue };
 
             for code in &*drcs.codes {
                 for (i, font) in code.fonts.iter().enumerate() {
@@ -300,11 +300,32 @@ impl isdb::demux::Filter for Filter {
                         .collect();
                     assert_eq!(bitmap.len(), size);
 
+                    let character_code = match code.character_code {
+                        DrcsCharCode::Drcs0(code1, code2) => {
+                            format!("DRCS1-{:02X}-{:02X}", code1, code2)
+                        }
+                        DrcsCharCode::Drcs1(code) => format!("DRCS2-{:02X}", code),
+                        DrcsCharCode::Drcs2(code) => format!("DRCS2-{:02X}", code),
+                        DrcsCharCode::Drcs3(code) => format!("DRCS3-{:02X}", code),
+                        DrcsCharCode::Drcs4(code) => format!("DRCS4-{:02X}", code),
+                        DrcsCharCode::Drcs5(code) => format!("DRCS5-{:02X}", code),
+                        DrcsCharCode::Drcs6(code) => format!("DRCS6-{:02X}", code),
+                        DrcsCharCode::Drcs7(code) => format!("DRCS7-{:02X}", code),
+                        DrcsCharCode::Drcs8(code) => format!("DRCS8-{:02X}", code),
+                        DrcsCharCode::Drcs9(code) => format!("DRCS9-{:02X}", code),
+                        DrcsCharCode::Drcs10(code) => format!("DRCS10-{:02X}", code),
+                        DrcsCharCode::Drcs11(code) => format!("DRCS11-{:02X}", code),
+                        DrcsCharCode::Drcs12(code) => format!("DRCS12-{:02X}", code),
+                        DrcsCharCode::Drcs13(code) => format!("DRCS13-{:02X}", code),
+                        DrcsCharCode::Drcs14(code) => format!("DRCS14-{:02X}", code),
+                        DrcsCharCode::Drcs15(code) => format!("DRCS15-{:02X}", code),
+                    };
+
                     if let Some(output) = &self.output {
                         let path = output.join(format!(
-                            "{:04X}_{:04X}_{}_{}.png",
+                            "{:04X}_{}_{}_{}.png",
                             service.service_id,
-                            code.character_code,
+                            character_code,
                             i + 1,
                             service.patterns.len(),
                         ));
@@ -325,12 +346,12 @@ impl isdb::demux::Filter for Filter {
                         }
                     } else {
                         println!(
-                            "{} - {}x{} ({:04X} - {:04X}[{}])",
+                            "{} - {}x{} ({:04X} - {}[{}])",
                             current.format("%F %T%.3f"),
                             data.width,
                             data.height,
                             service.service_id,
-                            code.character_code,
+                            character_code,
                             i + 1,
                         );
                         for p in (0..size).step_by(data.width as usize) {
