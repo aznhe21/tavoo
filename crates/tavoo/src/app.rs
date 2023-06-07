@@ -1,4 +1,6 @@
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use isdb::psi::table::ServiceId;
@@ -6,6 +8,7 @@ use tavoo_components::{player, webview};
 use winit::event::{Event, WindowEvent};
 use winit::window::WindowBuilder;
 
+use crate::message::caption::Caption;
 use crate::message::time::Timestamp;
 use crate::message::{Command, Notification, PlaybackState};
 
@@ -49,11 +52,14 @@ impl EventLoopProxy {
 }
 
 #[derive(Debug, Clone)]
-struct PlayerEventHandler(EventLoopProxy);
+struct PlayerEventHandler {
+    proxy: EventLoopProxy,
+    is_oneseg: Arc<AtomicBool>,
+}
 
 impl tavoo_components::player::EventHandler for PlayerEventHandler {
     fn on_player_event(&self, event: player::PlayerEvent) {
-        self.0.dispatch_task(move |app| {
+        self.proxy.dispatch_task(move |app| {
             if let Err(e) = app.player.handle_event(event) {
                 log::error!("player.handle_event: {}", e);
             }
@@ -61,7 +67,7 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
     }
 
     fn on_ready(&self) {
-        self.0.dispatch_task(|app| {
+        self.proxy.dispatch_task(|app| {
             if let Ok(range) = app.player.rate_range() {
                 app.send_notification(Notification::RateRange {
                     slowest: *range.start() as f64,
@@ -76,7 +82,7 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
     }
 
     fn on_started(&self) {
-        self.0.dispatch_task(|app| {
+        self.proxy.dispatch_task(|app| {
             app.set_state(PlaybackState::Playing);
             if let Ok(pos) = app.player.position() {
                 app.send_notification(Notification::Position {
@@ -92,7 +98,7 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
     }
 
     fn on_paused(&self) {
-        self.0.dispatch_task(|app| {
+        self.proxy.dispatch_task(|app| {
             app.set_state(PlaybackState::Paused);
             if let Ok(pos) = app.player.position() {
                 app.send_notification(Notification::Position {
@@ -108,7 +114,7 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
     }
 
     fn on_stopped(&self) {
-        self.0.dispatch_task(|app| {
+        self.proxy.dispatch_task(|app| {
             if app.closing {
                 app.closed();
             } else {
@@ -120,7 +126,7 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
 
     fn on_seek_completed(&self, position: Duration, pending: bool) {
         let position = position.as_secs_f64();
-        self.0.dispatch_task(move |app| {
+        self.proxy.dispatch_task(move |app| {
             app.send_notification(Notification::Position { position });
             if !pending {
                 app.seeking = false;
@@ -136,7 +142,7 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
     }
 
     fn on_volume_changed(&self, volume: f32, muted: bool) {
-        self.0.dispatch_task(move |app| {
+        self.proxy.dispatch_task(move |app| {
             app.send_notification(Notification::Volume {
                 volume: volume as f64,
                 muted,
@@ -145,7 +151,7 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
     }
 
     fn on_rate_changed(&self, rate: f32) {
-        self.0.dispatch_task(move |app| {
+        self.proxy.dispatch_task(move |app| {
             app.send_notification(Notification::Rate { rate: rate as f64 });
             if let Ok(pos) = app.player.position() {
                 app.send_notification(Notification::Position {
@@ -161,13 +167,13 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
     }
 
     fn on_video_size_changed(&self, width: u32, height: u32) {
-        self.0.dispatch_task(move |app| {
+        self.proxy.dispatch_task(move |app| {
             app.send_notification(Notification::VideoSize { width, height });
         });
     }
 
     fn on_dual_mono_mode_changed(&self, mode: Option<player::DualMonoMode>) {
-        self.0.dispatch_task(move |app| {
+        self.proxy.dispatch_task(move |app| {
             app.send_notification(Notification::DualMonoMode {
                 mode: mode.map(Into::into),
             });
@@ -175,13 +181,13 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
     }
 
     fn on_switching_started(&self) {
-        self.0.dispatch_task(|app| {
+        self.proxy.dispatch_task(|app| {
             app.send_notification(Notification::SwitchingStarted);
         });
     }
 
     fn on_switching_ended(&self) {
-        self.0.dispatch_task(|app| {
+        self.proxy.dispatch_task(|app| {
             app.send_notification(Notification::SwitchingEnded);
             if !app.seeking {
                 if let Ok(pos) = app.player.position() {
@@ -200,14 +206,14 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
 
     fn on_services_updated(&self, services: &isdb::filters::sorter::ServiceMap) {
         let services = services.values().map(Into::into).collect();
-        self.0.dispatch_task(move |app| {
+        self.proxy.dispatch_task(move |app| {
             app.send_notification(Notification::Services { services });
         });
     }
 
     fn on_streams_updated(&self, service: &isdb::filters::sorter::Service) {
         let service = service.into();
-        self.0.dispatch_task(move |app| {
+        self.proxy.dispatch_task(move |app| {
             app.send_notification(Notification::Service { service });
         });
     }
@@ -222,7 +228,7 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
         .expect("is_presentで示されるイベントは必須")
         .into();
 
-        self.0.dispatch_task(move |app| {
+        self.proxy.dispatch_task(move |app| {
             app.send_notification(Notification::Event {
                 service_id,
                 is_present,
@@ -232,8 +238,10 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
     }
 
     fn on_service_changed(&self, service: &isdb::filters::sorter::Service) {
+        self.is_oneseg.store(service.is_oneseg(), Ordering::Relaxed);
+
         let new_service_id = service.service_id().get();
-        self.0.dispatch_task(move |app| {
+        self.proxy.dispatch_task(move |app| {
             app.send_notification(Notification::ServiceChanged {
                 new_service_id,
                 video_component_tag: app.player.active_video_tag(),
@@ -243,7 +251,7 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
     }
 
     fn on_stream_changed(&self, _: tavoo_components::extract::StreamChanged) {
-        self.0.dispatch_task(|app| {
+        self.proxy.dispatch_task(|app| {
             if let (Some(video_component_tag), Some(audio_component_tag)) =
                 (app.player.active_video_tag(), app.player.active_audio_tag())
             {
@@ -257,22 +265,22 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
 
     fn on_caption(&self, pos: Option<Duration>, caption: &isdb::filters::sorter::Caption) {
         let pos = pos.map(|pos| pos.as_secs_f64());
-        let caption = caption.into();
-        self.0.dispatch_task(move |app| {
+        let caption = Caption::new(caption, self.is_oneseg.load(Ordering::Relaxed));
+        self.proxy.dispatch_task(move |app| {
             app.send_notification(Notification::Caption { pos, caption });
         });
     }
 
     fn on_superimpose(&self, pos: Option<Duration>, caption: &isdb::filters::sorter::Caption) {
         let pos = pos.map(|pos| pos.as_secs_f64());
-        let caption = caption.into();
-        self.0.dispatch_task(move |app| {
+        let caption = Caption::new(caption, self.is_oneseg.load(Ordering::Relaxed));
+        self.proxy.dispatch_task(move |app| {
             app.send_notification(Notification::Superimpose { pos, caption });
         });
     }
 
     fn on_timestamp_updated(&mut self, timestamp: Duration) {
-        self.0.dispatch_task(move |app| {
+        self.proxy.dispatch_task(move |app| {
             if !app.seeking {
                 if let Ok(pos) = app.player.position() {
                     app.send_notification(Notification::Position {
@@ -290,7 +298,7 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
 
     fn on_stream_error(&self, error: anyhow::Error) {
         let message = error.to_string();
-        self.0.dispatch_task(move |app| {
+        self.proxy.dispatch_task(move |app| {
             app.send_notification(Notification::Error { message });
         });
     }
@@ -613,7 +621,13 @@ pub fn run() -> anyhow::Result<()> {
         .with_visible(false)
         .build(&event_loop)?;
 
-    let player = player::Player::new(&window, PlayerEventHandler(proxy.clone()))?;
+    let player = player::Player::new(
+        &window,
+        PlayerEventHandler {
+            proxy: proxy.clone(),
+            is_oneseg: Arc::new(AtomicBool::new(false)),
+        },
+    )?;
 
     let mut builder = webview::WebView::builder()
         .add_scheme("tavoo", crate::scheme::TavooHandler)
