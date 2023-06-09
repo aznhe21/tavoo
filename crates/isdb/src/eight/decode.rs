@@ -1046,7 +1046,7 @@ impl<'a> Decoder<'a> {
                 // SZX
                 0x8B => match self.read_byte()? {
                     0x60 => break Some(AribChar::CharSize(CharSize::Micro)),
-                    0x41 => break Some(AribChar::CharSize(CharSize::HighW)),
+                    0x41 => break Some(AribChar::CharSize(CharSize::HeightW)),
                     0x44 => break Some(AribChar::CharSize(CharSize::WidthW)),
                     0x45 => break Some(AribChar::CharSize(CharSize::SizeW)),
                     0x6B => break Some(AribChar::CharSize(CharSize::Special1)),
@@ -1175,7 +1175,7 @@ impl<'a> Decoder<'a> {
                 // SZX
                 0x8B => match self.read_byte()? {
                     0x60 => break Some(GraphicChar::CharSize(CharSize::Micro)),
-                    0x41 => break Some(GraphicChar::CharSize(CharSize::HighW)),
+                    0x41 => break Some(GraphicChar::CharSize(CharSize::HeightW)),
                     0x44 => break Some(GraphicChar::CharSize(CharSize::WidthW)),
                     0x45 => break Some(GraphicChar::CharSize(CharSize::SizeW)),
                     0x6B => break Some(GraphicChar::CharSize(CharSize::Special1)),

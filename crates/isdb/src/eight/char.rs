@@ -17,7 +17,7 @@ pub enum CharSize {
     /// 超小型。
     Micro,
     /// 縦倍。
-    HighW,
+    HeightW,
     /// 横倍。
     WidthW,
     /// 縦横倍。
