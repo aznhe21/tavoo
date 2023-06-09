@@ -247,6 +247,11 @@ impl<H: EventHandler + Clone> Player<H> {
         Ok(())
     }
 
+    pub fn video_size(&self) -> Result<(u32, u32)> {
+        let size = self.session_must()?.video_size()?;
+        Ok(size)
+    }
+
     pub fn dual_mono_mode(&self) -> Result<Option<DualMonoMode>> {
         let mode = self.session_must()?.dual_mono_mode()?;
         Ok(mode)

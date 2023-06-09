@@ -283,6 +283,11 @@ impl Session {
     }
 
     #[inline]
+    pub fn video_size(&self) -> WinResult<(u32, u32)> {
+        self.inner().video_size()
+    }
+
+    #[inline]
     pub fn dual_mono_mode(&self) -> WinResult<Option<DualMonoMode>> {
         self.inner().dual_mono_mode()
     }
@@ -1124,20 +1129,9 @@ impl Inner {
         log::trace!("Session::on_session_stream_sink_format_changed");
         status.ok()?;
 
-        let pres = self.presentation.as_ref().expect("presentationが必要");
-        if let VideoCodecInfo::Mpeg2(seq) = &pres.video_codec_info {
-            self.event_handler
-                .on_video_size_changed(seq.horizontal_size as u32, seq.vertical_size as u32);
-        } else if let Some(vd) = &self.video_display {
-            match wrap::wrap(|a| unsafe { vd.GetNativeVideoSize(a, ptr::null_mut()) }) {
-                Ok(size) => {
-                    self.event_handler
-                        .on_video_size_changed(size.cx as u32, size.cy as u32);
-                }
-                Err(e) => {
-                    log::warn!("映像サイズを取得できない：{}", e);
-                }
-            }
+        match self.video_size() {
+            Ok((width, height)) => self.event_handler.on_video_size_changed(width, height),
+            Err(e) => log::warn!("映像サイズを取得できない：{}", e),
         }
 
         if let Ok(mode) = self.dual_mono_mode() {
@@ -1607,6 +1601,20 @@ impl Inner {
         self.player_state.lock().rate = value;
 
         Ok(())
+    }
+
+    pub fn video_size(&self) -> WinResult<(u32, u32)> {
+        let pres = self.presentation.as_ref().ok_or(MF::MF_E_INVALIDREQUEST)?;
+        let size = if let VideoCodecInfo::Mpeg2(seq) = &pres.video_codec_info {
+            (seq.horizontal_size as u32, seq.vertical_size as u32)
+        } else if let Some(vd) = &self.video_display {
+            let size = wrap::wrap(|a| unsafe { vd.GetNativeVideoSize(a, ptr::null_mut()) })?;
+            (size.cx as u32, size.cy as u32)
+        } else {
+            return Err(MF::MF_E_INVALIDREQUEST.into());
+        };
+
+        Ok(size)
     }
 
     pub fn dual_mono_mode(&self) -> WinResult<Option<DualMonoMode>> {
