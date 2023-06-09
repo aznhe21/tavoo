@@ -425,6 +425,9 @@ impl App {
                 .as_ref()
                 .map(|path| path.to_string_lossy().into_owned()),
         });
+        if let Ok((width, height)) = self.player.video_size() {
+            self.send_notification(Notification::VideoSize { width, height });
+        }
         if let (Ok(volume), Ok(muted)) = (self.player.volume(), self.player.muted()) {
             self.send_notification(Notification::Volume {
                 volume: volume as f64,
