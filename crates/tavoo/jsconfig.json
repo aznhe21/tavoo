@@ -1,7 +1,10 @@
 {
   "compilerOptions": {
+    "target": "es2022",
     "paths": {
       "tavoo://*": ["./omni/*"]
-    }
+    },
+    "strict": true,
+    "noImplicitReturns": true
   }
 }
