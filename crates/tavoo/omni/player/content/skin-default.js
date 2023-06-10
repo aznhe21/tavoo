@@ -40,6 +40,7 @@ export class Skin extends HTMLElement {
 
   #volume = 1.0;
 
+  #seeking = false;
   /**
    * シークバーのつまみドラッグ状態。
    *
@@ -210,14 +211,15 @@ export class Skin extends HTMLElement {
               }
             }
 
+            this.#seeking = true;
             gController.currentTime = this.#seekbar.value * gController.duration;
             this.updatePosition(true);
             break;
 
           case "change":
             if (this.#scrubberDraggingState === "dragging") {
-              // ドラッグ終了、シーク完了待ち
-              this.#scrubberDraggingState = "completing";
+              // ドラッグ終了、シーク中ならシーク完了待ち
+              this.#scrubberDraggingState = this.#seeking ? "completing" : "none";
               if (this.#scrubberPlayerState === "playing") {
                 gController.play();
               }
@@ -391,6 +393,7 @@ export class Skin extends HTMLElement {
 
           case "seek-completed":
             console.log("全シーク完了");
+            this.#seeking = false;
             if (this.#scrubberDraggingState === "completing") {
               // つまみドラッグ後のシークが完了
               this.#scrubberDraggingState = "none";
