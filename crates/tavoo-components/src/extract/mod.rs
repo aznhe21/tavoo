@@ -1,5 +1,7 @@
 //! TSファイルを別スレッドで順次処理する。
 
+mod caption;
+
 use std::fmt;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, AtomicU64, Ordering};
@@ -10,6 +12,8 @@ use isdb::filters::sorter::{Service, ServiceMap, Stream};
 use isdb::psi::table::ServiceId;
 use isdb::time::{DateTime, Timestamp};
 use parking_lot::RwLock;
+
+use crate::ring_buf::RingBuf;
 
 /// 映像・音声ストリームの変更通知。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -503,6 +507,12 @@ impl Tot {
 }
 
 #[derive(Debug)]
+enum Caption {
+    Caption(caption::Caption),
+    Superimpose(caption::Caption),
+}
+
+#[derive(Debug)]
 struct SeekInfo {
     /// シーク先の位置。
     target_pos: Duration,
@@ -514,6 +524,9 @@ struct SeekInfo {
     pat_updated: bool,
     eit_updated: SortedSet<(ServiceId, bool)>,
     pmt_updated: SortedSet<ServiceId>,
+
+    /// 保留する字幕・文字スーパー。
+    last_captions: RingBuf<(Option<Duration>, Caption), 10>,
 }
 
 #[derive(Debug)]
@@ -740,6 +753,13 @@ impl<R: Read + Seek, T: Sink> Selector<R, T> {
         for service_id in &*seek_info.pmt_updated {
             self.sink.on_streams_updated(&state.services[service_id]);
         }
+        // 保留していた字幕を放流
+        for &(pos, ref caption) in &seek_info.last_captions {
+            match caption {
+                Caption::Caption(caption) => self.sink.on_caption(pos, &caption.into()),
+                Caption::Superimpose(caption) => self.sink.on_superimpose(pos, &caption.into()),
+            };
+        }
 
         // `selected_stream`が`Some`から`None`になることはないことから、
         // `selected_stream`が`None`の場合は変更なしのため`Some`だけ見れば良い
@@ -905,11 +925,6 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
     ) {
         let Some(service_id) = self.es2svc[pid] else { return };
 
-        // TODO: シーク完了時点に表示されているであろう字幕はスキップしたくない
-        if self.seek_info.is_some() {
-            return;
-        }
-
         {
             let state = self.state.read();
             if !matches!(&state.selected_stream, Some(ss) if ss.caption_pid == Some(pid)) {
@@ -922,7 +937,14 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
             let pcr = services.get(&service_id)?.pcr()?;
             Some(self.pcr_time.duration + (pts - pcr).to_duration())
         });
-        self.sink.on_caption(pos, caption);
+
+        if let Some(seek_info) = &mut self.seek_info {
+            seek_info
+                .last_captions
+                .push((pos, Caption::Caption(caption::Caption::new(caption))));
+        } else {
+            self.sink.on_caption(pos, caption);
+        }
     }
 
     fn on_superimpose(
@@ -933,11 +955,6 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
         caption: &isdb::filters::sorter::Caption,
     ) {
         let Some(service_id) = self.es2svc[pid] else { return };
-
-        // TODO: シーク完了時点に表示されているであろう文字スーパーはスキップしたくない
-        if self.seek_info.is_some() {
-            return;
-        }
 
         {
             let state = self.state.read();
@@ -951,7 +968,14 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
             let pcr = services.get(&service_id)?.pcr()?;
             Some(self.pcr_time.duration + (pts - pcr).to_duration())
         });
-        self.sink.on_superimpose(pos, caption);
+
+        if let Some(seek_info) = &mut self.seek_info {
+            seek_info
+                .last_captions
+                .push((pos, Caption::Superimpose(caption::Caption::new(caption))));
+        } else {
+            self.sink.on_superimpose(pos, caption);
+        }
     }
 
     fn on_pcr(&mut self, services: &ServiceMap, service_ids: &[ServiceId]) {
@@ -1270,6 +1294,7 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
             pat_updated: false,
             pmt_updated: SortedSet::new(),
             eit_updated: SortedSet::new(),
+            last_captions: RingBuf::new(),
         });
 
         let start_pos = self.selector().read.pos();
@@ -1412,6 +1437,7 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
                 pat_updated: false,
                 pmt_updated: SortedSet::new(),
                 eit_updated: SortedSet::new(),
+                last_captions: RingBuf::new(),
             });
         }
     }
