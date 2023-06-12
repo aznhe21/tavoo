@@ -141,7 +141,10 @@ impl CaptionDataUnit {
             DataUnit::Bitmap(bitmap) => Some(CaptionDataUnit::Bitmap {
                 bitmap: bitmap.into(),
             }),
-            _ => None,
+            _ => {
+                log::trace!("字幕のデータユニットを無視：{:?}", data_unit);
+                None
+            }
         }
     }
 }
@@ -166,7 +169,10 @@ impl TryFrom<isdb::eight::char::TimeControlMode> for TimeControlMode {
         match value {
             char::TimeControlMode::Free => Ok(TimeControlMode::Free),
             char::TimeControlMode::RealTime => Ok(TimeControlMode::RealTime),
-            _ => Err(()),
+            _ => {
+                log::trace!("字幕の時間制御モードを無視：{:?}", value);
+                Err(())
+            }
         }
     }
 }
@@ -190,7 +196,10 @@ impl TryFrom<isdb::pes::caption::DisplayMode> for DisplayMode {
         match value {
             caption::DisplayMode::AutoDisplay => Ok(DisplayMode::AutoDisplay),
             caption::DisplayMode::Selectable => Ok(DisplayMode::Selectable),
-            _ => Err(()),
+            _ => {
+                log::trace!("字幕の表示モードを無視：{:?}", value);
+                Err(())
+            }
         }
     }
 }
@@ -219,7 +228,10 @@ impl TryFrom<isdb::pes::caption::CaptionFormat> for CaptionFormat {
             caption::CaptionFormat::QhdVert => Ok(CaptionFormat::QhdVert),
             caption::CaptionFormat::SdHorz => Ok(CaptionFormat::SdHorz),
             caption::CaptionFormat::SdVert => Ok(CaptionFormat::SdVert),
-            _ => Err(()),
+            _ => {
+                log::trace!("字幕の表示形式を無視：{:?}", value);
+                Err(())
+            }
         }
     }
 }
