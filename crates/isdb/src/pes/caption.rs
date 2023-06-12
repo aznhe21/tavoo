@@ -152,11 +152,17 @@ pub enum CaptionRollupMode {
     Reserved,
 }
 
+/// 字幕管理データにおける言語識別。
+///
+/// 値は`0..=7`の範囲であり、それぞれ第1言語～第8言語を表す。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct LanguageTag(pub u8);
+
 /// 字幕管理データにおける言語。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CaptionLanguage {
-    /// 言語識別（3ビット）。
-    pub language_tag: u8,
+    /// 言語識別。
+    pub language_tag: LanguageTag,
 
     /// 受信時の表示モード。
     pub dmf_recv: DisplayMode,
@@ -229,7 +235,7 @@ impl<'a> CaptionManagementData<'a> {
                 return None;
             }
 
-            let language_tag = (data[0] & 0b11100000) >> 5;
+            let language_tag = LanguageTag((data[0] & 0b11100000) >> 5);
             let dmf_recv = DisplayMode::new((data[0] & 0b00001100) >> 2);
             let dmf_playback = DisplayMode::new(data[0] & 0b00000011);
 
@@ -374,7 +380,7 @@ pub enum DataUnit<'a> {
     Colormap(&'a [u8]),
 
     /// ビットマップ。
-    Bitmap(&'a [u8]),
+    Bitmap(Bitmap<'a>),
 
     /// 不明。
     Unknown,
@@ -433,7 +439,7 @@ impl<'a> DataUnit<'a> {
                 // カラーマップ
                 0x34 => DataUnit::Colormap(data_unit_data),
                 // ビットマップ
-                0x35 => DataUnit::Bitmap(data_unit_data),
+                0x35 => DataUnit::Bitmap(Bitmap::read(data_unit_data)?),
                 _ => DataUnit::Unknown,
             };
             data_units.push(data_unit);
@@ -715,6 +721,48 @@ pub struct DrcsCompressedData<'a> {
     pub region_y: u8,
     /// ジオメトリックデータ。
     pub geometric_data: &'a [u8],
+}
+
+/// ビットマップ図形の符号化。
+#[derive(Debug, PartialEq, Eq)]
+pub struct Bitmap<'a> {
+    /// PNG描画開始のX座標。
+    pub x_position: u16,
+    /// PNG描画開始のY座標。
+    pub y_position: u16,
+    /// フラッシングすべき色のインデックス値。
+    pub color_indices: &'a [u8],
+    /// PNG符号化データ。
+    pub png_data: &'a [u8],
+}
+
+impl<'a> Bitmap<'a> {
+    /// `data`から`Bitmap`を読み取る。
+    pub fn read(mut data: &'a [u8]) -> Option<Bitmap<'a>> {
+        if data.len() < 5 {
+            log::debug!("invalid Bitmap");
+            return None;
+        }
+
+        let x_position = u16::from_be_bytes(data[0..=1].try_into().unwrap());
+        let y_position = u16::from_be_bytes(data[2..=3].try_into().unwrap());
+        let num_of_flc_colors = data[4] as usize;
+        data = &data[5..];
+
+        if data.len() < num_of_flc_colors {
+            log::debug!("invalid Bitmap::num_of_flc_colors");
+            return None;
+        }
+        let color_indices = &data[0..num_of_flc_colors];
+        let png_data = &data[num_of_flc_colors..];
+
+        Some(Bitmap {
+            x_position,
+            y_position,
+            color_indices,
+            png_data,
+        })
+    }
 }
 
 #[cfg(test)]

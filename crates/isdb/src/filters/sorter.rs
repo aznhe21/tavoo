@@ -1,10 +1,10 @@
 //! パケットを仕分けるためのフィルター。
 
-use fxhash::FxHashMap;
-use fxhash::FxHashSet;
+use fxhash::{FxHashMap, FxHashSet};
 use smallvec::SmallVec;
 
 use crate::demux;
+use crate::eight::char::TimeControlMode;
 use crate::lang;
 use crate::pes;
 use crate::pid::Pid;
@@ -359,13 +359,52 @@ pub struct AudioComponent {
     pub text: AribString,
 }
 
+/// 字幕のデータグループ。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CaptionGroup {
+    /// 組A。
+    GroupA,
+    /// 組B。
+    GroupB,
+}
+
+/// 字幕管理データ。
+#[derive(Debug)]
+pub struct CaptionManagementData<'a> {
+    /// データグループ。
+    pub group: CaptionGroup,
+    /// 時刻制御モード。
+    pub tmd: TimeControlMode,
+    /// オフセット時刻（単位はミリ秒）。
+    pub otm: Option<u32>,
+    /// 言語。
+    pub languages: Vec<pes::caption::CaptionLanguage>,
+    /// データユニット。
+    pub data_units: Vec<pes::caption::DataUnit<'a>>,
+}
+
+/// 字幕文データ。
+#[derive(Debug)]
+pub struct CaptionData<'a> {
+    /// データグループ。
+    pub group: CaptionGroup,
+    /// 言語識別。
+    pub language_tag: pes::caption::LanguageTag,
+    /// 時刻制御モード。
+    pub tmd: TimeControlMode,
+    /// 提示開始時刻（単位はミリ秒）。
+    pub stm: Option<u32>,
+    /// データユニット。
+    pub data_units: Vec<pes::caption::DataUnit<'a>>,
+}
+
 /// 字幕データ。
 #[derive(Debug)]
 pub enum Caption<'a> {
     /// 字幕管理データ。
-    ManagementData(pes::caption::CaptionManagementData<'a>),
+    ManagementData(CaptionManagementData<'a>),
     /// 字幕文データ。
-    Data(pes::caption::CaptionData<'a>),
+    Data(CaptionData<'a>),
 }
 
 impl<'a> Caption<'a> {
@@ -822,21 +861,41 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                     return;
                 };
 
-                let caption = if matches!(data_group.data_group_id, 0x00 | 0x20) {
-                    use pes::caption::CaptionManagementData;
-                    let Some(management) = CaptionManagementData::read(data_group.data_group_data)
-                    else {
-                        return;
-                    };
+                let group = match data_group.data_group_id & 0xF0 {
+                    0x00 => CaptionGroup::GroupA,
+                    0x20 => CaptionGroup::GroupB,
+                    _ => return,
+                };
+                let caption = match data_group.data_group_id & 0x0F {
+                    0 => {
+                        let Some(data) = pes::caption::CaptionManagementData::read(data_group.data_group_data)
+                        else {
+                            return;
+                        };
 
-                    Caption::ManagementData(management)
-                } else {
-                    let Some(caption) = pes::caption::CaptionData::read(data_group.data_group_data)
-                    else {
-                        return;
-                    };
+                        Caption::ManagementData(CaptionManagementData {
+                            group,
+                            tmd: data.tmd,
+                            otm: data.otm,
+                            languages: data.languages,
+                            data_units: data.data_units,
+                        })
+                    }
+                    tag @ 1..=8 => {
+                        let Some(data) = pes::caption::CaptionData::read(data_group.data_group_data)
+                        else {
+                            return;
+                        };
 
-                    Caption::Data(caption)
+                        Caption::Data(CaptionData {
+                            group,
+                            language_tag: pes::caption::LanguageTag(tag - 1),
+                            tmd: data.tmd,
+                            stm: data.stm,
+                            data_units: data.data_units,
+                        })
+                    }
+                    _ => return,
                 };
 
                 let pts = pes.header.option.as_ref().and_then(|o| o.pts);
