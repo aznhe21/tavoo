@@ -1,0 +1,194 @@
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+#root[caption-display="auto"] .screen[caption-display-mode="selectable"] {
+  display: none;
+}
+
+.background {
+  /** 背景 */
+  & rect {
+    shape-rendering: crispEdges;
+    fill: var(--caption-color-8);
+  }
+
+  /** 囲み */
+  & path {
+    shape-rendering: crispEdges;
+    stroke-width: 1;
+    fill: transparent;
+  }
+}
+
+.foreground {
+  & text {
+    font-family: "丸ゴシック", monospace;
+    dominant-baseline: text-before-edge;
+    stroke-width: 4;
+    stroke-linejoin: round;
+    paint-order: stroke;
+
+    fill: var(--caption-color-7);
+    stroke: var(--caption-color-8);
+  }
+
+  & image {
+    image-rendering: pixelated;
+  }
+
+  & *[caption-flushing="normal"] {
+    animation: 1s step-end infinite flushing;
+  }
+  & *[caption-flushing="inverted"] {
+    animation: 1s step-start infinite flushing;
+  }
+}
+
+.screen[caption-display-format="profile-c"] {
+  .foreground {
+    & text {
+      stroke-width: 2;
+    }
+  }
+}
+
+@keyframes flushing {
+  0% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/**
+ * 受信機共通固定色の定義（ARIB TR-B14 第三編第2部付録1より）。
+ */
+:host {
+  --caption-color-0: rgba(0, 0, 0, 1);
+  --caption-color-1: rgba(255, 0, 0, 1);
+  --caption-color-2: rgba(0, 255, 0, 1);
+  --caption-color-3: rgba(255, 255, 0, 1);
+  --caption-color-4: rgba(0, 0, 255, 1);
+  --caption-color-5: rgba(255, 0, 255, 1);
+  --caption-color-6: rgba(0, 255, 255, 1);
+  --caption-color-7: rgba(255, 255, 255, 1);
+  --caption-color-8: rgba(0, 0, 0, 0);
+  --caption-color-9: rgba(170, 0, 0, 1);
+  --caption-color-10: rgba(0, 170, 0, 1);
+  --caption-color-11: rgba(170, 170, 0, 1);
+  --caption-color-12: rgba(0, 0, 170, 1);
+  --caption-color-13: rgba(170, 0, 170, 1);
+  --caption-color-14: rgba(0, 170, 170, 1);
+  --caption-color-15: rgba(170, 170, 170, 1);
+  --caption-color-16: rgba(0, 0, 85, 1);
+  --caption-color-17: rgba(0, 85, 0, 1);
+  --caption-color-18: rgba(0, 85, 85, 1);
+  --caption-color-19: rgba(0, 85, 170, 1);
+  --caption-color-20: rgba(0, 85, 255, 1);
+  --caption-color-21: rgba(0, 170, 85, 1);
+  --caption-color-22: rgba(0, 170, 255, 1);
+  --caption-color-23: rgba(0, 255, 85, 1);
+  --caption-color-24: rgba(0, 255, 170, 1);
+  --caption-color-25: rgba(85, 0, 0, 1);
+  --caption-color-26: rgba(85, 0, 85, 1);
+  --caption-color-27: rgba(85, 0, 170, 1);
+  --caption-color-28: rgba(85, 0, 255, 1);
+  --caption-color-29: rgba(85, 85, 0, 1);
+  --caption-color-30: rgba(85, 85, 85, 1);
+  --caption-color-31: rgba(85, 85, 170, 1);
+  --caption-color-32: rgba(85, 85, 255, 1);
+  --caption-color-33: rgba(85, 170, 0, 1);
+  --caption-color-34: rgba(85, 170, 85, 1);
+  --caption-color-35: rgba(85, 170, 170, 1);
+  --caption-color-36: rgba(85, 170, 255, 1);
+  --caption-color-37: rgba(85, 255, 0, 1);
+  --caption-color-38: rgba(85, 255, 85, 1);
+  --caption-color-39: rgba(85, 255, 170, 1);
+  --caption-color-40: rgba(85, 255, 255, 1);
+  --caption-color-41: rgba(170, 0, 85, 1);
+  --caption-color-42: rgba(170, 0, 255, 1);
+  --caption-color-43: rgba(170, 85, 0, 1);
+  --caption-color-44: rgba(170, 85, 85, 1);
+  --caption-color-45: rgba(170, 85, 170, 1);
+  --caption-color-46: rgba(170, 85, 255, 1);
+  --caption-color-47: rgba(170, 170, 85, 1);
+  --caption-color-48: rgba(170, 170, 255, 1);
+  --caption-color-49: rgba(170, 255, 0, 1);
+  --caption-color-50: rgba(170, 255, 85, 1);
+  --caption-color-51: rgba(170, 255, 170, 1);
+  --caption-color-52: rgba(170, 255, 255, 1);
+  --caption-color-53: rgba(255, 0, 85, 1);
+  --caption-color-54: rgba(255, 0, 170, 1);
+  --caption-color-55: rgba(255, 85, 0, 1);
+  --caption-color-56: rgba(255, 85, 85, 1);
+  --caption-color-57: rgba(255, 85, 170, 1);
+  --caption-color-58: rgba(255, 85, 255, 1);
+  --caption-color-59: rgba(255, 170, 0, 1);
+  --caption-color-60: rgba(255, 170, 85, 1);
+  --caption-color-61: rgba(255, 170, 170, 1);
+  --caption-color-62: rgba(255, 170, 255, 1);
+  --caption-color-63: rgba(255, 255, 85, 1);
+  --caption-color-64: rgba(255, 255, 170, 1);
+  --caption-color-65: rgba(0, 0, 0, 0.5);
+  --caption-color-66: rgba(255, 0, 0, 0.5);
+  --caption-color-67: rgba(0, 255, 0, 0.5);
+  --caption-color-68: rgba(255, 255, 0, 0.5);
+  --caption-color-69: rgba(0, 0, 255, 0.5);
+  --caption-color-70: rgba(255, 0, 255, 0.5);
+  --caption-color-71: rgba(0, 255, 255, 0.5);
+  --caption-color-72: rgba(255, 255, 255, 0.5);
+  --caption-color-73: rgba(170, 0, 0, 0.5);
+  --caption-color-74: rgba(0, 170, 0, 0.5);
+  --caption-color-75: rgba(170, 170, 0, 0.5);
+  --caption-color-76: rgba(0, 0, 170, 0.5);
+  --caption-color-77: rgba(170, 0, 170, 0.5);
+  --caption-color-78: rgba(0, 170, 170, 0.5);
+  --caption-color-79: rgba(170, 170, 170, 0.5);
+  --caption-color-80: rgba(0, 0, 85, 0.5);
+  --caption-color-81: rgba(0, 85, 0, 0.5);
+  --caption-color-82: rgba(0, 85, 85, 0.5);
+  --caption-color-83: rgba(0, 85, 170, 0.5);
+  --caption-color-84: rgba(0, 85, 255, 0.5);
+  --caption-color-85: rgba(0, 170, 85, 0.5);
+  --caption-color-86: rgba(0, 170, 255, 0.5);
+  --caption-color-87: rgba(0, 255, 85, 0.5);
+  --caption-color-88: rgba(0, 255, 170, 0.5);
+  --caption-color-89: rgba(85, 0, 0, 0.5);
+  --caption-color-90: rgba(85, 0, 85, 0.5);
+  --caption-color-91: rgba(85, 0, 170, 0.5);
+  --caption-color-92: rgba(85, 0, 255, 0.5);
+  --caption-color-93: rgba(85, 85, 0, 0.5);
+  --caption-color-94: rgba(85, 85, 85, 0.5);
+  --caption-color-95: rgba(85, 85, 170, 0.5);
+  --caption-color-96: rgba(85, 85, 255, 0.5);
+  --caption-color-97: rgba(85, 170, 0, 0.5);
+  --caption-color-98: rgba(85, 170, 85, 0.5);
+  --caption-color-99: rgba(85, 170, 170, 0.5);
+  --caption-color-100: rgba(85, 170, 255, 0.5);
+  --caption-color-101: rgba(85, 255, 0, 0.5);
+  --caption-color-102: rgba(85, 255, 85, 0.5);
+  --caption-color-103: rgba(85, 255, 170, 0.5);
+  --caption-color-104: rgba(85, 255, 255, 0.5);
+  --caption-color-105: rgba(170, 0, 85, 0.5);
+  --caption-color-106: rgba(170, 0, 255, 0.5);
+  --caption-color-107: rgba(170, 85, 0, 0.5);
+  --caption-color-108: rgba(170, 85, 85, 0.5);
+  --caption-color-109: rgba(170, 85, 170, 0.5);
+  --caption-color-110: rgba(170, 85, 255, 0.5);
+  --caption-color-111: rgba(170, 170, 85, 0.5);
+  --caption-color-112: rgba(170, 170, 255, 0.5);
+  --caption-color-113: rgba(170, 255, 0, 0.5);
+  --caption-color-114: rgba(170, 255, 85, 0.5);
+  --caption-color-115: rgba(170, 255, 170, 0.5);
+  --caption-color-116: rgba(170, 255, 255, 0.5);
+  --caption-color-117: rgba(255, 0, 85, 0.5);
+  --caption-color-118: rgba(255, 0, 170, 0.5);
+  --caption-color-119: rgba(255, 85, 0, 0.5);
+  --caption-color-120: rgba(255, 85, 85, 0.5);
+  --caption-color-121: rgba(255, 85, 170, 0.5);
+  --caption-color-122: rgba(255, 85, 255, 0.5);
+  --caption-color-123: rgba(255, 170, 0, 0.5);
+  --caption-color-124: rgba(255, 170, 85, 0.5);
+  --caption-color-125: rgba(255, 170, 170, 0.5);
+  --caption-color-126: rgba(255, 170, 255, 0.5);
+  --caption-color-127: rgba(255, 255, 85, 0.5);
+}
