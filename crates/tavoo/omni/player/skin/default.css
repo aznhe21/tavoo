@@ -28,8 +28,14 @@
   grid-area: B;
 }
 
-#screen {
+#screen, #prompter {
   grid-area: P;
+}
+
+#prompter {
+  width: 100%;
+  height: 100%;
+  margin: auto;
 }
 
 #seekbar-stack {
@@ -123,6 +129,12 @@
     & > option:disabled {
       display: none;
     }
+  }
+
+  #caption-display {
+    flex: none;
+    padding-right: 6px;
+    display: flex;
   }
 
   #video-streams {

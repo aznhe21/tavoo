@@ -28,6 +28,7 @@ export class Skin extends HTMLElement {
   #stopButton;
   #muteButton;
   #volumeSlider;
+  #captionCheckbox;
   #playbackRate;
   #seekbar;
   #videoStreams;
@@ -39,6 +40,8 @@ export class Skin extends HTMLElement {
   #positionTimer = undefined;
 
   #volume = 1.0;
+
+  #prompter;
 
   #seeking = false;
   /**
@@ -77,6 +80,10 @@ export class Skin extends HTMLElement {
             <button id="stop">⏹</button>
             <button id="mute">🔊</button>
             <tavoo-slider id="volume" value="1" title="音量"></tavoo-slider>
+            <label id="caption-display">
+              <input id="caption-display-checkbox" type="checkbox" />
+              字幕
+            </label>
             <select id="playback-rate" title="再生速度"></select>
 
             <select id="video-streams"></select>
@@ -85,6 +92,7 @@ export class Skin extends HTMLElement {
           </div>
         </div>
         <tavoo-screen id="screen"></tavoo-screen>
+        <tavoo-prompter id="prompter"></tavoo-prompter>
       </root>
     `, "application/xml");
 
@@ -103,6 +111,9 @@ export class Skin extends HTMLElement {
     this.#volumeSlider = shadow.getElementById("volume");
     this.#volumeSlider.addEventListener("input", this);
     this.#volumeSlider.addEventListener("change", this);
+
+    this.#captionCheckbox = shadow.getElementById("caption-display-checkbox");
+    this.#captionCheckbox.addEventListener("input", this);
 
     this.#playbackRate = shadow.getElementById("playback-rate");
     this.#playbackRate.addEventListener("input", this);
@@ -146,6 +157,8 @@ export class Skin extends HTMLElement {
 
     this.#durationLabel = shadow.getElementById("duration");
 
+    this.#prompter = shadow.getElementById("prompter");
+
     customElements.upgrade(this.shadowRoot);
     this.updateSource();
     this.updatePosition();
@@ -172,8 +185,6 @@ export class Skin extends HTMLElement {
     gController.addEventListener("event", this);
     gController.addEventListener("service-changed", this);
     gController.addEventListener("stream-changed", this);
-    gController.addEventListener("caption", this);
-    gController.addEventListener("superimpose", this);
     gController.addEventListener("timestamp", this);
   }
 
@@ -193,8 +204,6 @@ export class Skin extends HTMLElement {
     gController.removeEventListener("event", this);
     gController.removeEventListener("service-changed", this);
     gController.removeEventListener("stream-changed", this);
-    gController.removeEventListener("caption", this);
-    gController.removeEventListener("superimpose", this);
     gController.removeEventListener("timestamp", this);
   }
 
@@ -304,6 +313,10 @@ export class Skin extends HTMLElement {
             this.updateMuteButton();
             break;
         }
+        break;
+
+      case this.#captionCheckbox:
+        this.#prompter.display = this.#captionCheckbox.checked ? "always" : "auto";
         break;
 
       case this.#playbackRate:
@@ -443,14 +456,6 @@ export class Skin extends HTMLElement {
           case "stream-changed":
             console.log("ストリーム更新");
             this.updateActiveStream();
-            break;
-
-          case "caption":
-            console.log("字幕", e.pos, e.caption);
-            break;
-
-          case "superimpose":
-            console.log("文字スーパー", e.pos, e.caption);
             break;
 
           case "timestamp":
