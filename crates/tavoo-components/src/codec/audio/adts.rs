@@ -191,7 +191,9 @@ impl Frame {
             return None;
         }
         br.skip(11); // adts_buffer_fulness
-        let num_blocks = br.read::<2>().unwrap() as u8;
+
+        // 最後の1バイトかもしれないのでread_insideを使う
+        let num_blocks = br.read_inside::<2>().unwrap();
         if num_blocks != 0 {
             log::trace!(
                 "number_of_raw_data_blocks_in_frameが'0'でない：{}",
