@@ -320,6 +320,8 @@ export const gController = new class Controller extends EventTarget {
   }
 
   openDevTools() {
+    // 開発者ツールからgControllerを使えるようにする
+    window.gController = gController;
     window.chrome.webview.postMessage({ command: "open-dev-tools" });
   }
 
