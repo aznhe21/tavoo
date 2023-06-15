@@ -389,7 +389,9 @@ impl App {
                 self.set_state(PlaybackState::OpenPending);
             }
             Err(e) => {
-                log::error!("player.open: {}", e);
+                self.send_notification(Notification::Error {
+                    message: format!("ファイルを開けません：{}", e),
+                });
             }
         }
     }
