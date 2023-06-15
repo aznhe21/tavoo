@@ -37,7 +37,7 @@ class Screen extends HTMLElement {
     gController.setVideoBounds(
       this.offsetLeft / offsetWidth,
       this.offsetTop / offsetHeight,
-      (this.offsetLeft + this.offsetWidth) / offsetHeight,
+      (this.offsetLeft + this.offsetWidth) / offsetWidth,
       (this.offsetTop + this.offsetHeight) / offsetHeight,
     );
   }
