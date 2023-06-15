@@ -18,6 +18,11 @@ use crate::AribString;
 ///
 /// 各メソッドには現在[`Sorter`]の保持するサービス一覧が与えられる。
 pub trait Shooter {
+    /// パケットが連続していなかった（ドロップしていた）際に呼ばれる。
+    fn on_packet_discontinued(&mut self, services: &ServiceMap, pid: Pid) {
+        let _ = (services, pid);
+    }
+
     /// PATが更新された際に呼ばれる。
     ///
     /// パケットの順序によっては既にイベント情報が存在する場合がある。
@@ -503,6 +508,11 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
         table.set_as_psi(Pid::H_EIT, Tag::Eit);
         table.set_as_psi(Pid::L_EIT, Tag::Eit);
         table.set_as_psi(Pid::TOT, Tag::Tot);
+    }
+
+    fn on_discontinued(&mut self, packet: &crate::Packet) {
+        self.shooter
+            .on_packet_discontinued(&self.services, packet.pid());
     }
 
     fn on_packet_storing(&mut self, ctx: &mut demux::Context<Self::Tag>) {
