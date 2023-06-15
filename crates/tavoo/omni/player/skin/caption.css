@@ -15,10 +15,9 @@
   }
 
   /** 囲み */
-  & path {
+  & polygon {
     shape-rendering: crispEdges;
-    stroke-width: 1;
-    fill: transparent;
+    fill: var(--caption-color-7);
   }
 }
 

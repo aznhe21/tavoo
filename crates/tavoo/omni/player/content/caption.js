@@ -494,7 +494,7 @@ function captionColor(index) {
 }
 
 /**
- * 囲み制御・アンダーライン制御用に`<path>`のパスを生成する。
+ * 囲み制御・アンダーライン制御用に`<polygon>`の点集合を1つ以上生成する。
  *
  * @param {number} hlc
  * @param {boolean} underline
@@ -502,33 +502,56 @@ function captionColor(index) {
  * @param {number} posY
  * @param {number} cw
  * @param {number} ch
- * @returns {string}
+ * @param {number} width
+ * @returns {string[]}
  */
-function highlightPath(hlc, underline, posX, posY, cw, ch) {
+function highlightPolygons(hlc, underline, posX, posY, cw, ch, width) {
   if (underline) {
     hlc |= 0b0001;
   }
 
   const l = posX;
+  const lw = l + width;
   const t = posY - ch;
+  const tw = t + width;
   const r = posX + cw;
+  const rw = r - width;
   const b = posY;
+  const bw = b - width;
   switch (hlc) {
-    case 0b0001: return `M${l},${b} H${r}`;
-    case 0b0010: return `M${r},${t} V${b}`;
-    case 0b0011: return `M${r},${t} V${b} H${l}`;
-    case 0b0100: return `M${l},${t} H${r}`;
-    case 0b0101: return `M${l},${t} H${r} M${l},${b} H${r}`;
-    case 0b0110: return `M${l},${t} H${r} V${b}`;
-    case 0b0111: return `M${l},${t} H${r} V${b} H${l}`;
-    case 0b1000: return `M${l},${t} V${b}`;
-    case 0b1001: return `M${l},${t} V${b} H${r}`;
-    case 0b1010: return `M${l},${t} V${b} M${r},${t} V${b}`;
-    case 0b1011: return `M${l},${t} V${b} H${r} V${t}`;
-    case 0b1100: return `M${l},${b} V${t} H${r}`;
-    case 0b1101: return `M${r},${t} H${l} V${b} H${r}`;
-    case 0b1110: return `M${l},${b} V${t} H${r} V${b}`;
-    case 0b1111: return `M${l},${t} V${b} H${r} V${t} Z`;
+    // 下
+    case 0b0001: return [`${l},${b} ${r},${b} ${r},${bw} ${l},${bw}`];
+    // 右
+    case 0b0010: return [`${r},${t} ${r},${b} ${rw},${b} ${rw},${t} ${r},${t}`];
+    // ┛
+    case 0b0011: return [`${r},${t} ${r},${b} ${l},${b} ${l},${bw} ${rw},${bw} ${rw},${t} ${r},${t}`];
+    // 上
+    case 0b0100: return [`${l},${t} ${r},${t} ${r},${tw} ${l},${tw} ${l},${t}`];
+    // 上と下
+    case 0b0101: return [`${l},${t} ${r},${t} ${r},${tw} ${l},${tw} ${l},${t}`,
+                         `${l},${b} ${r},${b} ${r},${bw} ${l},${bw}`];
+    // ┓
+    case 0b0110: return [`${l},${t} ${r},${t} ${r},${b} ${rw},${b} ${rw},${tw} ${l},${tw} ${l},${t}`];
+    // コ
+    case 0b0111: return [`${l},${t} ${r},${t} ${r},${b} ${l},${b} ${l},${bw} ${rw},${bw} ${rw},${tw} ${l},${tw} ${l},${t}`];
+    // 左
+    case 0b1000: return [`${l},${t} ${l},${b} ${lw},${b} ${lw},${t} ${l},${t}`];
+    // ┗
+    case 0b1001: return [`${l},${t} ${l},${b} ${r},${b} ${r},${bw} ${lw},${bw} ${lw},${t} ${l},${t}`];
+    // 左と右
+    case 0b1010: return [`${l},${t} ${l},${b} ${lw},${b} ${lw},${t} ${l},${t}`,
+                         `${r},${t} ${r},${b} ${rw},${b} ${rw},${t} ${r},${t}`];
+    // 凵
+    case 0b1011: return [`${l},${t} ${l},${b} ${r},${b} ${r},${t} ${rw},${t} ${rw},${bw} ${lw},${bw} ${lw},${t} ${l},${t}`];
+    // ┏
+    case 0b1100: return [`${l},${b} ${l},${t} ${r},${t} ${r},${tw} ${lw},${tw} ${lw},${b} ${l},${b}`];
+    // 匚
+    case 0b1101: return [`${r},${t} ${l},${t} ${l},${b} ${r},${b} ${r},${bw} ${lw},${bw} ${lw},${tw} ${r},${tw} ${r},${t}`];
+    // 冂
+    case 0b1110: return [`${l},${b} ${l},${t} ${r},${t} ${r},${b} ${rw},${b} ${rw},${tw} ${lw},${tw} ${lw},${b} ${l},${b}`];
+    // 囗
+    case 0b1111: return [`${r},${t} ${r},${b} ${l},${b} ${l},${bw} ${rw},${bw} ${rw},${t} ${r},${t}`,
+                         `${l},${b} ${l},${t} ${r},${t} ${r},${tw} ${lw},${tw} ${lw},${b} ${l},${b}`];
     default: throw new Error("不正なHLC");
   }
 }
@@ -1000,10 +1023,13 @@ class Renderer {
 
       // 囲み制御・アンダーライン制御
       if (highlightBlock !== 0 || underline) {
-        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-        path.setAttribute("d", highlightPath(highlightBlock, underline, posX, posY, cw, ch));
-        path.style.stroke = foregroundColor();
-        this.#bg.append(path);
+        // 表示区画内に収めるためpolygonで線の領域を指示する
+        for (const points of highlightPolygons(highlightBlock, underline, posX, posY, cw, ch, 1)) {
+          const polygon = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+          polygon.setAttribute("points", points);
+          polygon.style.fill = foregroundColor();
+          this.#bg.append(polygon);
+        }
       }
     };
     /**
