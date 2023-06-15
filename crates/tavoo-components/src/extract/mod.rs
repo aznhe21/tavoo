@@ -109,6 +109,19 @@ pub trait Sink {
     fn needs_es(&self) -> bool;
 }
 
+/// [`Extractor::spawn`]に指定した読み取り元からストリームが見つからなかった。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct StreamProbeError;
+
+impl fmt::Display for StreamProbeError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("ストリームが見つかりませんでした")
+    }
+}
+
+impl std::error::Error for StreamProbeError {}
+
 /// `ExtractHandler`を通した指示。
 // すべて`0`または`false`が指示無しの値なので`#[derive(Default)]`できる。
 #[derive(Debug, Default)]
@@ -1477,6 +1490,9 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
 
     pub fn run(mut self) {
         if !self.probe_stream() {
+            self.selector()
+                .sink
+                .on_stream_error(io::Error::new(io::ErrorKind::InvalidData, StreamProbeError));
             return;
         }
         log::trace!("ストリーム確定");
