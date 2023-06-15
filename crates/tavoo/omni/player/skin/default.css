@@ -120,6 +120,10 @@
     width: 100px;
     height: 12px;
     margin: calc((28px - 12px) / 2) 0 0 0;
+
+    &::part(slider) {
+      background: lightgray;
+    }
   }
 
   #playback-rate {
