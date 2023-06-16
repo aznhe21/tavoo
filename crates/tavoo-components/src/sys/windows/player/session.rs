@@ -1248,7 +1248,11 @@ impl Inner {
             // コーデック未確定なまま再生終了、どうせ再生できる内容はないよう
             (Some(_), Some(_)) => {
                 this.state = State::Stopped;
-                this.set_status(Status::Stopped);
+                if this.is_pending {
+                    this.update_playback_status(State::Stopped, Status::Stopped)?;
+                } else {
+                    this.set_status(Status::Stopped);
+                }
             }
         }
 
@@ -1503,7 +1507,7 @@ impl Inner {
                 self.state = State::Started;
             }
 
-            (Some(Command::Pause), _) | (None, State::Paused) => {
+            (Some(Command::Pause), _) | (None, State::Paused | State::Stopped) => {
                 let pres = self.presentation.as_ref().expect("presentationが必要");
                 unsafe { pres.session.Pause()? };
                 self.state = State::Paused;
