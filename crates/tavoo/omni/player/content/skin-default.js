@@ -54,6 +54,7 @@ export class Skin extends HTMLElement {
   #scrubberDraggingState = "none";
   /**
    * つまみのドラッグを開始する前のプレイヤーの状態。
+   * この値は、ドラッグ開始後からシークが完了するまでの間設定される。
    */
   #scrubberPlayerState = undefined;
 
@@ -227,10 +228,17 @@ export class Skin extends HTMLElement {
 
           case "change":
             if (this.#scrubberDraggingState === "dragging") {
-              // ドラッグ終了、シーク中ならシーク完了待ち
-              this.#scrubberDraggingState = this.#seeking ? "completing" : "none";
-              if (this.#scrubberPlayerState === "playing") {
+              // ドラッグ終了
+              if (this.#scrubberPlayerState === "playing" && gController.state === "paused") {
                 gController.play();
+              }
+
+              if (this.#seeking) {
+                // シーク完了待ち
+                this.#scrubberDraggingState = "completing";
+              } else {
+                this.#scrubberDraggingState = "none";
+                this.#scrubberPlayerState = undefined;
               }
             }
             break;
@@ -410,6 +418,7 @@ export class Skin extends HTMLElement {
             if (this.#scrubberDraggingState === "completing") {
               // つまみドラッグ後のシークが完了
               this.#scrubberDraggingState = "none";
+              this.#scrubberPlayerState = undefined;
             }
             break;
 
@@ -506,7 +515,7 @@ export class Skin extends HTMLElement {
     this.setPositionTimer();
 
     let state = gController.state;
-    if (state === "paused" && this.#scrubberDraggingState === "dragging") {
+    if (this.#scrubberPlayerState === "playing") {
       // つまみドラッグ中は動画を一時停止するが画面上は再生中にする
       state = "playing";
     }
@@ -538,7 +547,7 @@ export class Skin extends HTMLElement {
         this.#playButton.textContent = "▶";
         this.#playButton.disabled = false;
         this.#stopButton.disabled = false;
-        this.#seekbar.disabled = true;
+        this.#seekbar.disabled = false;
         break;
     }
   }
