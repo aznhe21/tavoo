@@ -1415,7 +1415,7 @@ class Renderer {
           break;
 
         default:
-          console.log("不明な字幕文字", char);
+          console.error("不明な字幕文字", char);
           break;
       }
     }
