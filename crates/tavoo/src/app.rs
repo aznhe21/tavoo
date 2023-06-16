@@ -119,7 +119,12 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
                 app.closed();
             } else {
                 app.set_state(PlaybackState::Stopped);
-                app.send_notification(Notification::Position { position: 0. });
+                // 停止時の位置は末尾
+                if let Some(duration) = app.player.duration() {
+                    app.send_notification(Notification::Position {
+                        position: duration.as_secs_f64(),
+                    });
+                }
             }
         });
     }
@@ -454,16 +459,24 @@ impl App {
             duration: self.player.duration().map(|dur| dur.as_secs_f64()),
         });
         self.send_notification(Notification::State { state: self.state });
-        if let Ok(pos) = self.player.position() {
+
+        let (pos, timestamp) = if self.state == PlaybackState::Stopped {
+            // 停止時の位置は末尾、時刻は不明
+            (self.player.duration(), None)
+        } else {
+            (self.player.position().ok(), self.player.timestamp())
+        };
+        if let Some(pos) = pos {
             self.send_notification(Notification::Position {
                 position: pos.as_secs_f64(),
             });
         }
-        if let Some(timestamp) = self.player.timestamp() {
+        if let Some(timestamp) = timestamp {
             self.send_notification(Notification::Timestamp {
                 timestamp: Timestamp(timestamp),
             });
         }
+
         if let Ok(rate) = self.player.rate() {
             self.send_notification(Notification::Rate { rate: rate as f64 });
         }
