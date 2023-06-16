@@ -236,7 +236,7 @@ impl Extractor {
         let worker = Worker {
             parker: self.parker,
             commands: self.commands,
-            did_error: false,
+            state: WorkerState::Working,
 
             demuxer,
             probe_size: self.probe_size,
@@ -389,7 +389,7 @@ impl ExtractHandler {
         Ok(())
     }
 
-    /// TSをリセットし最初から再生しなおすことを指示する。
+    /// TSをリセットし最初から再生し直すことを指示する。
     pub fn reset(&self) -> Result<(), ExtractorError> {
         self.check_shutdown()?;
 
@@ -1107,10 +1107,16 @@ fn next_pcr<R: Read>(mut read: R, pcr_pid: isdb::Pid) -> io::Result<Option<Times
     }
 }
 
+enum WorkerState {
+    Working,
+    Eos,
+    Error,
+}
+
 struct Worker<R: Read + Seek, T: Sink> {
     parker: crossbeam_utils::sync::Parker,
     commands: Arc<Commands>,
-    did_error: bool,
+    state: WorkerState,
 
     demuxer: isdb::demux::Demuxer<isdb::filters::sorter::Sorter<Selector<R, T>>>,
     probe_size: u64,
@@ -1126,20 +1132,21 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
     /// ストリーム終端。
     #[inline]
     fn on_eos(&mut self) {
+        self.state = WorkerState::Eos;
         self.selector().sink.on_end_of_stream();
     }
 
     /// エラー発生。
     #[inline]
     fn on_error(&mut self, e: io::Error) {
-        self.did_error = true;
+        self.state = WorkerState::Error;
         self.selector().sink.on_stream_error(e);
     }
 
-    /// エラーから復帰した。
+    /// EOSやエラーから復帰した。
     #[inline]
     fn on_restored(&mut self) {
-        self.did_error = false;
+        self.state = WorkerState::Working;
     }
 
     fn on_rewinded(&mut self, pcr_time: PlaybackTime) {
@@ -1309,6 +1316,13 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
             eit_updated: SortedSet::new(),
             last_captions: RingBuf::new(),
         });
+
+        if matches!(self.state, WorkerState::Eos) {
+            // TOTが来ないままEOSになった後のシークでズレるので巻き戻しておく
+            if !self.rewind() {
+                return;
+            }
+        }
 
         let start_pos = self.selector().read.pos();
         let start_ts = self.selector().pcr_time.prev_ts.unwrap_or(length.first_pcr);
@@ -1500,7 +1514,8 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
         loop {
             let has_any_command = self.commands.has_any.swap(false, Ordering::SeqCst);
             // エラーがある場合はパケットを処理しない
-            let needs_es = !self.did_error && self.selector().sink.needs_es();
+            let needs_es =
+                !matches!(self.state, WorkerState::Error) && self.selector().sink.needs_es();
 
             if has_any_command {
                 if self.commands.shutdown.load(Ordering::SeqCst) {
@@ -1510,7 +1525,12 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
                 self.run_commands();
             }
             if needs_es {
-                self.next_packet();
+                if matches!(self.state, WorkerState::Working) {
+                    self.next_packet();
+                } else {
+                    // EOS後はパケットを読み取らず、EOSを通知するだけ
+                    self.selector().sink.on_end_of_stream();
+                }
             }
 
             if !has_any_command && !needs_es {
