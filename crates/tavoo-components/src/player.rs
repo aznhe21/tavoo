@@ -53,10 +53,8 @@ pub trait EventHandler: Send + 'static {
     /// 引数`width`は新しい映像の幅、`height`は新しい映像の高さである。
     fn on_video_size_changed(&self, width: u32, height: u32);
 
-    /// デュアルモノラルの再生方法が変更された際に呼ばれる。
-    ///
-    /// 引数`mode`は新しい再生方法。`None`の場合はデュアルモノラルではない。
-    fn on_dual_mono_mode_changed(&self, mode: Option<DualMonoMode>);
+    /// 音声の形式が変更された際に呼ばれる。
+    fn on_audio_format_changed(&self);
 
     /// サービスの変更や解像度の変更によるストリームの切り替えが開始した。
     ///

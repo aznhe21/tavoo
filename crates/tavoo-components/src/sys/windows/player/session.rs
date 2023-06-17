@@ -1139,9 +1139,7 @@ impl Inner {
             Err(e) => log::warn!("映像サイズを取得できない：{}", e),
         }
 
-        if let Ok(mode) = self.dual_mono_mode() {
-            self.event_handler.on_dual_mono_mode_changed(mode);
-        }
+        self.event_handler.on_audio_format_changed();
 
         Ok(())
     }
