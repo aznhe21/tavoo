@@ -250,13 +250,13 @@ impl<H: EventHandler + Clone> Player<H> {
 
     /// 映像の解像度を返す。
     #[inline]
-    pub fn video_size(&mut self) -> Result<(u32, u32)> {
+    pub fn video_size(&self) -> Result<(u32, u32)> {
         self.inner.video_size()
     }
 
     /// 現在のデュアルモノラルの再生方法を返す。
     #[inline]
-    pub fn dual_mono_mode(&mut self) -> Result<Option<DualMonoMode>> {
+    pub fn dual_mono_mode(&self) -> Result<Option<DualMonoMode>> {
         self.inner.dual_mono_mode()
     }
 
