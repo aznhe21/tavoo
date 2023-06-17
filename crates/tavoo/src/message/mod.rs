@@ -87,6 +87,8 @@ pub enum Notification {
     Rate { rate: f64 },
     /// 映像の解像度が変更された。
     VideoSize { width: u32, height: u32 },
+    /// 音声のチャンネル数が変更された。
+    AudioChannels { num_channels: u8 },
     /// デュアルモノラルの再生方法が更新された。
     DualMonoMode { mode: Option<DualMonoMode> },
     /// ストリームの切り替えが開始した。

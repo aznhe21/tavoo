@@ -177,11 +177,16 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
         });
     }
 
-    fn on_dual_mono_mode_changed(&self, mode: Option<player::DualMonoMode>) {
+    fn on_audio_format_changed(&self) {
         self.proxy.dispatch_task(move |app| {
-            app.send_notification(Notification::DualMonoMode {
-                mode: mode.map(Into::into),
-            });
+            if let Ok(num_channels) = app.player.audio_channels() {
+                app.send_notification(Notification::AudioChannels { num_channels });
+            }
+            if let Ok(mode) = app.player.dual_mono_mode() {
+                app.send_notification(Notification::DualMonoMode {
+                    mode: mode.map(Into::into),
+                });
+            }
         });
     }
 
@@ -479,6 +484,9 @@ impl App {
 
         if let Ok(rate) = self.player.rate() {
             self.send_notification(Notification::Rate { rate: rate as f64 });
+        }
+        if let Ok(num_channels) = self.player.audio_channels() {
+            self.send_notification(Notification::AudioChannels { num_channels });
         }
         if let Ok(mode) = self.player.dual_mono_mode() {
             self.send_notification(Notification::DualMonoMode {

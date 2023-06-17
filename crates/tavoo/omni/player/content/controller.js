@@ -222,6 +222,12 @@ export const gController = new class Controller extends EventTarget {
         }
         break;
 
+      case "audio-channels":
+        // 音声のチャンネル数が更新された
+        this.#audioChannels = noti.num_channels;
+        this.dispatchEvent(new PlayerEvent("audio-channels"));
+        break;
+
       case "dual-mono-mode":
         // デュアルモノラルの再生方法が更新された
         this.#dualMonoMode = noti.mode;
@@ -559,6 +565,15 @@ export const gController = new class Controller extends EventTarget {
    */
   get videoHeight() {
     return this.#videoHeight;
+  }
+
+  #audioChannels = null;
+
+  /**
+   * 音声のチャンネル数。
+   */
+  get audioChannels() {
+    return this.#audioChannels;
   }
 
   #dualMonoMode = null;
