@@ -252,6 +252,11 @@ impl<H: EventHandler + Clone> Player<H> {
         Ok(size)
     }
 
+    pub fn audio_channels(&self) -> Result<u8> {
+        let num_channels = self.session_must()?.audio_channels()?;
+        Ok(num_channels)
+    }
+
     pub fn dual_mono_mode(&self) -> Result<Option<DualMonoMode>> {
         let mode = self.session_must()?.dual_mono_mode()?;
         Ok(mode)

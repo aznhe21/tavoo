@@ -288,6 +288,11 @@ impl Session {
     }
 
     #[inline]
+    pub fn audio_channels(&self) -> WinResult<u8> {
+        self.inner().audio_channels()
+    }
+
+    #[inline]
     pub fn dual_mono_mode(&self) -> WinResult<Option<DualMonoMode>> {
         self.inner().dual_mono_mode()
     }
@@ -1619,6 +1624,12 @@ impl Inner {
         };
 
         Ok(size)
+    }
+
+    pub fn audio_channels(&self) -> WinResult<u8> {
+        let pres = self.presentation.as_ref().ok_or(MF::MF_E_INVALIDREQUEST)?;
+        let AudioCodecInfo::Aac(frame) = &pres.audio_codec_info;
+        Ok(frame.num_channels())
     }
 
     pub fn dual_mono_mode(&self) -> WinResult<Option<DualMonoMode>> {

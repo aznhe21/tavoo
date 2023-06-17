@@ -254,6 +254,12 @@ impl<H: EventHandler + Clone> Player<H> {
         self.inner.video_size()
     }
 
+    /// 音声のチャンネル数を返す。
+    #[inline]
+    pub fn audio_channels(&self) -> Result<u8> {
+        self.inner.audio_channels()
+    }
+
     /// 現在のデュアルモノラルの再生方法を返す。
     #[inline]
     pub fn dual_mono_mode(&self) -> Result<Option<DualMonoMode>> {
