@@ -20,6 +20,9 @@ pub trait EventHandler: Send + 'static {
     /// メインスレッドで処理するためのイベントが発生した際に呼ばれる。
     fn on_player_event(&self, event: PlayerEvent);
 
+    /// パケットの各種エラー数が更新された際に呼ばれる。
+    fn on_packet_count_updated(&self, count: &crate::extract::PacketCount);
+
     /// 再生準備が整った際に呼ばれる。
     fn on_ready(&self);
 
@@ -143,6 +146,12 @@ impl<H: EventHandler + Clone> Player<H> {
     #[inline]
     pub fn handle_event(&mut self, event: PlayerEvent) -> Result<()> {
         self.inner.handle_event(event.0)
+    }
+
+    /// パケットの各種エラー数をゼロに戻す。
+    #[inline]
+    pub fn reset_packet_count(&mut self) {
+        self.inner.reset_packet_count();
     }
 
     /// 再生する。

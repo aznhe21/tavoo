@@ -172,6 +172,10 @@ export const gController = new class Controller extends EventTarget {
         this.dispatchEvent(new PlayerEvent("rate-range"));
         break;
 
+      case "packet-count":
+        console.log(noti);
+        break;
+
       case "duration":
         // 動画の長さ
         this.#duration = noti.duration ?? +Infinity;

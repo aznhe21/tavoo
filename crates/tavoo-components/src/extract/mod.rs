@@ -58,6 +58,9 @@ impl StreamChanged {
 
 /// [`Extractor`]で処理されたTSの情報を受け取るためのトレイト。
 pub trait Sink {
+    /// パケットの各種エラー数が更新された際に呼ばれる。
+    fn on_packet_count_updated(&mut self, count: &PacketCount);
+
     /// TSのサービス一覧が更新された際に呼ばれる。
     ///
     /// サービスの選択状態によってはこの直後にサービスが変更される可能性がある。
@@ -152,11 +155,25 @@ struct Commands {
 /// 処理中のTSにおける状態。
 #[derive(Debug, Default)]
 struct State {
+    count: PacketCount,
     // TODO: 追っかけ再生に対応
     length: Option<StreamLength>,
     services: ServiceMap,
     selected_stream: Option<SelectedStream>,
     tot: Option<Tot>,
+}
+
+/// パケットの各種エラー数。
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct PacketCount {
+    /// 形式がおかしかったパケットの数。
+    pub format_error: u64,
+    /// トランスポートエラービットが立っていたパケットの数。
+    pub transport_error: u64,
+    /// パケットが不連続だった（ドロップしていた）パケットの数。
+    pub continuity_error: u64,
+    /// スクランブル処理されていたパケットの数。
+    pub scrambled: u64,
 }
 
 /// TSを処理するオブジェクト。
@@ -285,6 +302,16 @@ impl ExtractHandler {
         } else {
             Ok(())
         }
+    }
+
+    /// パケットの各種エラー数を返す。
+    pub fn count(&self) -> parking_lot::MappedRwLockReadGuard<PacketCount> {
+        parking_lot::RwLockReadGuard::map(self.state.read(), |s| &s.count)
+    }
+
+    /// パケットの各種エラー数をゼロに戻す。
+    pub fn reset_count(&self) {
+        self.state.write().count = PacketCount::default();
     }
 
     /// ストリームの長さを返す。
@@ -570,6 +597,13 @@ impl<R: Read + Seek, T: Sink> Selector<R, T> {
         }
     }
 
+    fn update_count<F: FnOnce(&mut PacketCount)>(&mut self, f: F) {
+        let mut state = self.state.write();
+        f(&mut state.count);
+        self.sink
+            .on_packet_count_updated(&parking_lot::RwLockWriteGuard::downgrade(state).count);
+    }
+
     fn select_service(&mut self, services: &ServiceMap, service_id: Option<ServiceId>) {
         let service = if let Some(service_id) = service_id {
             let Some(service) = services.get(&service_id) else {
@@ -804,6 +838,10 @@ impl<R: Read + Seek, T: Sink> Selector<R, T> {
 }
 
 impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> {
+    fn on_packet_discontinued(&mut self, _: &ServiceMap, _: isdb::Pid) {
+        self.update_count(|c| c.continuity_error += 1);
+    }
+
     fn on_pat_updated(&mut self, services: &ServiceMap) {
         self.state.write().services.clone_from(services);
 
@@ -1156,6 +1194,24 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
         self.demuxer.reset_packets();
     }
 
+    fn feed_packet(&mut self, packet: &isdb::Packet) {
+        if !packet.is_normal() {
+            self.selector().update_count(|c| {
+                if packet.error_indicator() {
+                    c.transport_error += 1;
+                } else {
+                    c.format_error += 1;
+                }
+            });
+        } else {
+            if packet.is_scrambled() {
+                self.selector().update_count(|c| c.scrambled += 1);
+            }
+
+            self.demuxer.feed(&packet);
+        }
+    }
+
     /// ストリームを確定させる。
     ///
     /// ストリームが見つからなかった場合は`false`を返す。
@@ -1164,7 +1220,7 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
         loop {
             match isdb::Packet::read(Limit::new(&mut self.selector().read, &mut limit)) {
                 Ok(Some(packet)) => {
-                    self.demuxer.feed(&packet);
+                    self.feed_packet(&packet);
 
                     if self.selector().state.read().selected_stream.is_some() {
                         break;
@@ -1245,7 +1301,7 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
     /// `Worker`を終了する必要がある場合には`false`を返す。
     fn next_packet(&mut self) {
         match isdb::Packet::read(&mut self.selector().read) {
-            Ok(Some(packet)) => self.demuxer.feed(&packet),
+            Ok(Some(packet)) => self.feed_packet(&packet),
             Ok(None) => self.on_eos(),
             Err(e) => self.on_error(e),
         }

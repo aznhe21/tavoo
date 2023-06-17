@@ -66,6 +66,18 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
         });
     }
 
+    fn on_packet_count_updated(&self, count: &tavoo_components::extract::PacketCount) {
+        let count = count.clone();
+        self.proxy.dispatch_task(move |app| {
+            app.send_notification(Notification::PacketCount {
+                format_error: count.format_error,
+                transport_error: count.transport_error,
+                continuity_error: count.continuity_error,
+                scrambled: count.scrambled,
+            });
+        });
+    }
+
     fn on_ready(&self) {
         self.proxy.dispatch_task(|app| {
             if let Ok(range) = app.player.rate_range() {
@@ -460,6 +472,12 @@ impl App {
                 fastest: *range.end() as f64,
             });
         }
+        self.send_notification(Notification::PacketCount {
+            format_error: 0,
+            transport_error: 0,
+            continuity_error: 0,
+            scrambled: 0,
+        });
         self.send_notification(Notification::Duration {
             duration: self.player.duration().map(|dur| dur.as_secs_f64()),
         });
@@ -543,6 +561,9 @@ impl App {
                 } => {
                     self.player_bounds = Rect::new(left, top, right, bottom);
                     self.resize_video(None);
+                }
+                Command::ResetPacketCount => {
+                    self.player.reset_packet_count();
                 }
                 Command::Play => {
                     tri!('r, self

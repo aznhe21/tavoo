@@ -304,6 +304,10 @@ impl Session {
 }
 
 impl Sink for Session {
+    fn on_packet_count_updated(&mut self, count: &extract::PacketCount) {
+        self.inner().event_handler.on_packet_count_updated(count);
+    }
+
     fn on_services_updated(&mut self, services: &isdb::filters::sorter::ServiceMap) {
         self.inner().event_handler.on_services_updated(services);
     }

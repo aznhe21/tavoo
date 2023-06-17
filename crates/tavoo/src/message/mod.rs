@@ -70,6 +70,13 @@ pub enum Notification {
     Volume { volume: f64, muted: bool },
     /// 再生速度の範囲。
     RateRange { slowest: f64, fastest: f64 },
+    /// パケットの各種エラー数。
+    PacketCount {
+        format_error: u64,
+        transport_error: u64,
+        continuity_error: u64,
+        scrambled: u64,
+    },
     /// 動画の長さ。
     Duration {
         /// 秒単位の長さ。
@@ -151,6 +158,8 @@ pub enum Command {
         right: f64,
         bottom: f64,
     },
+    /// パケットの各種エラー数をゼロに戻す。
+    ResetPacketCount,
     /// 再生。
     Play,
     /// 一時停止。

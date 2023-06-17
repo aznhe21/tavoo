@@ -100,6 +100,12 @@ impl<H: EventHandler + Clone> Player<H> {
             .ok_or_else(|| anyhow::anyhow!("セッションがありません"))
     }
 
+    pub fn reset_packet_count(&self) {
+        if let Some(session) = &self.session {
+            session.extract_handler().reset_count();
+        }
+    }
+
     pub fn selected_service(&self) -> Option<isdb::filters::sorter::Service> {
         let extract_handler = self.session.as_ref()?.extract_handler();
         let selected_service = extract_handler.selected_stream();
