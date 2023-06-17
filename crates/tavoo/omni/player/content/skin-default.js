@@ -378,19 +378,16 @@ export class Skin extends HTMLElement {
       case gController:
         switch (e.type) {
           case "source":
-            console.log(`ファイル：${gController.source}`);
             this.updateSource();
             break;
 
           case "volume":
-            console.log(`音量：${gController.volume}`);
             // 外部からの音量変更時は音量を記録しない
             this.updateVolumeSlider();
             break;
 
           case "rate-range": {
             const { slowest, fastest } = gController.playbackRateRange;
-            console.log(`速度範囲：${slowest}..=${fastest}`);
             for (const option of this.#playbackRate.options) {
               const rate = Number.parseInt(option.value, 10) / 100;
               option.disabled = rate < slowest || rate > fastest;
@@ -408,7 +405,6 @@ export class Skin extends HTMLElement {
             break;
 
           case "position":
-            console.log(`再生位置：${gController.currentTime}`);
             this.updatePosition();
             break;
 
@@ -423,7 +419,6 @@ export class Skin extends HTMLElement {
             break;
 
           case "rate":
-            console.log(`再生速度：${gController.playbackRate}`);
             this.updatePlaybackRate();
             break;
 
@@ -433,24 +428,18 @@ export class Skin extends HTMLElement {
             break;
 
           case "dual-mono-mode":
-            console.log(`デュアルモノラル：${gController.dualMonoMode}`);
             this.updateActiveAudioStream();
             break;
 
           case "services":
-            console.log("全サービス更新", [...gController.services]);
             this.updateServices();
             break;
 
           case "service":
-            console.log("サービス更新", gController.services.getById(e.serviceId));
             this.updateService(e.serviceId);
             break;
 
           case "event": {
-            const service = gController.services.getById(e.serviceId);
-            const event = e.isPresent ? service.present_event : service.following_event;
-            console.log(`イベント（${e.serviceId}、${e.isPresent}）`, event);
             if (e.isPresent) {
               this.updateService(e.serviceId);
             }
@@ -458,17 +447,14 @@ export class Skin extends HTMLElement {
           }
 
           case "service-changed":
-            console.log(`新サービスID：${gController.currentServiceId}`);
             this.updateSelectedService();
             break;
 
           case "stream-changed":
-            console.log("ストリーム更新");
             this.updateActiveStream();
             break;
 
           case "timestamp":
-            console.log(`日付時刻：${gController.timestamp}`);
             this.updatePosition();
             break;
         }
