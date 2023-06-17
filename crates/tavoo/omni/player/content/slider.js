@@ -71,7 +71,8 @@ export class Slider extends HTMLElement {
     }
 
     const newValue = clamp((e.offsetX - this.#slider.offsetLeft) / this.#slider.offsetWidth, 0, 1);
-    if (Math.abs(this.#value - newValue) < 0.001) {
+    // 4Kで1px動かしたときの差
+    if (Math.abs(this.#value - newValue) < 0.00026) {
       return;
     }
 
