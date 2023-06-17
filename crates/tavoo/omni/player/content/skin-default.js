@@ -423,8 +423,7 @@ export class Skin extends HTMLElement {
             break;
 
           case "resize":
-            console.log(`解像度：${gController.videoWidth}x${gController.videoHeight}`);
-            // this.updateActiveVideoStream();
+            this.updateActiveVideoStream();
             break;
 
           case "dual-mono-mode":
@@ -560,6 +559,80 @@ export class Skin extends HTMLElement {
     return Skin.LANG_CODES[code] ?? code.toUpperCase();
   }
 
+  static LANG_SHORT_CODES = {
+    "jpn": "日",
+    "eng": "英",
+  };
+
+  static getLanguageShortText(code) {
+    return Skin.LANG_SHORT_CODES[code] ?? code.toUpperCase();
+  }
+
+  // https://github.com/DBCTRADO/LibISDB/blob/066ec430b83338085accbf7600e74dec69e98296/LibISDB/TS/TSInformation.cpp#L157-L195
+  static getVideoComponentTypeText(component_type) {
+    switch (component_type) {
+      case 0x01: return "480i[4:3]";
+      case 0x02: return "480i[16:9] パンベクトルあり";
+      case 0x03: return "480i[16:9]";
+      case 0x04: return "480i[>16:9]";
+      case 0x91: return "2160p[4:3]";
+      case 0x92: return "2160p[16:9] パンベクトルあり";
+      case 0x93: return "2160p[16:9]";
+      case 0x94: return "2160p[>16:9]";
+      case 0xA1: return "480p[4:3]";
+      case 0xA2: return "480p[16:9] パンベクトルあり";
+      case 0xA3: return "480p[16:9]";
+      case 0xA4: return "480p[>16:9]";
+      case 0xB1: return "1080i[4:3]";
+      case 0xB2: return "1080i[16:9] パンベクトルあり";
+      case 0xB3: return "1080i[16:9]";
+      case 0xB4: return "1080i[>16:9]";
+      case 0xC1: return "720p[4:3]";
+      case 0xC2: return "720p[16:9] パンベクトルあり";
+      case 0xC3: return "720p[16:9]";
+      case 0xC4: return "720p[>16:9]";
+      case 0xD1: return "240p[4:3]";
+      case 0xD2: return "240p[16:9] パンベクトルあり";
+      case 0xD3: return "240p[16:9]";
+      case 0xD4: return "240p[>16:9]";
+      case 0xE1: return "1080p[4:3]";
+      case 0xE2: return "1080p[16:9] パンベクトルあり";
+      case 0xE3: return "1080p[16:9]";
+      case 0xE4: return "1080p[>16:9]";
+      case 0xF1: return "180p[4:3]";
+      case 0xF2: return "180p[16:9] パンベクトルあり";
+      case 0xF3: return "180p[16:9]";
+      case 0xF4: return "180p[>16:9]";
+      default: return undefined;
+    }
+  }
+
+  // https://github.com/DBCTRADO/LibISDB/blob/066ec430b83338085accbf7600e74dec69e98296/LibISDB/TS/TSInformation.cpp#L198-L223
+  static getAudioComponentTypeText(component_type) {
+    switch (component_type) {
+      case 0x01: return "Mono";
+      case 0x02: return "Dual mono";
+      case 0x03: return "Stereo";
+      case 0x04: return "3ch[2/1]";
+      case 0x05: return "3ch[3/0]";
+      case 0x06: return "4ch[2/2]";
+      case 0x07: return "4ch[3/1]";
+      case 0x08: return "5ch";
+      case 0x09: return "5.1ch";
+      case 0x0A: return "6.1ch[3/3.1]";
+      case 0x0B: return "6.1ch[2/0/0-2/0/2-0.1]";
+      case 0x0C: return "7.1ch[5/2.1]";
+      case 0x0D: return "7.1ch[3/2/2.1]";
+      case 0x0E: return "7.1ch[2/0/0-3/0/2-0.1]";
+      case 0x0F: return "7.1ch[0/2/0-3/0/2-0.1]";
+      case 0x10: return "10.2ch";
+      case 0x11: return "22.2ch";
+      case 0x40: return "視覚障害者用音声解説";
+      case 0x41: return "聴覚障害者用音声";
+      default: return undefined;
+    }
+  }
+
   /**
    * 選択中サービスにおける音声ストリームを列挙する。
    */
@@ -652,6 +725,86 @@ export class Skin extends HTMLElement {
     };
   }
 
+  getPresentEventText(service) {
+    const event = service.present_event;
+    if (!event) {
+      return "";
+    }
+
+    // https://github.com/DBCTRADO/TVTest/blob/41ce0bcfb39ccd98cfd5721cd197961020a60293/src/EventInfoPopup.cpp#L114-L199
+
+    const start_time = new Date(event.start_time * 1000);
+    const end_time = new Date((event.start_time + event.duration) * 1000);
+    let text = `${start_time.toLocaleString()}～${end_time.toLocaleTimeString()}\n`;
+    if (event.name) {
+      text += `${event.name}\n`;
+    }
+
+    const eventText = event.text.trimEnd();
+    if (eventText) {
+      text += `\n${event.text}\n`;
+    }
+
+    if (event.extended_items.length > 0) {
+      for (const item of event.extended_items) {
+        text += `\n${item.description}\n${item.item.trimEnd()}`;
+      }
+
+      text += "\n";
+    }
+
+    if (event.video_components.length > 0) {
+      const video = Skin.getVideoComponentTypeText(event.video_components[0].component_type);
+      if (video !== undefined) {
+        text += `\n■映像：${video}`;
+      }
+    }
+    if (event.audio_components.length > 0) {
+      function format(component) {
+        let text = "";
+        let bilingual = false;
+        if (component.component_type === 0x02 && component.lang_code_2 && component.lang_code !== component.lang_code_2) {
+          text += "Mono 二カ国語";
+          bilingual = true;
+        } else {
+          text += Skin.getAudioComponentTypeText(component.component_type) ?? "?";
+        }
+
+        if (component.text) {
+          text += ` [${component.text.replaceAll("\n", "/")}]`;
+        } else if (bilingual) {
+          const lang1 = Skin.getLanguageText(component.lang_code);
+          const lang2 = Skin.getLanguageText(component.lang_code_2);
+          text += ` [${lang1}/${lang2}]`;
+        } else {
+          const lang = Skin.getLanguageText(component.lang_code);
+          text += ` [${lang}]`;
+        }
+
+        return text;
+      }
+
+      text += "\n■音声：";
+      if (event.audio_components.length === 1) {
+        text += format(event.audio_components[0]);
+      } else {
+        for (let i = 0; i < event.audio_components.length; i++) {
+          if (i === 0) {
+            text += "主：";
+          } else {
+            text += " / 副：";
+          }
+
+          text += format(event.audio_components[i]);
+        }
+      }
+    }
+
+    // TODO: ジャンル（event.genres）
+
+    return text;
+  }
+
   updateServices() {
     this.#services.replaceChildren(...Array.from(gController.services, service => {
       const info = this.getServiceInfo(service);
@@ -663,6 +816,11 @@ export class Skin extends HTMLElement {
       option.disabled = info.disabled;
       return option;
     }));
+
+    const service = gController.currentService;
+    if (service) {
+      this.#services.title = this.getPresentEventText(service);
+    }
   }
 
   /**
@@ -672,15 +830,17 @@ export class Skin extends HTMLElement {
    */
   updateService(serviceId) {
     const index = gController.services.findIndex(svc => svc.service_id === serviceId);
+    const service = gController.services.get(index);
+
     const option = this.#services.options[index];
     if (option) {
-      const service = gController.services.getById(serviceId);
       const info = service ? this.getServiceInfo(service) : { text: "", disabled: true };
       option.textContent = info.text;
       option.disabled = info.disabled;
     }
 
     if (serviceId === gController.currentServiceId) {
+      this.#services.title = this.getPresentEventText(service);
       this.updateActiveStream();
     }
   }
@@ -693,6 +853,11 @@ export class Skin extends HTMLElement {
   updateSelectedService() {
     const index = gController.services.findIndex(svc => svc.service_id === gController.currentServiceId);
     this.#services.selectedIndex = index;
+
+    const service = gController.currentService;
+    if (service) {
+      this.#services.title = this.getPresentEventText(service);
+    }
 
     this.updateActiveStream();
   }
@@ -717,11 +882,11 @@ export class Skin extends HTMLElement {
     this.#videoStreams.replaceChildren(...service.video_streams.map((stream, i) => {
       const option = document.createElement("option");
       option.value = stream.component_tag;
-      // FIXME: 解像度？
       option.textContent = `動画${i + 1}`;
       option.selected = stream.component_tag === gController.activeAudioTag;
       return option;
     }));
+    this.#videoStreams.title = `${gController.videoWidth}x${gController.videoHeight}`;
   }
 
   /**
@@ -735,6 +900,115 @@ export class Skin extends HTMLElement {
       option.selected = as.selected;
       return option;
     }));
+
+    let text = "";
+    const service = gController.currentService;
+    if (service) {
+      const stream = service.audio_streams.find(s => s.component_tag === gController.activeAudioTag);
+      const component = service.present_event?.audio_components.find(s => s.component_tag === stream.component_tag);
+
+      // https://github.com/DBCTRADO/TVTest/blob/ace93932082f1d64ea6bd87913036701ae206dc5/src/UICore.cpp#L591-L725
+
+      const dualMonoMode = gController.dualMonoMode;
+      if (dualMonoMode) {
+        if (component && component.component_type === 0x02 && component.lang_code_2 &&
+          component.lang_code !== component.lang_code_2)
+        {
+          switch (dualMonoMode) {
+            case "left":
+              text += Skin.getLanguageText(component.lang_code);
+              break;
+
+            case "right":
+              text += Skin.getLanguageText(component.lang_code_2);
+              break;
+
+            case "mix": {
+              const lang1 = Skin.getLanguageShortText(component.lang_code);
+              const lang2 = Skin.getLanguageShortText(component.lang_code_2);
+              text += `${lang1}+${lang2} [混]`;
+              break;
+            }
+
+            case "stereo": {
+              const lang1 = Skin.getLanguageShortText(component.lang_code);
+              const lang2 = Skin.getLanguageShortText(component.lang_code_2);
+              text += `${lang1}+${lang2} [ス]`;
+              break;
+            }
+          }
+        } else {
+          switch (dualMonoMode) {
+            case "left":
+              text += "主音声";
+              break;
+
+            case "right":
+              text += "副音声";
+              break;
+
+            case "mix":
+              text += "主+副音声 [混]";
+              break;
+
+            case "stereo":
+              text += "主+副音声 [ス]";
+              break;
+          }
+        }
+      } else if (service.audio_streams.length > 1) {
+        let format;
+        switch (gController.audioChannels) {
+          case 1:
+            format = "[M]";
+            break;
+
+          case 2:
+            format = "[S]";
+            break;
+
+          case 6:
+            format = "[5.1]";
+            break;
+
+          default:
+            format = `[${gController.audioChannels}ch]`;
+            break;
+        }
+        text += `${format} `;
+
+        const audio = component.text
+          .replaceAll("\n", "/")
+          // [S]などがあれば除去する
+          .replace(new RegExp(` ?${format.replaceAll("[", "\\[")} ?`), "");
+        if (audio) {
+          text += audio;
+        } else {
+          text += Skin.getLanguageText(component.lang_code);
+        }
+      } else {
+        switch (gController.audioChannels) {
+          case 1:
+            text += "Mono";
+            break;
+
+          case 2:
+            text += "Stereo";
+            break;
+
+          case 6:
+            text += "5.1ch";
+            break;
+
+          default:
+            text += `${gController.audioChannels}ch`;
+            break;
+        }
+      }
+
+      Skin.getAudioComponentTypeText();
+    }
+    this.#audioStreams.title = text;
   }
 
   setPositionTimer() {
