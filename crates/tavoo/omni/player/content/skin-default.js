@@ -642,7 +642,21 @@ export class Skin extends HTMLElement {
       return;
     }
 
+    /**
+     * @typedef {{
+     *   stream: import("./message.d.ts").Stream;
+     *   component: import("./message.d.ts").AudioComponent | undefined;
+     *   selected: boolean;
+     * }} Base
+     */
+
     const dualMonoMode = gController.dualMonoMode;
+    /**
+     * @param {Base} base
+     * @param {string} text1
+     * @param {string} text2
+     * @param {string} textBoth
+     */
     function* genDualMono(base, text1, text2, textBoth) {
       yield {
         ...base,
@@ -669,6 +683,10 @@ export class Skin extends HTMLElement {
         selected: base.selected && dualMonoMode === "stereo",
       };
     }
+    /**
+     * @param {Base} base
+     * @param {string} text
+     */
     function* genNormal(base, text) {
       yield {
         ...base,
@@ -710,6 +728,7 @@ export class Skin extends HTMLElement {
     }
   }
 
+  /** @param {import("./message.d.ts").Service} service */
   getServiceInfo(service) {
     const index = gController.services.findIndex(svc => svc.serviceId === service.serviceId);
     let text = service.presentEvent?.name ?? `サービス${index + 1}`;
@@ -725,6 +744,7 @@ export class Skin extends HTMLElement {
     };
   }
 
+  /** @param {import("./message.d.ts").Service service} */
   getPresentEventText(service) {
     const event = service.presentEvent;
     if (!event) {
@@ -760,6 +780,7 @@ export class Skin extends HTMLElement {
       }
     }
     if (event.audioComponents.length > 0) {
+      /** @param {import("./message.d.ts").AudioComponent} component */
       function format(component) {
         let text = "";
         let bilingual = false;
@@ -827,6 +848,8 @@ export class Skin extends HTMLElement {
    * `serviceId`で指定されたサービスの情報を更新する。
    *
    * 指定サービスが選択中サービスの場合、ストリーム情報も更新する。
+   *
+   * @param {number} serviceId
    */
   updateService(serviceId) {
     const index = gController.services.findIndex(svc => svc.serviceId === serviceId);

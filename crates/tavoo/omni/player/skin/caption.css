@@ -45,7 +45,7 @@
   }
 }
 
-.screen[caption-display-format="profile-c"] {
+.screen[caption-caption-format="profile-c"] {
   .foreground {
     & text {
       stroke-width: 2;

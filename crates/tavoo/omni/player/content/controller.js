@@ -1,3 +1,13 @@
+// @ts-check
+
+/**
+ * @typedef {import("./message.d.ts").Caption} Caption
+ * @typedef {import("./message.d.ts").Command} Command
+ * @typedef {import("./message.d.ts").DualMonoMode} DualMonoMode
+ * @typedef {import("./message.d.ts").Notification} Notification
+ * @typedef {import("./message.d.ts").Service} Service
+ */
+
 /**
  * プレイヤーで発生するイベント。
  */
@@ -9,9 +19,15 @@ export class PlayerEvent extends Event { }
 export class ServiceEvent extends PlayerEvent {
   /**
    * 更新されたサービスのサービス識別。
+   *
+   * @type {number}
    */
   serviceId;
 
+  /**
+   * @param {string} type
+   * @param {EventInit & { serviceId: number }} options
+   */
   constructor(type, options) {
     super(type, options);
     this.serviceId = options.serviceId;
@@ -24,14 +40,22 @@ export class ServiceEvent extends PlayerEvent {
 export class EventEvent extends PlayerEvent {
   /**
    * 更新されたイベントが属するサービスのサービス識別。
+   *
+   * @type {number}
    */
   serviceId;
 
   /**
    * 更新されたイベントが現在のもの（`true`）か次のもの（`false`）かを示す。
+   *
+   * @type {boolean}
    */
   isPresent;
 
+  /**
+   * @param {string} type
+   * @param {EventInit & { serviceId: number; isPresent: boolean }} options
+   */
   constructor(type, options) {
     super(type, options);
     this.serviceId = options.serviceId;
@@ -45,13 +69,22 @@ export class EventEvent extends PlayerEvent {
 export class CaptionEvent extends PlayerEvent {
   /**
    * 字幕・文字スーパーを表示すべき再生位置。
+   *
+   * @type {number}
    */
   pos;
+
   /**
    * 字幕・文字スーパーのデータ。
+   *
+   * @type {Caption}
    */
   caption;
 
+  /**
+   * @param {string} type
+   * @param {EventInit & { pos: number; caption: Caption }} options
+   */
   constructor(type, options) {
     super(type, options);
     this.pos = options.pos;
@@ -65,7 +98,10 @@ export class CaptionEvent extends PlayerEvent {
  * `get`により添え字で、また`getById`によりサービス識別でサービスを取得することができる。
  */
 export class Services {
+  /** @type {Service[]} */
   #services = [];
+
+  /** @type {Record<number, number | undefined>} */
   #indices = {};
 
   _clear() {
@@ -73,9 +109,11 @@ export class Services {
     this.#indices = {};
   }
 
+  /** @param {Service[]} services */
   _update(services) {
     this.#services = services;
 
+    /** @type {Record<number, number | undefined>} */
     const indices = {};
     for (let i = 0; i < services.length; i++) {
       indices[services[i].serviceId] = i;
@@ -83,6 +121,7 @@ export class Services {
     this.#indices = indices;
   }
 
+  /** @param {Service} service */
   _updateOne(service) {
     const index = this.#indices[service.serviceId];
     if (index === undefined) {
@@ -94,6 +133,9 @@ export class Services {
 
   /**
    * 添え字によりサービスを取得する。
+   *
+   * @param {number} index
+   * @returns {Service | undefined}
    */
   get(index) {
     return this.#services[index];
@@ -101,6 +143,9 @@ export class Services {
 
   /**
    * サービス識別によりサービスを取得する。
+   *
+   * @param {number} id
+   * @returns {Service | undefined}
    */
   getById(id) {
     const index = this.#indices[id];
@@ -109,15 +154,27 @@ export class Services {
 
   /**
    * サービスの個数。
+   *
+   * @type {number}
    */
   get length() {
     return this.#services.length;
   }
 
+  /**
+   * @param {(service: Service, index: number) => boolean} predicate
+   *
+   * @returns {Service | undefined}
+   */
   find(predicate) {
     return this.#services.find(predicate);
   }
 
+  /**
+   * @param {(service: Service, index: number) => boolean} predicate
+   *
+   * @returns {number}
+   */
   findIndex(predicate) {
     return this.#services.findIndex(predicate);
   }
@@ -134,11 +191,19 @@ export const gController = new class Controller extends EventTarget {
   constructor() {
     super();
 
+    // @ts-ignore: WebView2専用API
     window.chrome.webview.addEventListener("message", e => {
       this.#handleNotification(e.data);
     });
   }
 
+  /** @param {Command} command */
+  #postCommand(command) {
+    // @ts-ignore: WebView2専用API
+    window.chrome.webview.postMessage(command);
+  }
+
+  /** @param {Notification} noti */
   #handleNotification(noti) {
     switch (noti.notification) {
       case "source":
@@ -208,7 +273,7 @@ export const gController = new class Controller extends EventTarget {
         this.#playbackRate = noti.rate;
         this.#lastPos = this.currentTime;
         this.#lastPosTime = performance.now();
-        this.#lastTimestamp = this.timestamp?.getTime();
+        this.#lastTimestamp = this.timestamp?.getTime() ?? null;
         this.#lastTimestampTime = performance.now();
         this.dispatchEvent(new PlayerEvent("rate"));
         break;
@@ -279,7 +344,7 @@ export const gController = new class Controller extends EventTarget {
         // 現在位置を記録
         this.#lastPos = this.currentTime;
         this.#lastPosTime = performance.now();
-        this.#lastTimestamp = this.timestamp?.getTime();
+        this.#lastTimestamp = this.timestamp?.getTime() ?? null;
         this.#lastTimestampTime = performance.now();
         this.#isSwitching = true;
         break;
@@ -310,13 +375,20 @@ export const gController = new class Controller extends EventTarget {
         break;
 
       default:
+        // @ts-ignore: 型定義上はあり得ない
         console.error(`不明な通知：${noti.notification}`);
         break;
     }
   }
 
+  /**
+   * @param {number} left
+   * @param {number} top
+   * @param {number} right
+   * @param {number} bottom
+   */
   setVideoBounds(left, top, right, bottom) {
-    window.chrome.webview.postMessage({
+    this.#postCommand({
       command: "set-video-bounds",
       left,
       top,
@@ -327,17 +399,22 @@ export const gController = new class Controller extends EventTarget {
 
   openDevTools() {
     // 開発者ツールからgControllerを使えるようにする
+    // @ts-ignore: 型定義に無いがデバッグ用に無視
     window.gController = gController;
-    window.chrome.webview.postMessage({ command: "open-dev-tools" });
+    this.#postCommand({ command: "open-dev-tools" });
   }
 
   /**
    * サービスの一覧。
+   *
+   * @type {Services}
    */
   #services = new Services();
 
   /**
    * サービスの一覧。
+   *
+   * @type {Services}
    */
   get services() {
     return this.#services;
@@ -347,6 +424,8 @@ export const gController = new class Controller extends EventTarget {
    * 現在選択されているサービスのサービス識別。
    *
    * `0`では未選択。
+   *
+   * @type {number}
    */
   #currentServiceId = 0;
 
@@ -354,6 +433,8 @@ export const gController = new class Controller extends EventTarget {
    * 現在選択されているサービスのサービス識別。
    *
    * `0`では未選択。
+   *
+   * @type {number}
    */
   get currentServiceId() {
     return this.#currentServiceId;
@@ -361,44 +442,54 @@ export const gController = new class Controller extends EventTarget {
 
   /**
    * 現在選択されているサービス。
+   *
+   * @type {Service | undefined}
    */
   get currentService() {
-    return this.#currentServiceId !== 0 ? this.#services.getById(this.#currentServiceId) : null;
+    return this.#currentServiceId !== 0 ? this.#services.getById(this.#currentServiceId) : undefined;
   }
 
+  /**
+   * @type {number | null}
+   */
   #activeVideoTag = null;
 
   /**
    * アクティブな映像コンポーネントのタグ。
    *
    * TSを開いていない状態、または映像ストリームにコンポーネントタグがない場合には`null`となる。
+   *
+   * @type {number | null}
    */
   get activeVideoTag() {
     return this.#activeVideoTag;
   }
 
+  /**
+   * @type {number | null}
+   */
   #activeAudioTag = null;
 
   /**
    * アクティブな音声コンポーネントのタグ。
    *
    * TSを開いていない状態、または音声ストリームにコンポーネントタグがない場合には`null`となる。
+   *
+   * @type {number | null}
    */
   get activeAudioTag() {
     return this.#activeAudioTag;
   }
 
   /**
-   * 現在の再生状態。
-   *
-   * 有効な値："open-pending", "playing", "paused", "stopped", "closed"
+   * @type {"open-pending" | "playing" | "paused" | "stopped" | "closed"}
    */
   #state = "closed";
 
   /**
    * 現在の再生状態。
    *
-   * 有効な値："open-pending", "playing", "paused", "stopped", "closed"
+   * @type {"open-pending" | "playing" | "paused" | "stopped" | "closed"}
    */
   get state() {
     return this.#state;
@@ -406,16 +497,20 @@ export const gController = new class Controller extends EventTarget {
 
   /**
    * ストリームを切り替え中かどうか。
+   *
+   * @type {boolean}
    */
   #isSwitching = false;
 
   /**
-   * 現在開かれているファイルのパス。
+   * @type {string | null}
    */
   #source = null;
 
   /**
    * 現在開かれているファイルのパス。
+   *
+   * @type {string | null}
    */
   get source() {
     return this.#source;
@@ -423,6 +518,8 @@ export const gController = new class Controller extends EventTarget {
 
   /**
    * 動画の長さ。
+   *
+   * @type {number}
    */
   #duration = NaN;
 
@@ -430,6 +527,8 @@ export const gController = new class Controller extends EventTarget {
    * 動画の秒単位での長さ。
    *
    * 再生していない状態では`NaN`、リアルタイム視聴などで長さが不明な場合は`+Infinity`となる。
+   *
+   * @type {number}
    */
   get duration() {
     return this.#duration;
@@ -437,15 +536,21 @@ export const gController = new class Controller extends EventTarget {
 
   /**
    * ホストから通知された再生位置。
+   *
+   * @type {number}
    */
   #lastPos = 0;
   /**
    * 再生位置が通知された時刻。
+   *
+   * @type {number}
    */
   #lastPosTime = 0;
 
   /**
    * 秒単位の再生位置。
+   *
+   * @type {number}
    */
   get currentTime() {
     if (!this.#isSwitching && this.#state === "playing") {
@@ -455,7 +560,7 @@ export const gController = new class Controller extends EventTarget {
   }
 
   set currentTime(value) {
-    window.chrome.webview.postMessage({
+    this.#postCommand({
       command: "set-position",
       position: value,
     });
@@ -463,18 +568,24 @@ export const gController = new class Controller extends EventTarget {
 
   /**
    * ホストから通知された日付時刻。
+   *
+   * @type {number | null}
    */
   #lastTimestamp = null;
   /**
    * 日付時刻が通知された時刻。
+   *
+   * @type {number}
    */
   #lastTimestampTime = 0;
 
   /**
    * 日付時刻。
+   *
+   * @type {Date | null}
    */
   get timestamp() {
-    if (this.#lastTimestamp == null) {
+    if (this.#lastTimestamp === null) {
       return null;
     }
     if (!this.#isSwitching && this.#state === "playing") {
@@ -483,10 +594,15 @@ export const gController = new class Controller extends EventTarget {
     return new Date(this.#lastTimestamp);
   }
 
+  /**
+   * @type {number}
+   */
   #volume = 1.0;
 
   /**
    * 音量。
+   *
+   * @type {number}
    */
   get volume() {
     return this.#volume;
@@ -494,16 +610,21 @@ export const gController = new class Controller extends EventTarget {
 
   set volume(value) {
     this.#volume = value;
-    window.chrome.webview.postMessage({
+    this.#postCommand({
       command: "set-volume",
       volume: value,
     });
   }
 
+  /**
+   * @type {boolean}
+   */
   #muted = false;
 
   /**
    * ミュート状態。
+   *
+   * @type {boolean}
    */
   get muted() {
     return this.#muted;
@@ -511,13 +632,20 @@ export const gController = new class Controller extends EventTarget {
 
   set muted(value) {
     this.#muted = value;
-    window.chrome.webview.postMessage({
+    this.#postCommand({
       command: "set-muted",
       muted: value,
     });
   }
 
+  /**
+   * @type {number}
+   */
   #playbackRate = 1.0;
+
+  /**
+   * @type {{ slowest: number, fastest: number }}
+   */
   #playbackRateRange = {
     slowest: 0.25,
     fastest: 3.0,
@@ -525,6 +653,8 @@ export const gController = new class Controller extends EventTarget {
 
   /**
    * 再生速度。
+   *
+   * @type {number}
    */
   get playbackRate() {
     return this.#playbackRate;
@@ -535,7 +665,7 @@ export const gController = new class Controller extends EventTarget {
       throw new Error("再生速度の範囲外");
     }
 
-    window.chrome.webview.postMessage({
+    this.#postCommand({
       command: "set-rate",
       rate: value,
     });
@@ -543,6 +673,8 @@ export const gController = new class Controller extends EventTarget {
 
   /**
    * 再生速度の範囲。
+   *
+   * @type {{ slowest: number, fastest: number }}
    */
   get playbackRateRange() {
     return {
@@ -551,46 +683,67 @@ export const gController = new class Controller extends EventTarget {
     };
   }
 
+  /**
+   * @type {number}
+   */
   #videoWidth = 0;
+
+  /**
+   * @type {number}
+   */
   #videoHeight = 0;
 
   /**
    * 映像の幅。
+   *
+   * @type {number}
    */
   get videoWidth() {
     return this.#videoWidth;
   }
   /**
    * 映像の高さ。
+   *
+   * @type {number}
    */
   get videoHeight() {
     return this.#videoHeight;
   }
 
+  /**
+   * @type {number | null}
+   */
   #audioChannels = null;
 
   /**
    * 音声のチャンネル数。
+   *
+   * @type {number | null}
    */
   get audioChannels() {
     return this.#audioChannels;
   }
 
+  /**
+   * @type {DualMonoMode | null}
+   */
   #dualMonoMode = null;
 
   /**
    * デュアルモノラルの再生方法。
+   *
+   * @type {DualMonoMode | null}
    */
   get dualMonoMode() {
     return this.#dualMonoMode;
   }
 
   set dualMonoMode(value) {
-    if (!["left", "right", "stereo", "mix"].includes(value)) {
+    if (!value || !["left", "right", "stereo", "mix"].includes(value)) {
       throw new Error("不正なデュアルモノラルの再生方法");
     }
 
-    window.chrome.webview.postMessage({
+    this.#postCommand({
       command: "set-dual-mono-mode",
       mode: value,
     });
@@ -600,35 +753,37 @@ export const gController = new class Controller extends EventTarget {
    * 再生を開始する。
    */
   play() {
-    window.chrome.webview.postMessage({ command: "play" });
+    this.#postCommand({ command: "play" });
   }
 
   /**
    * 再生を一時停止する。
    */
   pause() {
-    window.chrome.webview.postMessage({ command: "pause" });
+    this.#postCommand({ command: "pause" });
   }
 
   /**
    * 再生を停止する。
    */
   stop() {
-    window.chrome.webview.postMessage({ command: "stop" });
+    this.#postCommand({ command: "stop" });
   }
 
   /**
    * ファイルを閉じる。
    */
   close() {
-    window.chrome.webview.postMessage({ command: "close" });
+    this.#postCommand({ command: "close" });
   }
 
   /**
    * サービスを選択する。
+   *
+   * @param {number} serviceId
    */
   selectService(serviceId) {
-    window.chrome.webview.postMessage({
+    this.#postCommand({
       command: "select-service",
       serviceId,
     });
@@ -636,9 +791,11 @@ export const gController = new class Controller extends EventTarget {
 
   /**
    * 映像ストリームを選択する。
+   *
+   * @param {number} componentTag
    */
   selectVideoStream(componentTag) {
-    window.chrome.webview.postMessage({
+    this.#postCommand({
       command: "select-video-stream",
       componentTag,
     });
@@ -646,9 +803,11 @@ export const gController = new class Controller extends EventTarget {
 
   /**
    * 音声ストリームを選択する。
+   *
+   * @param {number} componentTag
    */
   selectAudioStream(componentTag) {
-    window.chrome.webview.postMessage({
+    this.#postCommand({
       command: "select-audio-stream",
       componentTag,
     });

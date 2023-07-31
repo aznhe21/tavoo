@@ -7,208 +7,27 @@ const DT_PAST = 10;
 const DT_FUTURE = 10;
 
 /**
- * @typedef {"drcs0" | "drcs1" | "drcs2" | "drcs3" | "drcs4" | "drcs5" | "drcs6" | "drcs7" |
- *   "drcs8" | "drcs9" | "drcs10" | "drcs11" | "drcs12" | "drcs13" | "drcs14" | "drcs15"} DrcsType
- * @typedef {"small" | "medium" | "normal" | "height-w" | "width-w" | "size-w"} CharSize
- * @typedef {"qhd-horz" | "qhd-vert" | "sd-horz" | "sd-vert"} DisplayFormat
- * @typedef {"auto-display" | "selectable"} DisplayMode
+ * @typedef {import("./message.d.ts").AribString} AribString
+ * @typedef {import("./message.d.ts").Caption} Caption
+ * @typedef {import("./message.d.ts").CaptionDataUnit} CaptionDataUnit
+ * @typedef {import("./message.d.ts").CharSize} CharSize
+ * @typedef {import("./message.d.ts").CaptionFormat} CaptionFormat
+ * @typedef {import("./message.d.ts").DisplayMode} DisplayMode
+ * @typedef {import("./message.d.ts").DrcsCharCode} DrcsCharCode
+ * @typedef {import("./message.d.ts").DrcsData} DrcsData
+ * @typedef {import("./message.d.ts").DrcsType} DrcsType
  *
- * @typedef {{
- *   type: "char-size";
- *   charSize: CharSize;
- * } | {
- *   type: "string";
- *   string: string;
- * } | {
- *   type: "drcs0";
- *   code1: number;
- *   code2: number;
- * } | {
- *   type: Exclude<DrcsType, "drcs0">;
- *   code: number;
- * } | {
- *   type: "null";
- * } | {
- *   type: "active-position-backward";
- * } | {
- *   type: "active-position-forward";
- * } | {
- *   type: "active-position-down";
- * } | {
- *   type: "active-position-up";
- * } | {
- *   type: "active-position-return";
- * } | {
- *   type: "parameterized-active-position-forward";
- *   p1: number;
- * } | {
- *   type: "active-position-set";
- *   p1: number;
- *   p2: number;
- * } | {
- *   type: "clear-screen";
- * } | {
- *   type: "unit-separator";
- * } | {
- *   type: "space";
- * } | {
- *   type: "delete";
- * } | {
- *   type: "color-foreground";
- *   p1: number;
- * } | {
- *   type: "color-background";
- *   p1: number;
- * } | {
- *   type: "color-half-foreground";
- *   p1: number;
- * } | {
- *   type: "color-half-background";
- *   p1: number;
- * } | {
- *   type: "color-palette";
- *   p1: number;
- * } | {
- *   type: "pattern-polarity-normal";
- * } | {
- *   type: "pattern-polarity-inverted-1";
- * } | {
- *   type: "flushing-control-start-normal";
- * } | {
- *   type: "flushing-control-start-inverted";
- * } | {
- *   type: "flushing-control-stop";
- * } | {
- *   type: "wait-for-process";
- *   p1: number;
- * } | {
- *   type: "repeat-character";
- *   p1: number;
- * } | {
- *   type: "stop-lining";
- * } | {
- *   type: "start-lining";
- * } | {
- *   type: "highlight-block";
- *   p1: number;
- * } | {
- *   type: "set-writing-format-init";
- *   p1: number;
- * } | {
- *   type: "raster-color-command";
- *   p1: number;
- * } | {
- *   type: "active-coordinate-position-set";
- *   p1: number;
- *   p2: number;
- * } | {
- *   type: "set-display-format";
- *   p1: number;
- *   p2: number;
- * } | {
- *   type: "set-display-position";
- *   p1: number;
- *   p2: number;
- * } | {
- *   type: "character-composition-dot-designation";
- *   p1: number;
- *   p2: number;
- * } | {
- *   type: "set-horizontal-spacing";
- *   p1: number;
- * } | {
- *   type: "set-vertical-spacing";
- *   p1: number;
- * } | {
- *   type: "ornament-control-clear";
- * } | {
- *   type: "ornament-control-hemming";
- *   p1: number;
- * } | {
- *   type: "builtin-sound-replay";
- *   p1: number;
- * } | {
- *   type: "scroll-designation";
- *   p1: number;
- *   p2: number;
- * }} AribChar
- *
- * @typedef {{
- *   type: "drcs0";
- *   code1: number;
- *   code2: number;
- * } | {
- *   type: Exclude<DrcsType, "drcs0">;
- *   code: number;
- * }} DrcsCharCode
- *
- * @typedef {{
- *   depth: number;
- *   width: number;
- *   height: number;
- *   patternData: string;
- * }} DrcsData
- *
- * @typedef {{
- *   characterCode: DrcsCharCode;
- *   fonts: DrcsData[];
- * }} DrcsCode
- *
- * @typedef {{
- *   depth: number;
- *   width: number;
- *   height: number;
- *   patternData: string;
- * }} DrcsFont
- *
- * @typedef {{
- *   languageTag: number;
- *   dmfRecv: DisplayMode;
- *   dmfPlayback: DisplayMode;
- *   format: DisplayFormat | null;
- *   langCode: string;
- *   rollupMode: "non-rollup" | "rollup" | "reserved";
- * }} CaptionLanguage
- *
- * @typedef {{
- *   type: "statement-body";
- *   statement: AribChar[];
- * } | {
- *   type: "drcs";
- *   drcs: DrcsCode[];
- * } | {
- *   type: "bitmap";
- *   xPosition: number;
- *   yPosition: number;
- *   colorIndices: string;
- *   pngData: string;
- * }} CaptionDataUnit
- *
- * @typedef {{
- *   type: "management-data";
- *   group: "A" | "B";
- *   tmd: "free" | "real-time";
- *   languages: CaptionLanguage[];
- *   dataUnits: CaptionDataUnit[];
- * } | {
- *   type: "data";
- *   group: "A" | "B";
- *   languageTag: number;
- *   tmd: "free" | "real-time";
- *   stm: number | null;
- *   dataUnits: CaptionDataUnit[];
- * } | {
+ * @typedef {Caption | {
  *   type: "postponed";
- *   postponed: AribChar[];
- * }} Caption
- *
- * @typedef {DisplayFormat | "profile-c"} ExtendedDisplayFormat
+ *   postponed: AribString;
+ * }} ExtendedCaption
+ * @typedef {CaptionFormat | "profile-c"} ExtendedCaptionFormat
  */
 
 /**
  * DRCSのフォントから各要素が`0.0`～`1.0`からなる`Float32Array`によるビットマップを生成する。
  *
- * @param {DrcsFont} font
+ * @param {DrcsData} font
  * @returns {Float32Array|undefined}
  */
 export function createDrcsBitmap(font) {
@@ -238,7 +57,7 @@ export function createDrcsBitmap(font) {
 /**
  * DRCSのフォントから白で描画済みの`HTMLCanvasElement`を生成する。
  *
- * @param {DrcsFont} font
+ * @param {DrcsData} font
  * @returns {HTMLCanvasElement|undefined}
  */
 export function createDrcsCanvas(font) {
@@ -575,7 +394,7 @@ class Renderer {
   isOneseg = false;
 
   /**
-   * @type {Array<{ pos: number; caption: Caption; }>}
+   * @type {Array<{ pos: number; caption: ExtendedCaption; }>}
    */
   #pending = [];
 
@@ -601,9 +420,9 @@ class Renderer {
   /**
    * 字幕管理データで指定される表示書式。
    *
-   * @type {ExtendedDisplayFormat | undefined}
+   * @type {ExtendedCaptionFormat | undefined}
    */
-  #displayFormat;
+  #captionFormat;
   /**
    * 字幕管理データで指定される表示モード。
    *
@@ -650,14 +469,14 @@ class Renderer {
   reset() {
     if (this.isOneseg) {
       // ワンセグでは管理データがあまり来ないので初期値を与えておく
-      this.#displayFormat = "profile-c"; // 固定
+      this.#captionFormat = "profile-c"; // 固定
       this.#displayMode = "selectable"; // 固定
       this.#dataGroup = "A";
       this.#languageTag = 0;
-      this.#svg.setAttribute("caption-display-format", this.#displayFormat);
+      this.#svg.setAttribute("caption-caption-format", this.#captionFormat);
       this.#svg.setAttribute("caption-display-mode", this.#displayMode);
     } else {
-      this.#displayFormat = undefined;
+      this.#captionFormat = undefined;
       this.#displayMode = undefined;
       this.#dataGroup = undefined;
       this.#languageTag = undefined;
@@ -701,7 +520,7 @@ class Renderer {
     }
 
     while (this.#pending.length > 0 && this.#pending[0].pos <= currentTime) {
-      const { pos, caption } = /** @type {{ pos: number; caption: Caption }} */(this.#pending.shift());
+      const { pos, caption } = /** @type {{ pos: number; caption: ExtendedCaption }} */(this.#pending.shift());
       this.render(pos, caption);
     }
   }
@@ -710,7 +529,7 @@ class Renderer {
    * 字幕表示を保留。
    *
    * @param {number} pos
-   * @param {Caption} caption
+   * @param {ExtendedCaption} caption
    */
   defer(pos, caption) {
     this.#pending.push({ pos: pos, caption: caption });
@@ -721,7 +540,7 @@ class Renderer {
    * 字幕データ`caption`を処理してSVGに描画する。
    *
    * @param {number} pos
-   * @param {Caption} caption
+   * @param {ExtendedCaption} caption
    */
   render(pos, caption) {
     this.#checkExpiration(pos);
@@ -742,10 +561,10 @@ class Renderer {
 
         // ワンセグでは固定値または運用されない
         if (!this.isOneseg && lang.format !== null) {
-          this.#displayFormat = lang.format;
+          this.#captionFormat = lang.format;
           // TODO: リアルタイム視聴時はdmfRecv
           this.#displayMode = lang.dmfPlayback;
-          this.#svg.setAttribute("caption-display-format", this.#displayFormat);
+          this.#svg.setAttribute("caption-caption-format", this.#captionFormat);
           this.#svg.setAttribute("caption-display-mode", this.#displayMode);
 
           this.#processDataUnits(pos, caption.dataUnits);
@@ -818,10 +637,10 @@ class Renderer {
 
   /**
    * @param {number} pos
-   * @param {AribChar[]} statement
+   * @param {AribString} statement
    */
   #processStatement(pos, statement) {
-    if (!this.#displayFormat) {
+    if (!this.#captionFormat) {
       // 管理データ到着前は何もしない
       return;
     }
@@ -923,9 +742,9 @@ class Renderer {
     };
 
     /**
-     * @param {ExtendedDisplayFormat} displayFormat
+     * @param {ExtendedCaptionFormat} captionFormat
      */
-    const reset = displayFormat => {
+    const reset = captionFormat => {
       repeatCharacter = undefined;
 
       sectionConfig = SECTION_CONFIGS.normal;
@@ -943,7 +762,7 @@ class Renderer {
       charCompHeight = 36;
       wrapped = false;
 
-      switch (displayFormat) {
+      switch (captionFormat) {
         case "qhd-horz":
           this.#svg.setAttribute("viewBox", `0 0 960 540`);
           displayWidth = 960;
@@ -1003,7 +822,7 @@ class Renderer {
           break;
       }
     };
-    reset(this.#displayFormat);
+    reset(this.#captionFormat);
 
     /**
      * 背景用矩形を追加する。
@@ -1224,7 +1043,7 @@ class Renderer {
         // CS
         case "clear-screen":
           this.clear();
-          reset(this.#displayFormat);
+          reset(this.#captionFormat);
           break;
 
         // US
@@ -1356,7 +1175,7 @@ class Renderer {
               break;
 
             default:
-              reset(this.#displayFormat);
+              reset(this.#captionFormat);
               break;
           }
           break;
