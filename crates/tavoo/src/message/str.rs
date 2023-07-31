@@ -19,63 +19,120 @@ pub enum CharSize {
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum AribChar {
+    #[serde(rename_all = "camelCase")]
     CharSize { char_size: CharSize },
+    #[serde(rename_all = "camelCase")]
     String { string: String },
+    #[serde(rename_all = "camelCase")]
     Drcs0 { code1: u8, code2: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs1 { code: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs2 { code: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs3 { code: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs4 { code: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs5 { code: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs6 { code: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs7 { code: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs8 { code: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs9 { code: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs10 { code: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs11 { code: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs12 { code: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs13 { code: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs14 { code: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs15 { code: u8 },
 
+    #[serde(rename_all = "camelCase")]
     Null,
+    #[serde(rename_all = "camelCase")]
     ActivePositionBackward,
+    #[serde(rename_all = "camelCase")]
     ActivePositionForward,
+    #[serde(rename_all = "camelCase")]
     ActivePositionDown,
+    #[serde(rename_all = "camelCase")]
     ActivePositionUp,
+    #[serde(rename_all = "camelCase")]
     ActivePositionReturn,
+    #[serde(rename_all = "camelCase")]
     ParameterizedActivePositionForward { p1: u8 },
+    #[serde(rename_all = "camelCase")]
     ActivePositionSet { p1: u8, p2: u8 },
+    #[serde(rename_all = "camelCase")]
     ClearScreen,
+    #[serde(rename_all = "camelCase")]
     UnitSeparator,
+    #[serde(rename_all = "camelCase")]
     Space,
+    #[serde(rename_all = "camelCase")]
     Delete,
+    #[serde(rename_all = "camelCase")]
     ColorForeground { p1: u8 },
+    #[serde(rename_all = "camelCase")]
     ColorBackground { p1: u8 },
+    #[serde(rename_all = "camelCase")]
     ColorHalfForeground { p1: u8 },
+    #[serde(rename_all = "camelCase")]
     ColorHalfBackground { p1: u8 },
+    #[serde(rename_all = "camelCase")]
     ColorPalette { p1: u8 },
+    #[serde(rename_all = "camelCase")]
     PatternPolarityNormal,
+    #[serde(rename_all = "camelCase")]
     PatternPolarityInverted1,
+    #[serde(rename_all = "camelCase")]
     FlushingControlStartNormal,
+    #[serde(rename_all = "camelCase")]
     FlushingControlStartInverted,
+    #[serde(rename_all = "camelCase")]
     FlushingControlStop,
+    #[serde(rename_all = "camelCase")]
     WaitForProcess { p1: u8 },
+    #[serde(rename_all = "camelCase")]
     RepeatCharacter { p1: u8 },
+    #[serde(rename_all = "camelCase")]
     StopLining,
+    #[serde(rename_all = "camelCase")]
     StartLining,
+    #[serde(rename_all = "camelCase")]
     HighlightBlock { p1: u8 },
+    #[serde(rename_all = "camelCase")]
     SetWritingFormatInit { p1: u8 },
+    #[serde(rename_all = "camelCase")]
     RasterColorCommand { p1: u8 },
+    #[serde(rename_all = "camelCase")]
     ActiveCoordinatePositionSet { p1: u32, p2: u32 },
+    #[serde(rename_all = "camelCase")]
     SetDisplayFormat { p1: u32, p2: u32 },
+    #[serde(rename_all = "camelCase")]
     SetDisplayPosition { p1: u32, p2: u32 },
+    #[serde(rename_all = "camelCase")]
     CharacterCompositionDotDesignation { p1: u32, p2: u32 },
+    #[serde(rename_all = "camelCase")]
     SetHorizontalSpacing { p1: u32 },
+    #[serde(rename_all = "camelCase")]
     SetVerticalSpacing { p1: u32 },
+    #[serde(rename_all = "camelCase")]
     OrnamentControlClear,
+    #[serde(rename_all = "camelCase")]
     OrnamentControlHemming { p1: u8 },
+    #[serde(rename_all = "camelCase")]
     BuiltinSoundReplay { p1: u32 },
+    #[serde(rename_all = "camelCase")]
     ScrollDesignation { p1: u8, p2: u8 },
 }
 

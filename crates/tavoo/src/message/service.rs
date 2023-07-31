@@ -1,6 +1,7 @@
 use super::time::UnixTime;
 
 #[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Stream {
     stream_type: u8,
     component_tag: Option<u8>,
@@ -17,6 +18,7 @@ impl From<&isdb::filters::sorter::Stream> for Stream {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ExtendedEventItem {
     item: String,
     description: String,
@@ -32,6 +34,7 @@ impl From<&isdb::filters::sorter::ExtendedEventItem> for ExtendedEventItem {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct VideoComponent {
     stream_content: u8,
     component_type: u8,
@@ -53,6 +56,7 @@ impl From<&isdb::filters::sorter::VideoComponent> for VideoComponent {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AudioComponent {
     stream_content: u8,
     component_type: u8,
@@ -101,6 +105,7 @@ impl From<&isdb::filters::sorter::AudioComponent> for AudioComponent {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ContentGenre {
     pub large_genre_classification: u8,
     pub middle_genre_classification: u8,
@@ -120,6 +125,7 @@ impl From<&isdb::psi::desc::ContentGenre> for ContentGenre {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Event {
     event_id: u16,
     // 日本時間だけな上精度は秒なのでUNIX時間で特に問題は無い
@@ -153,6 +159,7 @@ impl From<&isdb::filters::sorter::EventInfo> for Event {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Service {
     service_id: u16,
     is_oneseg: bool,

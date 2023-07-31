@@ -569,8 +569,8 @@ export class Skin extends HTMLElement {
   }
 
   // https://github.com/DBCTRADO/LibISDB/blob/066ec430b83338085accbf7600e74dec69e98296/LibISDB/TS/TSInformation.cpp#L157-L195
-  static getVideoComponentTypeText(component_type) {
-    switch (component_type) {
+  static getVideoComponentTypeText(componentType) {
+    switch (componentType) {
       case 0x01: return "480i[4:3]";
       case 0x02: return "480i[16:9] パンベクトルあり";
       case 0x03: return "480i[16:9]";
@@ -608,8 +608,8 @@ export class Skin extends HTMLElement {
   }
 
   // https://github.com/DBCTRADO/LibISDB/blob/066ec430b83338085accbf7600e74dec69e98296/LibISDB/TS/TSInformation.cpp#L198-L223
-  static getAudioComponentTypeText(component_type) {
-    switch (component_type) {
+  static getAudioComponentTypeText(componentType) {
+    switch (componentType) {
       case 0x01: return "Mono";
       case 0x02: return "Dual mono";
       case 0x03: return "Stereo";
@@ -672,15 +672,15 @@ export class Skin extends HTMLElement {
     function* genNormal(base, text) {
       yield {
         ...base,
-        value: base.stream.component_tag,
+        value: base.stream.componentTag,
         text,
       };
     }
 
-    for (let i = 0; i < service.audio_streams.length; i++) {
-      const stream = service.audio_streams[i];
-      const component = service.present_event?.audio_components.find(s => s.component_tag == stream.component_tag);
-      const selected = stream.component_tag === gController.activeAudioTag;
+    for (let i = 0; i < service.audioStreams.length; i++) {
+      const stream = service.audioStreams[i];
+      const component = service.presentEvent?.audioComponents.find(s => s.componentTag == stream.componentTag);
+      const selected = stream.componentTag === gController.activeAudioTag;
       const base = {
         stream,
         component,
@@ -688,15 +688,15 @@ export class Skin extends HTMLElement {
       };
 
       if (component) {
-        if (component.component_type === 0x02 && component.lang_code !== component.lang_code_2) {
+        if (component.componentType === 0x02 && component.langCode !== component.langCode2) {
           const [text1, text2] = component.text
             ? component.text.split("\n", 2)
-            : [Skin.getLanguageText(component.lang_code), Skin.getLanguageText(component.lang_code_2)];
+            : [Skin.getLanguageText(component.langCode), Skin.getLanguageText(component.langCode2)];
           yield* genDualMono(base, text1, text2, `${text1}+${text2}`);
         } else {
           const text = component.text
             ? component.text.split("\n", 1)[0]
-            : Skin.getLanguageText(component.lang_code);
+            : Skin.getLanguageText(component.langCode);
           yield* genNormal(base, text);
         }
       } else {
@@ -711,31 +711,31 @@ export class Skin extends HTMLElement {
   }
 
   getServiceInfo(service) {
-    const index = gController.services.findIndex(svc => svc.service_id === service.service_id);
-    let text = service.present_event?.name ?? `サービス${index + 1}`;
-    if (service.service_name) {
-      text = `${service.service_name} ${text}`;
+    const index = gController.services.findIndex(svc => svc.serviceId === service.serviceId);
+    let text = service.presentEvent?.name ?? `サービス${index + 1}`;
+    if (service.serviceName) {
+      text = `${service.serviceName} ${text}`;
     }
 
     return {
-      value: service.service_id,
-      selected: service.service_id === gController.currentServiceId,
-      disabled: service.video_streams.length === 0 || service.audio_streams.length === 0,
+      value: service.serviceId,
+      selected: service.serviceId === gController.currentServiceId,
+      disabled: service.videoStreams.length === 0 || service.audioStreams.length === 0,
       text,
     };
   }
 
   getPresentEventText(service) {
-    const event = service.present_event;
+    const event = service.presentEvent;
     if (!event) {
       return "";
     }
 
     // https://github.com/DBCTRADO/TVTest/blob/41ce0bcfb39ccd98cfd5721cd197961020a60293/src/EventInfoPopup.cpp#L114-L199
 
-    const start_time = new Date(event.start_time * 1000);
-    const end_time = new Date((event.start_time + event.duration) * 1000);
-    let text = `${start_time.toLocaleString()}～${end_time.toLocaleTimeString()}\n`;
+    const startTime = new Date(event.startTime * 1000);
+    const endTime = new Date((event.startTime + event.duration) * 1000);
+    let text = `${startTime.toLocaleString()}～${endTime.toLocaleTimeString()}\n`;
     if (event.name) {
       text += `${event.name}\n`;
     }
@@ -745,39 +745,39 @@ export class Skin extends HTMLElement {
       text += `\n${event.text}\n`;
     }
 
-    if (event.extended_items.length > 0) {
-      for (const item of event.extended_items) {
+    if (event.extendedItems.length > 0) {
+      for (const item of event.extendedItems) {
         text += `\n${item.description}\n${item.item.trimEnd()}`;
       }
 
       text += "\n";
     }
 
-    if (event.video_components.length > 0) {
-      const video = Skin.getVideoComponentTypeText(event.video_components[0].component_type);
+    if (event.videoComponents.length > 0) {
+      const video = Skin.getVideoComponentTypeText(event.videoComponents[0].componentType);
       if (video !== undefined) {
         text += `\n■映像：${video}`;
       }
     }
-    if (event.audio_components.length > 0) {
+    if (event.audioComponents.length > 0) {
       function format(component) {
         let text = "";
         let bilingual = false;
-        if (component.component_type === 0x02 && component.lang_code_2 && component.lang_code !== component.lang_code_2) {
+        if (component.componentType === 0x02 && component.langCode2 && component.langCode !== component.langCode2) {
           text += "Mono 二カ国語";
           bilingual = true;
         } else {
-          text += Skin.getAudioComponentTypeText(component.component_type) ?? "?";
+          text += Skin.getAudioComponentTypeText(component.componentType) ?? "?";
         }
 
         if (component.text) {
           text += ` [${component.text.replaceAll("\n", "/")}]`;
         } else if (bilingual) {
-          const lang1 = Skin.getLanguageText(component.lang_code);
-          const lang2 = Skin.getLanguageText(component.lang_code_2);
+          const lang1 = Skin.getLanguageText(component.langCode);
+          const lang2 = Skin.getLanguageText(component.langCode2);
           text += ` [${lang1}/${lang2}]`;
         } else {
-          const lang = Skin.getLanguageText(component.lang_code);
+          const lang = Skin.getLanguageText(component.langCode);
           text += ` [${lang}]`;
         }
 
@@ -785,17 +785,17 @@ export class Skin extends HTMLElement {
       }
 
       text += "\n■音声：";
-      if (event.audio_components.length === 1) {
-        text += format(event.audio_components[0]);
+      if (event.audioComponents.length === 1) {
+        text += format(event.audioComponents[0]);
       } else {
-        for (let i = 0; i < event.audio_components.length; i++) {
+        for (let i = 0; i < event.audioComponents.length; i++) {
           if (i === 0) {
             text += "主：";
           } else {
             text += " / 副：";
           }
 
-          text += format(event.audio_components[i]);
+          text += format(event.audioComponents[i]);
         }
       }
     }
@@ -829,7 +829,7 @@ export class Skin extends HTMLElement {
    * 指定サービスが選択中サービスの場合、ストリーム情報も更新する。
    */
   updateService(serviceId) {
-    const index = gController.services.findIndex(svc => svc.service_id === serviceId);
+    const index = gController.services.findIndex(svc => svc.serviceId === serviceId);
     const service = gController.services.get(index);
 
     const option = this.#services.options[index];
@@ -851,7 +851,7 @@ export class Skin extends HTMLElement {
    * ストリーム情報も更新する。
    */
   updateSelectedService() {
-    const index = gController.services.findIndex(svc => svc.service_id === gController.currentServiceId);
+    const index = gController.services.findIndex(svc => svc.serviceId === gController.currentServiceId);
     this.#services.selectedIndex = index;
 
     const service = gController.currentService;
@@ -879,11 +879,11 @@ export class Skin extends HTMLElement {
       return;
     }
 
-    this.#videoStreams.replaceChildren(...service.video_streams.map((stream, i) => {
+    this.#videoStreams.replaceChildren(...service.videoStreams.map((stream, i) => {
       const option = document.createElement("option");
-      option.value = stream.component_tag;
+      option.value = stream.componentTag;
       option.textContent = `動画${i + 1}`;
-      option.selected = stream.component_tag === gController.activeAudioTag;
+      option.selected = stream.componentTag === gController.activeAudioTag;
       return option;
     }));
     this.#videoStreams.title = `${gController.videoWidth}x${gController.videoHeight}`;
@@ -904,35 +904,35 @@ export class Skin extends HTMLElement {
     let text = "";
     const service = gController.currentService;
     if (service) {
-      const stream = service.audio_streams.find(s => s.component_tag === gController.activeAudioTag);
-      const component = service.present_event?.audio_components.find(s => s.component_tag === stream.component_tag);
+      const stream = service.audioStreams.find(s => s.componentTag === gController.activeAudioTag);
+      const component = service.presentEvent?.audioComponents.find(s => s.componentTag === stream.componentTag);
 
       // https://github.com/DBCTRADO/TVTest/blob/ace93932082f1d64ea6bd87913036701ae206dc5/src/UICore.cpp#L591-L725
 
       const dualMonoMode = gController.dualMonoMode;
       if (dualMonoMode) {
-        if (component && component.component_type === 0x02 && component.lang_code_2 &&
-          component.lang_code !== component.lang_code_2)
+        if (component && component.componentType === 0x02 && component.langCode2 &&
+          component.langCode !== component.langCode2)
         {
           switch (dualMonoMode) {
             case "left":
-              text += Skin.getLanguageText(component.lang_code);
+              text += Skin.getLanguageText(component.langCode);
               break;
 
             case "right":
-              text += Skin.getLanguageText(component.lang_code_2);
+              text += Skin.getLanguageText(component.langCode2);
               break;
 
             case "mix": {
-              const lang1 = Skin.getLanguageShortText(component.lang_code);
-              const lang2 = Skin.getLanguageShortText(component.lang_code_2);
+              const lang1 = Skin.getLanguageShortText(component.langCode);
+              const lang2 = Skin.getLanguageShortText(component.langCode2);
               text += `${lang1}+${lang2} [混]`;
               break;
             }
 
             case "stereo": {
-              const lang1 = Skin.getLanguageShortText(component.lang_code);
-              const lang2 = Skin.getLanguageShortText(component.lang_code_2);
+              const lang1 = Skin.getLanguageShortText(component.langCode);
+              const lang2 = Skin.getLanguageShortText(component.langCode2);
               text += `${lang1}+${lang2} [ス]`;
               break;
             }
@@ -956,7 +956,7 @@ export class Skin extends HTMLElement {
               break;
           }
         }
-      } else if (service.audio_streams.length > 1) {
+      } else if (service.audioStreams.length > 1) {
         let format;
         switch (gController.audioChannels) {
           case 1:
@@ -984,7 +984,7 @@ export class Skin extends HTMLElement {
         if (audio) {
           text += audio;
         } else {
-          text += Skin.getLanguageText(component.lang_code);
+          text += Skin.getLanguageText(component.langCode);
         }
       } else {
         switch (gController.audioChannels) {

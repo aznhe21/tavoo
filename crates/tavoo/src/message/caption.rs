@@ -2,6 +2,7 @@ use super::bin::Binary;
 use super::str::AribString;
 
 #[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DrcsData {
     depth: u8,
     width: u8,
@@ -23,21 +24,37 @@ impl From<&isdb::pes::caption::DrcsUncompressedData<'_>> for DrcsData {
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum DrcsCharCode {
+    #[serde(rename_all = "camelCase")]
     Drcs0 { code1: u8, code2: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs1 { code: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs2 { code: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs3 { code: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs4 { code: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs5 { code: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs6 { code: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs7 { code: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs8 { code: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs9 { code: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs10 { code: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs11 { code: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs12 { code: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs13 { code: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs14 { code: u8 },
+    #[serde(rename_all = "camelCase")]
     Drcs15 { code: u8 },
 }
 
@@ -67,6 +84,7 @@ impl From<&isdb::pes::caption::DrcsCharCode> for DrcsCharCode {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DrcsCode {
     character_code: DrcsCharCode,
     fonts: Vec<DrcsData>,
@@ -100,6 +118,7 @@ impl From<&isdb::pes::caption::Drcs<'_>> for Drcs {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Bitmap {
     x_position: u16,
     y_position: u16,
@@ -261,6 +280,7 @@ impl From<isdb::pes::caption::CaptionRollupMode> for CaptionRollupMode {
 
 // - TCSは「8単位符号」のみ
 #[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CaptionLanguage {
     // 0～1
     language_tag: u8,
@@ -300,6 +320,7 @@ impl From<isdb::filters::sorter::CaptionGroup> for CaptionGroup {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CaptionManagementData {
     group: CaptionGroup,
     tmd: TimeControlMode,
@@ -331,6 +352,7 @@ impl CaptionManagementData {
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CaptionData {
     group: CaptionGroup,
     language_tag: u8,

@@ -15,7 +15,7 @@ const DT_FUTURE = 10;
  *
  * @typedef {{
  *   type: "char-size";
- *   char_size: CharSize;
+ *   charSize: CharSize;
  * } | {
  *   type: "string";
  *   string: string;
@@ -146,11 +146,11 @@ const DT_FUTURE = 10;
  *   depth: number;
  *   width: number;
  *   height: number;
- *   pattern_data: string;
+ *   patternData: string;
  * }} DrcsData
  *
  * @typedef {{
- *   character_code: DrcsCharCode;
+ *   characterCode: DrcsCharCode;
  *   fonts: DrcsData[];
  * }} DrcsCode
  *
@@ -158,16 +158,16 @@ const DT_FUTURE = 10;
  *   depth: number;
  *   width: number;
  *   height: number;
- *   pattern_data: string;
+ *   patternData: string;
  * }} DrcsFont
  *
  * @typedef {{
- *   language_tag: number;
- *   dmf_recv: DisplayMode;
- *   dmf_playback: DisplayMode;
+ *   languageTag: number;
+ *   dmfRecv: DisplayMode;
+ *   dmfPlayback: DisplayMode;
  *   format: DisplayFormat | null;
- *   lang_code: string;
- *   rollup_mode: "non-rollup" | "rollup" | "reserved";
+ *   langCode: string;
+ *   rollupMode: "non-rollup" | "rollup" | "reserved";
  * }} CaptionLanguage
  *
  * @typedef {{
@@ -178,10 +178,10 @@ const DT_FUTURE = 10;
  *   drcs: DrcsCode[];
  * } | {
  *   type: "bitmap";
- *   x_position: number;
- *   y_position: number;
- *   color_indices: string;
- *   png_data: string;
+ *   xPosition: number;
+ *   yPosition: number;
+ *   colorIndices: string;
+ *   pngData: string;
  * }} CaptionDataUnit
  *
  * @typedef {{
@@ -189,14 +189,14 @@ const DT_FUTURE = 10;
  *   group: "A" | "B";
  *   tmd: "free" | "real-time";
  *   languages: CaptionLanguage[];
- *   data_units: CaptionDataUnit[];
+ *   dataUnits: CaptionDataUnit[];
  * } | {
  *   type: "data";
  *   group: "A" | "B";
- *   language_tag: number;
+ *   languageTag: number;
  *   tmd: "free" | "real-time";
  *   stm: number | null;
- *   data_units: CaptionDataUnit[];
+ *   dataUnits: CaptionDataUnit[];
  * } | {
  *   type: "postponed";
  *   postponed: AribChar[];
@@ -218,7 +218,7 @@ export function createDrcsBitmap(font) {
   const bpp = font.depth === 0 ? 1 : 2;
   const size = font.width * font.height;
   const bits = size * bpp;
-  const pattern = Uint8Array.from(atob(font.pattern_data), c => c.charCodeAt(0));
+  const pattern = Uint8Array.from(atob(font.patternData), c => c.charCodeAt(0));
   if (pattern.length * 8 !== bits) {
     return undefined;
   }
@@ -728,7 +728,7 @@ class Renderer {
 
     switch (caption.type) {
       case "management-data": {
-        // rollup_modeには対応しない
+        // rollupModeには対応しない
         this.#lastMdPos = pos;
 
         if (this.#dataGroup !== caption.group) {
@@ -738,24 +738,24 @@ class Renderer {
 
         const langIndex = !this.useSubLang || caption.languages.length < 2 ? 0 : 1;
         const lang = caption.languages[langIndex];
-        this.#languageTag = lang.language_tag;
+        this.#languageTag = lang.languageTag;
 
         // ワンセグでは固定値または運用されない
         if (!this.isOneseg && lang.format !== null) {
           this.#displayFormat = lang.format;
-          // TODO: リアルタイム視聴時はdmf_recv
-          this.#displayMode = lang.dmf_playback;
+          // TODO: リアルタイム視聴時はdmfRecv
+          this.#displayMode = lang.dmfPlayback;
           this.#svg.setAttribute("caption-display-format", this.#displayFormat);
           this.#svg.setAttribute("caption-display-mode", this.#displayMode);
 
-          this.#processDataUnits(pos, caption.data_units);
+          this.#processDataUnits(pos, caption.dataUnits);
         }
         break;
       }
 
       case "data":
-        if (caption.group === this.#dataGroup && caption.language_tag === this.#languageTag) {
-          this.#processDataUnits(pos, caption.data_units);
+        if (caption.group === this.#dataGroup && caption.languageTag === this.#languageTag) {
+          this.#processDataUnits(pos, caption.dataUnits);
         }
         break;
 
@@ -792,7 +792,7 @@ class Renderer {
         case "drcs":
           // TODO: TTF化
           for (const code of unit.drcs) {
-            const drcsCode = this.#drcsSets.get(code.character_code);
+            const drcsCode = this.#drcsSets.get(code.characterCode);
             drcsCode.clear();
 
             for (const font of code.fonts) {
@@ -1076,7 +1076,7 @@ class Renderer {
 
       switch (char.type) {
         case "char-size":
-          sectionConfig = SECTION_CONFIGS[char.char_size];
+          sectionConfig = SECTION_CONFIGS[char.charSize];
           break;
 
         case "string": {
@@ -1590,8 +1590,8 @@ export class Prompter extends HTMLElement {
         break;
 
       case "service-changed":
-        this.#rendererCaption.isOneseg = gController.currentService?.is_oneseg ?? false;
-        this.#rendererSuperimpose.isOneseg = gController.currentService?.is_oneseg ?? false;
+        this.#rendererCaption.isOneseg = gController.currentService?.isOneseg ?? false;
+        this.#rendererSuperimpose.isOneseg = gController.currentService?.isOneseg ?? false;
 
         this.#rendererCaption.resetAll();
         this.#rendererSuperimpose.resetAll();

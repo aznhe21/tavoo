@@ -78,13 +78,13 @@ export class Services {
 
     const indices = {};
     for (let i = 0; i < services.length; i++) {
-      indices[services[i].service_id] = i;
+      indices[services[i].serviceId] = i;
     }
     this.#indices = indices;
   }
 
   _updateOne(service) {
-    const index = this.#indices[service.service_id];
+    const index = this.#indices[service.serviceId];
     if (index === undefined) {
       return;
     }
@@ -224,7 +224,7 @@ export const gController = new class Controller extends EventTarget {
 
       case "audio-channels":
         // 音声のチャンネル数が更新された
-        this.#audioChannels = noti.num_channels;
+        this.#audioChannels = noti.numChannels;
         this.dispatchEvent(new PlayerEvent("audio-channels"));
         break;
 
@@ -243,35 +243,35 @@ export const gController = new class Controller extends EventTarget {
       case "service": {
         // 特定のサービスが更新された
         this.#services._updateOne(noti.service);
-        this.dispatchEvent(new ServiceEvent("service", { serviceId: noti.service.service_id }));
+        this.dispatchEvent(new ServiceEvent("service", { serviceId: noti.service.serviceId }));
         break;
       }
 
       case "event": {
         // サービスのイベント情報が更新された
-        const service = this.#services.getById(noti.service_id);
+        const service = this.#services.getById(noti.serviceId);
         if (service) {
-          if (noti.is_present) {
-            service.present_event = noti.event;
+          if (noti.isPresent) {
+            service.presentEvent = noti.event;
           } else {
-            service.following_event = noti.event;
+            service.followingEvent = noti.event;
           }
-          this.dispatchEvent(new EventEvent("event", { serviceId: noti.service_id, isPresent: noti.is_present }));
+          this.dispatchEvent(new EventEvent("event", { serviceId: noti.serviceId, isPresent: noti.isPresent }));
         }
         break;
       }
 
       case "service-changed":
         // サービスが選択し直された
-        this.#currentServiceId = noti.new_service_id;
-        this.#activeVideoTag = noti.video_component_tag;
-        this.#activeAudioTag = noti.audio_component_tag;
+        this.#currentServiceId = noti.newServiceId;
+        this.#activeVideoTag = noti.videoComponentTag;
+        this.#activeAudioTag = noti.audioComponentTag;
         this.dispatchEvent(new PlayerEvent("service-changed"));
         break;
 
       case "stream-changed":
-        this.#activeVideoTag = noti.video_component_tag;
-        this.#activeAudioTag = noti.audio_component_tag;
+        this.#activeVideoTag = noti.videoComponentTag;
+        this.#activeAudioTag = noti.audioComponentTag;
         this.dispatchEvent(new PlayerEvent("stream-changed"));
         break;
 
@@ -630,7 +630,7 @@ export const gController = new class Controller extends EventTarget {
   selectService(serviceId) {
     window.chrome.webview.postMessage({
       command: "select-service",
-      service_id: serviceId,
+      serviceId,
     });
   }
 
@@ -640,7 +640,7 @@ export const gController = new class Controller extends EventTarget {
   selectVideoStream(componentTag) {
     window.chrome.webview.postMessage({
       command: "select-video-stream",
-      component_tag: componentTag,
+      componentTag,
     });
   }
 
@@ -650,7 +650,7 @@ export const gController = new class Controller extends EventTarget {
   selectAudioStream(componentTag) {
     window.chrome.webview.postMessage({
       command: "select-audio-stream",
-      component_tag: componentTag,
+      componentTag,
     });
   }
 };
