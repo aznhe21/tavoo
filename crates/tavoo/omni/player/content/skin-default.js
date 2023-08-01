@@ -690,7 +690,7 @@ export class Skin extends HTMLElement {
     function* genNormal(base, text) {
       yield {
         ...base,
-        value: base.stream.componentTag,
+        value: base.stream.componentTag?.toString() ?? "",
         text,
       };
     }
@@ -737,14 +737,14 @@ export class Skin extends HTMLElement {
     }
 
     return {
-      value: service.serviceId,
+      value: service.serviceId.toString(),
       selected: service.serviceId === gController.currentServiceId,
       disabled: service.videoStreams.length === 0 || service.audioStreams.length === 0,
       text,
     };
   }
 
-  /** @param {import("./message.d.ts").Service service} */
+  /** @param {import("./message.d.ts").Service} service */
   getPresentEventText(service) {
     const event = service.presentEvent;
     if (!event) {
@@ -760,7 +760,7 @@ export class Skin extends HTMLElement {
       text += `${event.name}\n`;
     }
 
-    const eventText = event.text.trimEnd();
+    const eventText = event.text?.trimEnd();
     if (eventText) {
       text += `\n${event.text}\n`;
     }
@@ -904,7 +904,7 @@ export class Skin extends HTMLElement {
 
     this.#videoStreams.replaceChildren(...service.videoStreams.map((stream, i) => {
       const option = document.createElement("option");
-      option.value = stream.componentTag;
+      option.value = stream.componentTag?.toString() ?? "";
       option.textContent = `動画${i + 1}`;
       option.selected = stream.componentTag === gController.activeAudioTag;
       return option;
