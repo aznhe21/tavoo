@@ -1358,8 +1358,8 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
             )
         };
 
-        // 無限ループにならないよう最大でも3回試行する（多くは2回以内で収束する）
-        for _ in 0..3 {
+        // 無限ループにならないよう最大でも6回試行する
+        for _ in 0..6 {
             let seek_pos = if let Direction::Forward = dir {
                 SeekFrom::Current(length.estimate_size(diff - FILE_OFFSET) as i64)
             } else {
@@ -1427,6 +1427,7 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
             }
         }
 
+        // TODO: 二分探索？
         if let Direction::Forward = dir {
             // 早送りでは飛ばすだけ
             log::info!("ビットレートによるシークに失敗。読み飛ばして再検索");
