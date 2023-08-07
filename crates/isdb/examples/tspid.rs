@@ -74,7 +74,7 @@ impl isdb::demux::Filter for Filter {
     }
 
     fn on_discontinued(&mut self, packet: &isdb::Packet) {
-        let mut count = &mut self.counter.counts[packet.pid()];
+        let count = &mut self.counter.counts[packet.pid()];
         count.continuity_error += 1;
     }
 
@@ -276,7 +276,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             continue;
         }
 
-        let mut count = &mut demuxer.filter_mut().counter.counts[packet.pid()];
+        let count = &mut demuxer.filter_mut().counter.counts[packet.pid()];
         count.input += 1;
         if packet.is_scrambled() {
             count.scrambled += 1;

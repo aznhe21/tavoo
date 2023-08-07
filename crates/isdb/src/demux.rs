@@ -473,14 +473,14 @@ impl<T: Filter> Demuxer<T> {
             self.filter.on_discontinued(packet);
         }
 
-        let Some(state) = self.table.0[pid].as_mut() else {
-            return;
+        let (tag, mut store) = match self.table.0[pid].as_mut() {
+            None => return,
+            Some(state) => (
+                state.tag,
+                // 所有権を切り離すためにパケット処理中はTempを設定
+                std::mem::replace(&mut state.store, PacketStore::Temp),
+            ),
         };
-        let tag = state.tag;
-
-        // 所有権を切り離すためにパケット処理中はTempを設定
-        let mut store = std::mem::replace(&mut state.store, PacketStore::Temp);
-        drop(state);
 
         self.handle_store(packet, tag, cc_ok, &mut store);
 
