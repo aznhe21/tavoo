@@ -1,0 +1,72 @@
+variables:
+  rust_stable: stable
+  rust_min: 1.66.0
+
+  RUSTFLAGS: -Dwarnings
+  # https://github.com/dtolnay/rust-toolchain/issues/26
+  CARGO_INCREMENTAL: "0"
+
+windows:test:
+  extends: [.windows-runner-rust, .rust-cache]
+  script:
+    - cargo test --workspace
+
+windows:minrust:
+  extends: [.windows-runner-rust, .rust-cache]
+  variables:
+    SETUP_RUST_TOOLCHAIN: $rust_min
+    RUSTFLAGS: "" # remove -Dwarnings
+  script:
+    - cargo check --workspace --all-features
+
+windows:build:
+  extends: [.windows-runner-rust, .rust-cache]
+  needs: [windows:test]
+  script:
+    - cargo build -p tavoo
+
+##############################
+
+.rust-cache:
+  variables:
+    CARGO_HOME: ${CI_PROJECT_DIR}/.cargo
+  after_script:
+    # https://github.com/rust-lang/cargo/issues/5885#issuecomment-581215129
+    - rm target/.rustc_info.json
+    - rm -r target/*/examples
+    - rm -r target/*/incremental
+  cache:
+    key:
+      files:
+        - Cargo.lock
+      prefix: $CI_JOB_NAME_SLUG
+    paths:
+      # cates cache: https://doc.rust-lang.org/stable/cargo/guide/cargo-home.html#caching-the-cargo-home-in-ci
+      - .cargo/.crates.toml
+      - .cargo/.crates2.json
+      - .cargo/bin/
+      - .cargo/registry/{index,cache}/
+      - .cargo/git/db/
+      # build cache
+      - target/
+
+.windows-runner-rust:
+  tags:
+    - shared-windows
+    - windows-1809
+  variables:
+    SETUP_RUST_TOOLCHAIN: stable
+  before_script:
+    - |
+      $ProgressPreference = "silentlyContinue"
+      Invoke-WebRequest -Uri https://win.rustup.rs/x86_64 -OutFile rustup-init.exe
+      .\rustup-init.exe -q -y --default-toolchain none
+      Remove-Item .\rustup-init.exe
+      if ($Env:CARGO_HOME) {
+        $Env:Path += ";$Env:CARGO_HOME\bin"
+      } else {
+        $Env:Path += ";$Env:USERPROFILE\.cargo\bin"
+      }
+
+      rustup toolchain install $SETUP_RUST_TOOLCHAIN --profile minimal --no-self-update
+      rustup default $SETUP_RUST_TOOLCHAIN
