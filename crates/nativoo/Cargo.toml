@@ -16,7 +16,7 @@ isdb = { path = "../isdb" }
 log = "0.4.17"
 memchr = "2.5.0"
 parking_lot = "0.12.1"
-winit = "0.28.3"
+tao = "0.22.0"
 
 [target.'cfg(windows)'.dependencies]
 webview2-com-sys = "0.24.0"

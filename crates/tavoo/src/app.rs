@@ -5,8 +5,8 @@ use std::time::Duration;
 
 use isdb::psi::table::ServiceId;
 use nativoo::{player, webview};
-use winit::event::{Event, WindowEvent};
-use winit::window::WindowBuilder;
+use tao::event::{Event, WindowEvent};
+use tao::window::WindowBuilder;
 
 use crate::message::caption::Caption;
 use crate::message::time::Timestamp;
@@ -28,11 +28,11 @@ enum UserEvent {
 }
 
 #[derive(Debug, Clone)]
-struct EventLoopProxy(winit::event_loop::EventLoopProxy<UserEvent>);
+struct EventLoopProxy(tao::event_loop::EventLoopProxy<UserEvent>);
 
 impl EventLoopProxy {
     #[inline]
-    pub fn new(event_loop: &winit::event_loop::EventLoop<UserEvent>) -> EventLoopProxy {
+    pub fn new(event_loop: &tao::event_loop::EventLoop<UserEvent>) -> EventLoopProxy {
         EventLoopProxy(event_loop.create_proxy())
     }
 
@@ -334,7 +334,7 @@ impl Rect {
 }
 
 pub struct App {
-    window: winit::window::Window,
+    window: tao::window::Window,
     player: player::Player<PlayerEventHandler>,
     webview: webview::WebView,
     loaded: bool,
@@ -350,7 +350,7 @@ pub struct App {
 impl App {
     #[inline]
     fn new(
-        window: winit::window::Window,
+        window: tao::window::Window,
         player: player::Player<PlayerEventHandler>,
         webview: webview::WebView,
     ) -> App {
@@ -377,7 +377,7 @@ impl App {
     /// WebViewから指示された相対位置を使用し、実際にプレイヤー部分の位置を設定する。
     ///
     /// リサイズ時等で既にウィンドウの大きさが分かっている場合は引数`size`に指定する。
-    fn resize_video(&mut self, size: Option<winit::dpi::PhysicalSize<u32>>) {
+    fn resize_video(&mut self, size: Option<tao::dpi::PhysicalSize<u32>>) {
         let size = size.unwrap_or_else(|| self.window.inner_size());
         // player_boundsの各値は生成時に0.0～1.0の範囲内に制限されておりasで問題ない
         let r = self.player.set_bounds(
@@ -433,7 +433,7 @@ impl App {
             // 初回の読み込み完了でウィンドウを表示する
             self.loaded = true;
             self.window.set_visible(true);
-            self.window.focus_window();
+            self.window.set_focus();
             if let Err(e) = self.webview.focus() {
                 log::error!("webview.focus: {}", e);
             }
@@ -635,7 +635,7 @@ impl App {
 pub fn run() -> anyhow::Result<()> {
     env_logger::init();
 
-    let event_loop = winit::event_loop::EventLoopBuilder::<UserEvent>::with_user_event().build();
+    let event_loop = tao::event_loop::EventLoopBuilder::<UserEvent>::with_user_event().build();
     let proxy = EventLoopProxy::new(&event_loop);
 
     let window = WindowBuilder::new()
@@ -693,7 +693,7 @@ pub fn run() -> anyhow::Result<()> {
     let mut app = App::new(window, player, webview);
 
     event_loop.run(move |event, _, control_flow| {
-        control_flow.set_wait();
+        *control_flow = tao::event_loop::ControlFlow::Wait;
 
         match event {
             Event::WindowEvent { event, .. } => match event {
@@ -719,7 +719,7 @@ pub fn run() -> anyhow::Result<()> {
                 WindowEvent::DroppedFile(path) => app.open(&*path),
 
                 WindowEvent::CloseRequested => {
-                    control_flow.set_exit();
+                    *control_flow = tao::event_loop::ControlFlow::Exit;
                 }
 
                 _ => {}
@@ -730,7 +730,7 @@ pub fn run() -> anyhow::Result<()> {
                 UserEvent::WebViewCreated(r) => {
                     if let Err(e) = r {
                         log::error!("WebViewの生成に失敗：{}", e);
-                        control_flow.set_exit_with_code(1);
+                        *control_flow = tao::event_loop::ControlFlow::ExitWithCode(1);
                     }
                 }
             },

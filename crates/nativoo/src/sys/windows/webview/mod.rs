@@ -11,6 +11,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use fxhash::FxHashMap;
 use parking_lot::Mutex;
+use tao::platform::windows::WindowExtWindows;
 use webview2_com_sys::Microsoft::Web::WebView2::Win32 as WV2;
 use windows::core::{self as C, ComInterface, Result as WinResult};
 use windows::w;
@@ -18,7 +19,6 @@ use windows::Win32::Foundation as F;
 use windows::Win32::System::Com;
 use windows::Win32::System::Ole;
 use windows::Win32::UI::WindowsAndMessaging as WM;
-use winit::platform::windows::WindowExtWindows;
 
 use crate::sys::com;
 use crate::sys::wide_string::WideString;
@@ -171,7 +171,7 @@ impl Builder {
 
     pub fn build(
         self,
-        window: &winit::window::Window,
+        window: &tao::window::Window,
         create_completed: Box<dyn FnOnce(Result<()>)>,
     ) -> WebView {
         let Self {

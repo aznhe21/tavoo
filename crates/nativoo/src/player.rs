@@ -122,7 +122,7 @@ pub struct Player<H> {
 
 impl<H: EventHandler + Clone> Player<H> {
     /// ウィンドウに描画する映像プレイヤーを生成する。
-    pub fn new(window: &winit::window::Window, handler: H) -> Result<Player<H>> {
+    pub fn new(window: &tao::window::Window, handler: H) -> Result<Player<H>> {
         Ok(Player {
             inner: imp::Player::new(window, handler)?,
         })

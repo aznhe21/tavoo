@@ -12,9 +12,9 @@ use std::time::Duration;
 use anyhow::Result;
 use isdb::psi::table::ServiceId;
 use parking_lot::Mutex;
+use tao::platform::windows::WindowExtWindows;
 use windows::Win32::Foundation as F;
 use windows::Win32::Media::MediaFoundation as MF;
-use winit::platform::windows::WindowExtWindows;
 
 use crate::player::{DualMonoMode, EventHandler};
 
@@ -47,7 +47,7 @@ pub struct Player<H> {
 }
 
 impl<H: EventHandler + Clone> Player<H> {
-    pub fn new(window: &winit::window::Window, event_handler: H) -> Result<Player<H>> {
+    pub fn new(window: &tao::window::Window, event_handler: H) -> Result<Player<H>> {
         unsafe {
             MF::MFStartup(
                 (MF::MF_SDK_VERSION << 16) | MF::MF_API_VERSION,

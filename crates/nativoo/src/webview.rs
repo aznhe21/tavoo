@@ -137,9 +137,9 @@ impl Builder {
     ///
     /// 生成が完了したら`create_completed`が呼ばれる。引数の`Result`によって生成時のエラーを捉えることができる。
     ///
-    /// [`Window`]: winit::window::Window
+    /// [`Window`]: tao::window::Window
     #[inline]
-    pub fn build<F>(self, window: &winit::window::Window, create_completed: F) -> WebView
+    pub fn build<F>(self, window: &tao::window::Window, create_completed: F) -> WebView
     where
         F: FnOnce(Result<()>) + 'static,
     {
@@ -169,9 +169,9 @@ impl WebView {
     ///
     /// 生成が完了したら`create_completed`が呼ばれる。引数の`Result`によって生成時のエラーを捉えることができる。
     ///
-    /// [`Window`]: winit::window::Window
+    /// [`Window`]: tao::window::Window
     #[inline]
-    pub fn new<F>(window: &winit::window::Window, create_completed: F) -> WebView
+    pub fn new<F>(window: &tao::window::Window, create_completed: F) -> WebView
     where
         F: FnOnce(Result<()>) + 'static,
     {
