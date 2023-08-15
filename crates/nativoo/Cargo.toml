@@ -35,3 +35,12 @@ features = [
   "Win32_System_Ole",
   "Win32_UI_Shell",
 ]
+
+[target.'cfg(target_os = "linux")'.dependencies]
+gdk = "0.16.2"
+gio = "0.16.7"
+glib = "0.16.9"
+gtk = "0.16.2"
+javascriptcore-rs = "1.0.0"
+soup3 = "0.3.2"
+webkit2gtk = { version = "1.1.0", features = ["v2_38"] }
