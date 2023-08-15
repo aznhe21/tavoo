@@ -93,11 +93,11 @@ type CreateCompleted = Once<Box<dyn FnOnce(Result<()>) -> ()>>;
 
 #[derive(Default)]
 struct Handlers {
-    file_drop_handler: Option<Box<dyn FnMut(&Path)>>,
-    navigation_starting_handler: Option<Box<dyn FnMut(&str) -> bool>>,
-    navigation_completed_handler: Option<Box<dyn FnMut()>>,
-    document_title_changed_handler: Option<Box<dyn FnMut(&str)>>,
-    web_message_received_handler: Option<Box<dyn FnMut(&str)>>,
+    file_drop_handler: Option<Box<dyn Fn(&Path)>>,
+    navigation_starting_handler: Option<Box<dyn Fn(&str) -> bool>>,
+    navigation_completed_handler: Option<Box<dyn Fn()>>,
+    document_title_changed_handler: Option<Box<dyn Fn(&str)>>,
+    web_message_received_handler: Option<Box<dyn Fn(&str)>>,
 }
 
 #[derive(Default)]
@@ -136,35 +136,35 @@ impl Builder {
 
     pub fn file_drop_handler<F>(&mut self, handler: F)
     where
-        F: FnMut(&Path) + 'static,
+        F: Fn(&Path) + 'static,
     {
         self.handlers.file_drop_handler = Some(Box::new(handler));
     }
 
     pub fn navigation_starting_handler<F>(&mut self, handler: F)
     where
-        F: FnMut(&str) -> bool + 'static,
+        F: Fn(&str) -> bool + 'static,
     {
         self.handlers.navigation_starting_handler = Some(Box::new(handler));
     }
 
     pub fn navigation_completed_handler<F>(&mut self, handler: F)
     where
-        F: FnMut() + 'static,
+        F: Fn() + 'static,
     {
         self.handlers.navigation_completed_handler = Some(Box::new(handler));
     }
 
     pub fn document_title_changed_handler<F>(&mut self, handler: F)
     where
-        F: FnMut(&str) + 'static,
+        F: Fn(&str) + 'static,
     {
         self.handlers.document_title_changed_handler = Some(Box::new(handler));
     }
 
     pub fn web_message_received_handler<F>(&mut self, handler: F)
     where
-        F: FnMut(&str) + 'static,
+        F: Fn(&str) + 'static,
     {
         self.handlers.web_message_received_handler = Some(Box::new(handler));
     }
@@ -527,7 +527,7 @@ impl WebView {
         hwnd_webview: F::HWND,
         controller: &ICoreWebView2Controller,
         drop_target: Option<&Ole::IDropTarget>,
-        mut handler: Option<Box<dyn FnMut()>>,
+        handler: Option<Box<dyn Fn()>>,
     ) -> WV2::ICoreWebView2NavigationCompletedEventHandler {
         let mut loaded = false;
         let controller = controller.clone();
@@ -557,7 +557,7 @@ impl WebView {
                 loaded = true;
             }
 
-            if let Some(handler) = &mut handler {
+            if let Some(handler) = &handler {
                 handler();
             }
 
@@ -616,7 +616,7 @@ impl WebView {
     }
 
     fn navigation_starting(
-        mut handler: Box<dyn FnMut(&str) -> bool>,
+        handler: Box<dyn Fn(&str) -> bool>,
     ) -> WV2::ICoreWebView2NavigationStartingEventHandler {
         callback::navigation_starting_event_handler(move |_, args| {
             let args = args.ok_or(F::E_POINTER)?;
@@ -631,7 +631,7 @@ impl WebView {
     }
 
     fn title_changed_handler(
-        mut handler: Box<dyn FnMut(&str)>,
+        handler: Box<dyn Fn(&str)>,
     ) -> WV2::ICoreWebView2DocumentTitleChangedEventHandler {
         callback::document_title_changed_event_handler(move |webview, _| {
             let webview = webview.ok_or(F::E_POINTER)?;
@@ -643,7 +643,7 @@ impl WebView {
     }
 
     fn web_message_handler(
-        mut handler: Box<dyn FnMut(&str)>,
+        handler: Box<dyn Fn(&str)>,
     ) -> WV2::ICoreWebView2WebMessageReceivedEventHandler {
         callback::web_message_received_event_handler(move |_, args| {
             let args = args.ok_or(F::E_POINTER)?;

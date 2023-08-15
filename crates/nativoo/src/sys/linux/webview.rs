@@ -20,11 +20,11 @@ impl ResponseBody {
 
 #[derive(Default)]
 struct Handlers {
-    file_drop_handler: Option<Box<dyn FnMut(&Path)>>,
-    navigation_starting_handler: Option<Box<dyn FnMut(&str) -> bool>>,
-    navigation_completed_handler: Option<Box<dyn FnMut()>>,
-    document_title_changed_handler: Option<Box<dyn FnMut(&str)>>,
-    web_message_received_handler: Option<Box<dyn FnMut(&str)>>,
+    file_drop_handler: Option<Box<dyn Fn(&Path)>>,
+    navigation_starting_handler: Option<Box<dyn Fn(&str) -> bool>>,
+    navigation_completed_handler: Option<Box<dyn Fn()>>,
+    document_title_changed_handler: Option<Box<dyn Fn(&str)>>,
+    web_message_received_handler: Option<Box<dyn Fn(&str)>>,
 }
 
 #[derive(Default)]
@@ -49,35 +49,35 @@ impl Builder {
 
     pub fn file_drop_handler<F>(&mut self, handler: F)
     where
-        F: FnMut(&Path) + 'static,
+        F: Fn(&Path) + 'static,
     {
         self.handlers.file_drop_handler = Some(Box::new(handler));
     }
 
     pub fn navigation_starting_handler<F>(&mut self, handler: F)
     where
-        F: FnMut(&str) -> bool + 'static,
+        F: Fn(&str) -> bool + 'static,
     {
         self.handlers.navigation_starting_handler = Some(Box::new(handler));
     }
 
     pub fn navigation_completed_handler<F>(&mut self, handler: F)
     where
-        F: FnMut() + 'static,
+        F: Fn() + 'static,
     {
         self.handlers.navigation_completed_handler = Some(Box::new(handler));
     }
 
     pub fn document_title_changed_handler<F>(&mut self, handler: F)
     where
-        F: FnMut(&str) + 'static,
+        F: Fn(&str) + 'static,
     {
         self.handlers.document_title_changed_handler = Some(Box::new(handler));
     }
 
     pub fn web_message_received_handler<F>(&mut self, handler: F)
     where
-        F: FnMut(&str) + 'static,
+        F: Fn(&str) + 'static,
     {
         self.handlers.web_message_received_handler = Some(Box::new(handler));
     }

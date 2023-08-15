@@ -34,15 +34,15 @@ pub type Response<T = ResponseBody> = http::Response<T>;
 /// WebViewからのリクエストを処理する。
 pub trait Handler: 'static {
     /// WebViewからのリクエストを処理してレスポンスを生成する。
-    fn handle(&mut self, request: Request) -> Response;
+    fn handle(&self, request: Request) -> Response;
 }
 
 impl<F> Handler for F
 where
-    F: FnMut(Request) -> Response + 'static,
+    F: Fn(Request) -> Response + 'static,
 {
     #[inline]
-    fn handle(&mut self, request: Request) -> Response {
+    fn handle(&self, request: Request) -> Response {
         (self)(request)
     }
 }
@@ -85,7 +85,7 @@ impl Builder {
     /// ブラウザの機能としてのドラッグ＆ドロップが使えなくなる場合がある。
     pub fn file_drop_handler<F>(mut self, handler: F) -> Builder
     where
-        F: FnMut(&Path) + 'static,
+        F: Fn(&Path) + 'static,
     {
         self.inner.file_drop_handler(handler);
         self
@@ -96,7 +96,7 @@ impl Builder {
     /// ハンドラーから`false`が返った場合、遷移は取り消される。
     pub fn navigation_starting_handler<F>(mut self, handler: F) -> Builder
     where
-        F: FnMut(&str) -> bool + 'static,
+        F: Fn(&str) -> bool + 'static,
     {
         self.inner.navigation_starting_handler(handler);
         self
@@ -105,7 +105,7 @@ impl Builder {
     /// 遷移が完了した際のハンドラーを指定する。
     pub fn navigation_completed_handler<F>(mut self, handler: F) -> Builder
     where
-        F: FnMut() + 'static,
+        F: Fn() + 'static,
     {
         self.inner.navigation_completed_handler(handler);
         self
@@ -114,7 +114,7 @@ impl Builder {
     /// コンテンツのタイトルが変更された際のハンドラーを指定する。
     pub fn document_title_changed_handler<F>(mut self, handler: F) -> Builder
     where
-        F: FnMut(&str) + 'static,
+        F: Fn(&str) + 'static,
     {
         self.inner.document_title_changed_handler(handler);
         self
@@ -125,7 +125,7 @@ impl Builder {
     /// 引数にはJSONが渡されるため、serde_json等を使ってパースすると良い。
     pub fn web_message_received_handler<F>(mut self, handler: F) -> Builder
     where
-        F: FnMut(&str) + 'static,
+        F: Fn(&str) + 'static,
     {
         self.inner.web_message_received_handler(handler);
         self

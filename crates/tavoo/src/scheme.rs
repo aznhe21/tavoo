@@ -6,7 +6,7 @@ use nativoo::webview::{http, Handler, Request, Response, ResponseBody};
 pub struct TavooHandler;
 
 impl Handler for TavooHandler {
-    fn handle(&mut self, req: Request) -> Response {
+    fn handle(&self, req: Request) -> Response {
         let Some(host) = req.uri().host() else {
             log::error!("ホストがない：{}", req.uri());
             return Response::builder()

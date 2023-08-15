@@ -21,12 +21,12 @@ const FORMATETC: Com::FORMATETC = Com::FORMATETC {
 #[implement(Ole::IDropTarget)]
 pub struct DropTarget {
     is_file: Cell<bool>,
-    handler: UnsafeCell<Box<dyn FnMut(&Path)>>,
+    handler: UnsafeCell<Box<dyn Fn(&Path)>>,
 }
 
 impl DropTarget {
     #[inline]
-    pub fn new(handler: Box<dyn FnMut(&Path)>) -> DropTarget {
+    pub fn new(handler: Box<dyn Fn(&Path)>) -> DropTarget {
         DropTarget {
             is_file: Cell::new(false),
             handler: UnsafeCell::new(handler),
