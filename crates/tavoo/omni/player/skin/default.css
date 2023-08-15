@@ -46,39 +46,39 @@
   background: black;
   height: var(--seekbar-height);
   line-height: 1;
+}
 
-  #seekbar {
-    flex: 1;
+#seekbar {
+  flex: 1;
+}
 
-    &::part(slider) {
-      background: gray;
-    }
+#seekbar::part(slider) {
+  background: gray;
+}
 
-    &::part(progress) {
-      background: dodgerblue;
-    }
+#seekbar::part(progress) {
+  background: dodgerblue;
+}
 
-    &::part(scrubber) {
-      background: white;
-    }
-  }
+#seekbar::part(scrubber) {
+  background: white;
+}
 
-  #position, #duration {
-    flex: none;
-    white-space: pre;
-    user-select: none;
-    font-size: var(--time-font-size);
-    margin-top: calc((var(--seekbar-height) - var(--time-font-size)) / 2);
-  }
+#position, #duration {
+  flex: none;
+  white-space: pre;
+  user-select: none;
+  font-size: var(--time-font-size);
+  margin-top: calc((var(--seekbar-height) - var(--time-font-size)) / 2);
+}
 
-  #position {
-    color: white;
-  }
+#position {
+  color: white;
+}
 
-  #duration {
-    color: darkgray;
-    margin-right: 4px;
-  }
+#duration {
+  color: darkgray;
+  margin-right: 4px;
 }
 
 #controls {
@@ -89,80 +89,81 @@
   background: white;
   height: var(--control-size);
   line-height: var(--control-size);
+}
 
-  & button {
-    border: none;
-    background-color: transparent;
-    color: inherit;
-    text-align: inherit;
-    font-size: 100%;
-    font-family: inherit;
-    cursor: default;
-    line-height: inherit;
-    width: var(--control-size);
-    height: var(--control-size);
-  }
+#controls button {
+  border: none;
+  background-color: transparent;
+  color: inherit;
+  text-align: inherit;
+  font-size: 100%;
+  font-family: inherit;
+  cursor: default;
+  line-height: inherit;
+  width: var(--control-size);
+  height: var(--control-size);
+}
 
-  #play {
-    flex: none;
-  }
+#play {
+  flex: none;
+}
 
-  #stop {
-    flex: none;
-  }
+#stop {
+  flex: none;
+}
 
-  #mute {
-    flex: none;
-  }
+#mute {
+  flex: none;
+}
 
-  #volume {
-    flex: none;
-    width: 100px;
-    height: 12px;
-    margin: calc((28px - 12px) / 2) 0 0 0;
+#volume {
+  flex: none;
+  width: 100px;
+  height: 12px;
+  margin: calc((28px - 12px) / 2) 0 0 0;
+}
 
-    &::part(slider) {
-      background: lightgray;
-    }
-  }
+#volume::part(slider) {
+  background: lightgray;
+}
 
-  #playback-rate {
-    flex: none;
-    width: 60px;
+#playback-rate {
+  flex: none;
+  width: 60px;
+}
 
-    & > option:disabled {
-      display: none;
-    }
-  }
+#playback-rate > option:disabled {
+  display: none;
+}
 
-  #caption-display {
-    flex: none;
-    padding-right: 6px;
-    display: flex;
-  }
+#caption-display {
+  flex: none;
+  padding-right: 6px;
+  display: flex;
+  align-items: baseline;
+}
 
-  #video-streams {
-    flex: none;
-    font-size: 12px;
-    width: 120px;
-    text-overflow: ellipsis;
-  }
+#video-streams {
+  flex: none;
+  font-size: 12px;
+  width: 120px;
+  text-overflow: ellipsis;
+}
 
-  #audio-streams {
-    flex: none;
-    font-size: 12px;
-    width: 120px;
-    text-overflow: ellipsis;
-  }
+#audio-streams {
+  flex: none;
+  font-size: 12px;
+  width: 120px;
+  text-overflow: ellipsis;
+}
 
-  #services {
-    flex: auto;
-    font-size: 12px;
-    text-overflow: ellipsis;
-    width: 0;
+#services {
+  flex: auto;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  width: 0;
+}
 
-    & > option:disabled {
-      display: none;
-    }
-  }
+#services > option:disabled {
+  display: none;
 }

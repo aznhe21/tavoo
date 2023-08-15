@@ -10,38 +10,38 @@
   overflow: hidden;
   position: relative;
   height: 100%;
+}
 
-  #slider {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    left: var(--thumb-size);
-    right: var(--thumb-size);
-    margin: auto;
-    height: var(--bar-height);
-    border-radius: var(--progress-radius);
-    background-color: white;
-    pointer-events: none;
+#slider {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--thumb-size);
+  right: var(--thumb-size);
+  margin: auto;
+  height: var(--bar-height);
+  border-radius: var(--progress-radius);
+  background-color: white;
+  pointer-events: none;
+}
 
-    #progress {
-      background-color: gray;
-      height: 100%;
-      border-radius: var(--progress-radius);
-    }
+#progress {
+  background-color: gray;
+  height: 100%;
+  border-radius: var(--progress-radius);
+}
 
-    #scrubber {
-      position: relative;
-      top: calc(var(--bar-height) * -1.5);
-      width: var(--thumb-size);
-      height: var(--thumb-size);
-      border: none;
-      border-radius: 50%;
-      background-color: currentColor;
-      transform: translateX(calc(var(--thumb-size) * -0.5));
-    }
-  }
+#scrubber {
+  position: relative;
+  top: calc(var(--bar-height) * -1.5);
+  width: var(--thumb-size);
+  height: var(--thumb-size);
+  border: none;
+  border-radius: 50%;
+  background-color: currentColor;
+  transform: translateX(calc(var(--thumb-size) * -0.5));
+}
 
-  #slot-container {
-    width: 100%;
-  }
+#slot-container {
+  width: 100%;
 }

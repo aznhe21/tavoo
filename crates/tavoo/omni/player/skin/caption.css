@@ -7,50 +7,42 @@
   display: none;
 }
 
-.background {
-  /** 背景 */
-  & rect {
-    shape-rendering: crispEdges;
-    fill: var(--caption-color-8);
-  }
-
-  /** 囲み */
-  & polygon {
-    shape-rendering: crispEdges;
-    fill: var(--caption-color-7);
-  }
+/** 背景 */
+.background rect {
+  shape-rendering: crispEdges;
+  fill: var(--caption-color-8);
 }
 
-.foreground {
-  & text {
-    font-family: "丸ゴシック", monospace;
-    dominant-baseline: text-before-edge;
-    stroke-width: 4;
-    stroke-linejoin: round;
-    paint-order: stroke;
-
-    fill: var(--caption-color-7);
-    stroke: var(--caption-color-8);
-  }
-
-  & image {
-    image-rendering: pixelated;
-  }
-
-  & *[caption-flushing="normal"] {
-    animation: 1s step-end infinite flushing;
-  }
-  & *[caption-flushing="inverted"] {
-    animation: 1s step-start infinite flushing;
-  }
+/** 囲み */
+.background polygon {
+  shape-rendering: crispEdges;
+  fill: var(--caption-color-7);
 }
 
-.screen[caption-caption-format="profile-c"] {
-  .foreground {
-    & text {
-      stroke-width: 2;
-    }
-  }
+.foreground text {
+  font-family: "丸ゴシック", monospace;
+  dominant-baseline: text-before-edge;
+  stroke-width: 4;
+  stroke-linejoin: round;
+  paint-order: stroke;
+
+  fill: var(--caption-color-7);
+  stroke: var(--caption-color-8);
+}
+
+.foreground image {
+  image-rendering: pixelated;
+}
+
+.foreground *[caption-flushing="normal"] {
+  animation: 1s step-end infinite flushing;
+}
+.foreground *[caption-flushing="inverted"] {
+  animation: 1s step-start infinite flushing;
+}
+
+.screen[caption-caption-format="profile-c"] .foreground text {
+  stroke-width: 2;
 }
 
 @keyframes flushing {
