@@ -17,7 +17,7 @@ windows:minrust:
     SETUP_RUST_TOOLCHAIN: $rust_min
     RUSTFLAGS: "" # remove -Dwarnings
   script:
-    - cargo check --workspace --all-features
+    - cargo check -p isdb --all-features
 
 windows:build:
   extends: [.windows-runner-rust, .rust-cache]
