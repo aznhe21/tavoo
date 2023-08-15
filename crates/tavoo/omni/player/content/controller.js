@@ -191,16 +191,16 @@ export const gController = new class Controller extends EventTarget {
   constructor() {
     super();
 
-    // @ts-ignore: WebView2専用API
-    window.chrome.webview.addEventListener("message", e => {
+    // @ts-ignore: TaVoo専用API
+    window.ipc.addEventListener("message", e => {
       this.#handleNotification(e.data);
     });
   }
 
   /** @param {Command} command */
   #postCommand(command) {
-    // @ts-ignore: WebView2専用API
-    window.chrome.webview.postMessage(command);
+    // @ts-ignore: TaVoo専用API
+    window.ipc.postMessage(command);
   }
 
   /** @param {Notification} noti */

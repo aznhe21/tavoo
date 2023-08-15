@@ -301,6 +301,16 @@ impl Builder {
                             .context("WebViewの子ウィンドウが見つからない");
                     }
 
+                    // 初期化スクリプト追加
+                    unsafe {
+                        webview.AddScriptToExecuteOnDocumentCreated(
+                            WebView::INIT_SCRIPT,
+                            &callback::add_script_to_execute_on_document_created_completed_handler(
+                                |_| Ok(()),
+                            ),
+                        )?;
+                    }
+
                     // 背景を透過させる（1/2）
                     unsafe {
                         tri!(
@@ -501,6 +511,18 @@ impl Inner {
 }
 
 impl WebView {
+    const INIT_SCRIPT: C::PCWSTR = windows::w!(
+        "\
+          Object.defineProperty(\
+            window,\
+            \"ipc\",\
+            {\
+              value: window.chrome.webview,\
+            }\
+          );\
+        "
+    );
+
     fn nav_handler(
         hwnd_webview: F::HWND,
         controller: &ICoreWebView2Controller,

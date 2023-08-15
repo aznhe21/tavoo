@@ -33,11 +33,11 @@ macro_rules! event_callback {
 }
 
 macro_rules! completed_callback {
-    ($handler:ident, $intf:ty, $impl:ty, $type:ty,) => {
+    ($handler:ident, $intf:ty, $impl:ty, fn($value:ident: $invoke:ty) -> Result<$fn:ty> { $($tt:tt)* }) => {
         #[doc = concat!("クロージャから[`", stringify!($intf), "`]を生成する。")]
         pub fn $handler<F>(f: F) -> $intf
         where
-            F: ::core::ops::FnOnce(::windows::core::Result<&$type>) -> ::windows::core::Result<()>
+            F: ::core::ops::FnOnce(::windows::core::Result<$fn>) -> ::windows::core::Result<()>
                 + 'static,
         {
             #[::windows::core::implement($intf)]
@@ -46,7 +46,7 @@ macro_rules! completed_callback {
                     ::core::option::Option<
                         ::std::boxed::Box<
                             dyn ::core::ops::FnOnce(
-                                ::windows::core::Result<&$type>,
+                                ::windows::core::Result<$fn>,
                             )
                                 -> ::windows::core::Result<()>,
                         >,
@@ -57,11 +57,14 @@ macro_rules! completed_callback {
                 fn Invoke(
                     &self,
                     errorcode: ::windows::core::HRESULT,
-                    value: ::core::option::Option<&$type>,
+                    value: $invoke,
                 ) -> ::windows::core::Result<()> {
                     match self.0.lock().take() {
                         Some(f) => f(errorcode.ok().and_then(|()| {
-                            value.ok_or(::windows::Win32::Foundation::E_POINTER.into())
+                            fn map($value: $invoke) -> ::windows::core::Result<$fn> {
+                                $($tt)*
+                            }
+                            map(value)
                         })),
                         None => {
                             log::trace!(concat!(stringify!($intf), "が二度呼ばれた"));
@@ -120,12 +123,25 @@ completed_callback!(
     environment_completed_handler,
     ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler,
     ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler_Impl,
-    ICoreWebView2Environment,
+    fn(value: ::core::option::Option<&ICoreWebView2Environment>) -> Result<&ICoreWebView2Environment> {
+        value.ok_or(::windows::Win32::Foundation::E_POINTER.into())
+    }
 );
 
 completed_callback!(
     controller_completed_handler,
     ICoreWebView2CreateCoreWebView2ControllerCompletedHandler,
     ICoreWebView2CreateCoreWebView2ControllerCompletedHandler_Impl,
-    ICoreWebView2Controller,
+    fn(value: ::core::option::Option<&ICoreWebView2Controller>) -> Result<&ICoreWebView2Controller> {
+        value.ok_or(::windows::Win32::Foundation::E_POINTER.into())
+    }
+);
+
+completed_callback!(
+    add_script_to_execute_on_document_created_completed_handler,
+    ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler,
+    ICoreWebView2AddScriptToExecuteOnDocumentCreatedCompletedHandler_Impl,
+    fn(value: &::windows::core::PCWSTR) -> Result<&::windows::core::PCWSTR> {
+        Ok(value)
+    }
 );
