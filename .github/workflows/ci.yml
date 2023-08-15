@@ -10,9 +10,14 @@ on: [push, pull_request]
 
 jobs:
   test:
-    runs-on: windows-latest
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
+      - run: sudo ./.gitlab/setup-deps.sh
+        if: matrix.os == 'ubuntu-latest'
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ env.rust_stable }}
@@ -20,7 +25,10 @@ jobs:
       - run: cargo test --workspace
 
   minrust:
-    runs-on: windows-latest
+    strategy:
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v3
       - uses: dtolnay/rust-toolchain@stable
@@ -32,9 +40,25 @@ jobs:
           RUSTFLAGS: "" # remove -Dwarnings
 
   build:
-    runs-on: windows-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        image:
+          # 直近2バージョン＋LTS
+          - ubuntu:22.04
+          - ubuntu:22.10
+          - ubuntu:23.04
+          - fedora:37
+          - fedora:38
+        include:
+          - os: windows-latest
+            image: null
+    runs-on: ${{ matrix.os }}
+    container: ${{ matrix.image }}
     steps:
       - uses: actions/checkout@v3
+      - run: ./.gitlab/setup-deps.sh
+        if: matrix.os == 'ubuntu-latest'
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ env.rust_stable }}

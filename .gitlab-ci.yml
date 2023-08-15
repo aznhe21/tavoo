@@ -25,6 +25,44 @@ windows:build:
   script:
     - cargo build -p tavoo
 
+linux:test:
+  extends: [.rust-cache]
+  image: rust:slim-bookworm
+  before_script:
+    - ./.gitlab/setup-deps.sh
+  script:
+    - cargo test --workspace
+
+linux:minrust:
+  extends: [.rust-cache]
+  image: rust:$rust_min-slim-bullseye
+  variables:
+    RUSTFLAGS: "" # remove -Dwarnings
+  before_script:
+    - apt-get update && apt-get install -y --no-install-recommends gcc gcc-multilib
+  script:
+    - cargo check -p isdb --all-features
+
+linux:build:
+  extends: [.rust-cache]
+  needs: [linux:test]
+  parallel:
+    matrix:
+      - IMAGE:
+        # 直近2バージョン＋LTS
+        - ubuntu:22.04
+        - ubuntu:22.10
+        - ubuntu:23.04
+        - fedora:37
+        - fedora:38
+  image: $IMAGE
+  before_script:
+    - ./.gitlab/setup-deps.sh
+    - ./.gitlab/setup-rust.sh stable
+    - . ./env
+  script:
+    - cargo build -p tavoo
+
 ##############################
 
 .rust-cache:
