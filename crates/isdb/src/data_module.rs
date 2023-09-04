@@ -89,8 +89,7 @@ impl<'a> KeywordTable<'a> {
                 log::debug!("invalid KeywordTable::name_length");
                 return None;
             };
-            let Some((name, rem)) = rem.split_at_checked(name_length as usize)
-            else {
+            let Some((name, rem)) = rem.split_at_checked(name_length as usize) else {
                 log::debug!("invalid KeywordTable::name");
                 return None;
             };
@@ -219,8 +218,7 @@ impl<'a> Logo<'a> {
                 return None;
             }
             let data_size = rem[0..=1].read_be_16();
-            let Some((logo_data, rem)) = rem[2..].split_at_checked(data_size as usize)
-            else {
+            let Some((logo_data, rem)) = rem[2..].split_at_checked(data_size as usize) else {
                 log::debug!("invalid LogoInfo::data");
                 return None;
             };

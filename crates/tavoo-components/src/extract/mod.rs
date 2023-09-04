@@ -877,7 +877,9 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
         _: Option<Timestamp>,
         payload: &[u8],
     ) {
-        let Some(service_id) = self.es2svc[pid] else { return };
+        let Some(service_id) = self.es2svc[pid] else {
+            return;
+        };
 
         // シーク中はパケットを処理しない
         if self.seek_info.is_some() {
@@ -907,7 +909,9 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
         _: Option<Timestamp>,
         payload: &[u8],
     ) {
-        let Some(service_id) = self.es2svc[pid] else { return };
+        let Some(service_id) = self.es2svc[pid] else {
+            return;
+        };
 
         // シーク中はパケットを処理しない
         if self.seek_info.is_some() {
@@ -936,7 +940,9 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
         pts: Option<Timestamp>,
         caption: &isdb::filters::sorter::Caption,
     ) {
-        let Some(service_id) = self.es2svc[pid] else { return };
+        let Some(service_id) = self.es2svc[pid] else {
+            return;
+        };
 
         {
             let state = self.state.read();
@@ -967,7 +973,9 @@ impl<R: Read + Seek, T: Sink> isdb::filters::sorter::Shooter for Selector<R, T> 
         pts: Option<Timestamp>,
         caption: &isdb::filters::sorter::Caption,
     ) {
-        let Some(service_id) = self.es2svc[pid] else { return };
+        let Some(service_id) = self.es2svc[pid] else {
+            return;
+        };
 
         {
             let state = self.state.read();
@@ -1298,7 +1306,12 @@ impl<R: Read + Seek, T: Sink> Worker<R, T> {
             log::warn!("シークできないストリームへのシーク要求");
             return;
         };
-        let Some(pcr_pid) = self.demuxer.filter().services().first().map(|(_, svc)| svc.pcr_pid())
+        let Some(pcr_pid) = self
+            .demuxer
+            .filter()
+            .services()
+            .first()
+            .map(|(_, svc)| svc.pcr_pid())
         else {
             log::debug!("サービスがない");
             return;

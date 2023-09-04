@@ -44,8 +44,8 @@ impl<'a> CompatibilityDescriptor<'a> {
 
         let compatibility_descriptor_length = data[0..=1].read_be_16();
         let descriptor_count = data[2..=3].read_be_16();
-        let Some((mut data, tail)) = data[4..]
-            .split_at_checked(compatibility_descriptor_length as usize - 2)
+        let Some((mut data, tail)) =
+            data[4..].split_at_checked(compatibility_descriptor_length as usize - 2)
         else {
             log::debug!("invalid CompatibilityDescriptor::compatibility_descriptor_length");
             return None;
@@ -73,8 +73,8 @@ impl<'a> CompatibilityDescriptor<'a> {
                     log::debug!("invalid SubDescriptor");
                     return None;
                 };
-                let Some((additional_information, rem)) = rem
-                    .split_at_checked(sub_descriptor_length as usize)
+                let Some((additional_information, rem)) =
+                    rem.split_at_checked(sub_descriptor_length as usize)
                 else {
                     log::debug!("invalid SubDescriptor::additional_information");
                     return None;
@@ -197,8 +197,8 @@ impl<'a> Descriptor<'a> for DownloadContentDescriptor<'a> {
                 let module_id = data[0..=1].read_be_16();
                 let module_size = data[2..=5].read_be_32();
                 let module_info_length = data[6];
-                let Some((module_info, rem)) = data[7..]
-                    .split_at_checked(module_info_length as usize)
+                let Some((module_info, rem)) =
+                    data[7..].split_at_checked(module_info_length as usize)
                 else {
                     log::debug!("invalid DownloadContentDescriptor::module_info");
                     return None;

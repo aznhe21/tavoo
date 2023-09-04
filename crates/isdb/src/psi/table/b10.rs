@@ -676,8 +676,8 @@ impl<'a> PsiTable<'a> for Pcat<'a> {
             let version_indicator = VersionIndicator::new((data[4] & 0b11000000) >> 6);
             let content_descriptor_length = data[4..=5].read_be_16() & 0b0000_1111_1111_1111;
             let schedule_description_length = data[6..=7].read_be_16() & 0b0000_1111_1111_1111;
-            let Some((schedule_descriptions, rem)) = data[8..]
-                .split_at_checked(schedule_description_length as usize)
+            let Some((schedule_descriptions, rem)) =
+                data[8..].split_at_checked(schedule_description_length as usize)
             else {
                 log::debug!("invalid PcatContent::schedule_descriptions");
                 return None;

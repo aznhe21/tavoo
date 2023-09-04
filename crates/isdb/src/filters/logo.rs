@@ -110,7 +110,10 @@ impl<F: FnMut(&LogoData)> LogoDownloadFilter<F> {
         };
 
         for ts in &*nit.transport_streams {
-            let Some(sld) = ts.transport_descriptors.get::<desc::ServiceListDescriptor>() else {
+            let Some(sld) = ts
+                .transport_descriptors
+                .get::<desc::ServiceListDescriptor>()
+            else {
                 continue;
             };
 

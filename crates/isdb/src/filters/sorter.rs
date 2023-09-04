@@ -878,7 +878,8 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                 };
                 let caption = match data_group.data_group_id & 0x0F {
                     0 => {
-                        let Some(data) = pes::caption::CaptionManagementData::read(data_group.data_group_data)
+                        let Some(data) =
+                            pes::caption::CaptionManagementData::read(data_group.data_group_data)
                         else {
                             return;
                         };
@@ -892,7 +893,8 @@ impl<T: Shooter> demux::Filter for Sorter<T> {
                         })
                     }
                     tag @ 1..=8 => {
-                        let Some(data) = pes::caption::CaptionData::read(data_group.data_group_data)
+                        let Some(data) =
+                            pes::caption::CaptionData::read(data_group.data_group_data)
                         else {
                             return;
                         };

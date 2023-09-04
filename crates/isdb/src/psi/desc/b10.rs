@@ -215,8 +215,8 @@ impl<'a> Descriptor<'a> for ServiceDescriptor<'a> {
             log::debug!("invalid ServiceDescriptor");
             return None;
         };
-        let Some((service_provider_name, data)) = data
-            .split_at_checked(service_provider_name_length as usize)
+        let Some((service_provider_name, data)) =
+            data.split_at_checked(service_provider_name_length as usize)
         else {
             log::debug!("invalid ServiceDescriptor::service_provider_name");
             return None;
@@ -309,7 +309,8 @@ impl<'a> Descriptor<'a> for ShortEventDescriptor<'a> {
 
         let lang_code = LangCode(data[0..=2].try_into().unwrap());
         let event_name_length = data[3];
-        let Some((event_name, data)) = data[4..].split_at_checked(event_name_length as usize) else {
+        let Some((event_name, data)) = data[4..].split_at_checked(event_name_length as usize)
+        else {
             log::debug!("invalid ShortEventDescriptor::event_name");
             return None;
         };
@@ -380,8 +381,8 @@ impl<'a> Descriptor<'a> for ExtendedEventDescriptor<'a> {
                 log::debug!("invalid ExtendedEventDescriptor::item_description_length");
                 return None;
             };
-            let Some((item_description, rem)) = rem
-                .split_at_checked(item_description_length as usize)
+            let Some((item_description, rem)) =
+                rem.split_at_checked(item_description_length as usize)
             else {
                 log::debug!("invalid ExtendedEventDescriptor::item_description");
                 return None;
@@ -1017,7 +1018,9 @@ impl<'a> Descriptor<'a> for HyperlinkDescriptor<'a> {
                     log::debug!("invalid LinkServiceInfo::original_network_id");
                     return None;
                 };
-                let Some(transport_stream_id) = TransportStreamId::new(selector[2..=3].read_be_16()) else {
+                let Some(transport_stream_id) =
+                    TransportStreamId::new(selector[2..=3].read_be_16())
+                else {
                     log::debug!("invalid LinkServiceInfo::transport_stream_id");
                     return None;
                 };
@@ -1042,7 +1045,9 @@ impl<'a> Descriptor<'a> for HyperlinkDescriptor<'a> {
                     log::debug!("invalid LinkEventInfo::original_network_id");
                     return None;
                 };
-                let Some(transport_stream_id) = TransportStreamId::new(selector[2..=3].read_be_16()) else {
+                let Some(transport_stream_id) =
+                    TransportStreamId::new(selector[2..=3].read_be_16())
+                else {
                     log::debug!("invalid LinkEventInfo::transport_stream_id");
                     return None;
                 };
@@ -1072,7 +1077,9 @@ impl<'a> Descriptor<'a> for HyperlinkDescriptor<'a> {
                     log::debug!("invalid LinkModuleInfo::original_network_id");
                     return None;
                 };
-                let Some(transport_stream_id) = TransportStreamId::new(selector[2..=3].read_be_16()) else {
+                let Some(transport_stream_id) =
+                    TransportStreamId::new(selector[2..=3].read_be_16())
+                else {
                     log::debug!("invalid LinkModuleInfo::transport_stream_id");
                     return None;
                 };
@@ -1106,7 +1113,9 @@ impl<'a> Descriptor<'a> for HyperlinkDescriptor<'a> {
                     log::debug!("invalid LinkContentInfo::original_network_id");
                     return None;
                 };
-                let Some(transport_stream_id) = TransportStreamId::new(selector[2..=3].read_be_16()) else {
+                let Some(transport_stream_id) =
+                    TransportStreamId::new(selector[2..=3].read_be_16())
+                else {
                     log::debug!("invalid LinkContentInfo::transport_stream_id");
                     return None;
                 };
@@ -1133,7 +1142,9 @@ impl<'a> Descriptor<'a> for HyperlinkDescriptor<'a> {
                     log::debug!("invalid LinkContentModuleInfo::original_network_id");
                     return None;
                 };
-                let Some(transport_stream_id) = TransportStreamId::new(selector[2..=3].read_be_16()) else {
+                let Some(transport_stream_id) =
+                    TransportStreamId::new(selector[2..=3].read_be_16())
+                else {
                     log::debug!("invalid LinkContentModuleInfo::transport_stream_id");
                     return None;
                 };
@@ -1586,7 +1597,8 @@ impl<'a> Descriptor<'a> for ExtendedBroadcasterDescriptor<'a> {
             broadcaster_ids
                 .chunks_exact(3)
                 .map(|chunk| {
-                    let Some(original_network_id) = NetworkId::new(chunk[0..=1].read_be_16()) else {
+                    let Some(original_network_id) = NetworkId::new(chunk[0..=1].read_be_16())
+                    else {
                         log::debug!("invalid BroadcasterId::original_network_id");
                         return None;
                     };
@@ -1619,14 +1631,14 @@ impl<'a> Descriptor<'a> for ExtendedBroadcasterDescriptor<'a> {
                 let number_of_affiliation_id_loop = (data[2] & 0b11110000) >> 4;
                 let number_of_broadcaster_id_loop = data[2] & 0b00001111;
 
-                let Some((affiliation_id, data)) = data[3..]
-                    .split_at_checked(number_of_affiliation_id_loop as usize)
+                let Some((affiliation_id, data)) =
+                    data[3..].split_at_checked(number_of_affiliation_id_loop as usize)
                 else {
                     log::debug!("invalid DigitalTerrestrialTelevisionBroadcast::affiliation_id");
                     return None;
                 };
-                let Some((broadcaster_ids, data)) = data
-                    .split_at_checked(3 * number_of_broadcaster_id_loop as usize)
+                let Some((broadcaster_ids, data)) =
+                    data.split_at_checked(3 * number_of_broadcaster_id_loop as usize)
                 else {
                     log::debug!("invalid DigitalTerrestrialTelevisionBroadcast::broadcaster_ids");
                     return None;
@@ -1656,11 +1668,13 @@ impl<'a> Descriptor<'a> for ExtendedBroadcasterDescriptor<'a> {
                 let Some((sound_broadcast_affiliation_id, data)) = data[3..]
                     .split_at_checked(number_of_sound_broadcast_affiliation_id_loop as usize)
                 else {
-                    log::debug!("invalid DigitalTerrestrialSoundBroadcast::sound_broadcast_affiliation_id");
+                    log::debug!(
+                        "invalid DigitalTerrestrialSoundBroadcast::sound_broadcast_affiliation_id"
+                    );
                     return None;
                 };
-                let Some((broadcaster_ids, data)) = data
-                    .split_at_checked(3 * number_of_broadcaster_id_loop as usize)
+                let Some((broadcaster_ids, data)) =
+                    data.split_at_checked(3 * number_of_broadcaster_id_loop as usize)
                 else {
                     log::debug!("invalid DigitalTerrestrialSoundBroadcast::broadcaster_ids");
                     return None;
@@ -2009,8 +2023,8 @@ impl<'a> Descriptor<'a> for SiParameterDescriptor<'a> {
                 log::debug!("invalid SiParameterDescriptor::table_id");
                 return None;
             };
-            let Some((table_description, rem)) = rem
-                .split_at_checked(table_description_length as usize)
+            let Some((table_description, rem)) =
+                rem.split_at_checked(table_description_length as usize)
             else {
                 log::debug!("invalid SiParameterDescriptor::table_description");
                 return None;
@@ -2144,7 +2158,7 @@ impl<'a> Descriptor<'a> for ComponentGroupDescriptor<'a> {
             };
             let Some((text, rem)) = rem.split_at_checked(text_length as usize) else {
                 log::debug!("invalid ComponentGroup::text");
-                return None
+                return None;
             };
             let text = AribStr::from_bytes(text);
             data = rem;

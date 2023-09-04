@@ -89,7 +89,9 @@ impl AribStr {
                 GraphicChar::CharSize(size) => char_size = size,
             }
 
-            let Some(next) = decoder.next_graphic() else { break };
+            let Some(next) = decoder.next_graphic() else {
+                break;
+            };
             c = next;
         }
 

@@ -77,7 +77,9 @@ impl isdb::demux::Filter for Filter {
                     .entry(sdt.original_network_id)
                     .or_insert_with(Default::default);
                 for service in &*sdt.services {
-                    let Some(svc) = service.descriptors.get::<isdb::psi::desc::ServiceDescriptor>()
+                    let Some(svc) = service
+                        .descriptors
+                        .get::<isdb::psi::desc::ServiceDescriptor>()
                     else {
                         continue;
                     };
@@ -124,7 +126,7 @@ impl isdb::demux::Filter for Filter {
                     let Some(date) = chrono::NaiveDate::from_ymd_opt(
                         date.year,
                         date.month as u32,
-                        date.day as u32
+                        date.day as u32,
                     ) else {
                         continue;
                     };

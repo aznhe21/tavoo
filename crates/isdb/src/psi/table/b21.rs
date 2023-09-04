@@ -230,15 +230,15 @@ impl<'a> PsiTable<'a> for Sdtt<'a> {
             let schedule_description_length =
                 (data[6..=7].read_be_16() & 0b1111_1111_1111_0000) >> 4;
             let schedule_timeshift_information = data[7] & 0b00001111;
-            let Some(descriptors_length) = content_description_length
-                .checked_sub(schedule_description_length)
+            let Some(descriptors_length) =
+                content_description_length.checked_sub(schedule_description_length)
             else {
                 log::debug!("invalid Sdtt::content_description_length");
                 return None;
             };
 
-            let Some((schedule_description, rem)) = data[8..]
-                .split_at_checked(schedule_description_length as usize)
+            let Some((schedule_description, rem)) =
+                data[8..].split_at_checked(schedule_description_length as usize)
             else {
                 log::debug!("invalid Sdtt::schedule_description");
                 return None;

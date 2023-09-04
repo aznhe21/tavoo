@@ -552,8 +552,8 @@ impl<'a> Drcs<'a> {
                         let region_x = data[0];
                         let region_y = data[1];
                         let geometric_data_len = data[2..=3].read_be_16();
-                        let Some((geometric_data, rem)) = data[4..]
-                            .split_at_checked(geometric_data_len as usize)
+                        let Some((geometric_data, rem)) =
+                            data[4..].split_at_checked(geometric_data_len as usize)
                         else {
                             log::debug!("invalid DrcsCompressedData::geometric_data");
                             return None;
@@ -825,7 +825,9 @@ F0 0F 00 00 F0 00 F0 00 00 F0 0F 0F FF FF FF F0
         assert_eq!(font.font_id, 0);
         assert_matches!(font.data, DrcsFontData::UncompressedMultitone(_));
 
-        let DrcsFontData::UncompressedMultitone(data) = &font.data else { unreachable!() };
+        let DrcsFontData::UncompressedMultitone(data) = &font.data else {
+            unreachable!()
+        };
         assert_eq!(data.depth, 2);
         assert_eq!(data.width, 36);
         assert_eq!(data.height, 36);
@@ -892,7 +894,9 @@ F0 0F 00 00 F0 00 F0 00 00 F0 0F 0F FF FF FF F0
         assert_eq!(font.font_id, 0);
         assert_matches!(font.data, DrcsFontData::UncompressedTwotone(_));
 
-        let DrcsFontData::UncompressedTwotone(data) = &font.data else { unreachable!() };
+        let DrcsFontData::UncompressedTwotone(data) = &font.data else {
+            unreachable!()
+        };
         assert_eq!(data.depth, 0);
         assert_eq!(data.width, 16);
         assert_eq!(data.height, 18);

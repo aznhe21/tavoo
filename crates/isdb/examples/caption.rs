@@ -201,11 +201,9 @@ impl isdb::demux::Filter for Filter {
                 let Some(date) = tot.jst_time.date.to_date() else {
                     return;
                 };
-                let Some(date) = chrono::NaiveDate::from_ymd_opt(
-                    date.year,
-                    date.month as u32,
-                    date.day as u32
-                ) else {
+                let Some(date) =
+                    chrono::NaiveDate::from_ymd_opt(date.year, date.month as u32, date.day as u32)
+                else {
                     return;
                 };
                 let Some(time) = chrono::NaiveTime::from_hms_opt(
@@ -266,7 +264,8 @@ impl isdb::demux::Filter for Filter {
 
             management.data_units
         } else {
-            let Some(caption) = isdb::pes::caption::CaptionData::read(data_group.data_group_data) else {
+            let Some(caption) = isdb::pes::caption::CaptionData::read(data_group.data_group_data)
+            else {
                 return;
             };
 
@@ -297,7 +296,9 @@ impl isdb::demux::Filter for Filter {
     }
 
     fn on_custom_packet(&mut self, ctx: &mut isdb::demux::Context<Tag>, _: bool) {
-        let Some(af) = ctx.packet().adaptation_field() else { return };
+        let Some(af) = ctx.packet().adaptation_field() else {
+            return;
+        };
         let Some(pcr) = af.pcr() else { return };
 
         self.last_pcr = Some(pcr);

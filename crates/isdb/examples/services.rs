@@ -134,7 +134,8 @@ impl isdb::demux::Filter for Filter {
                     let Some(service) = self.find_service(svc.service_id) else {
                         continue;
                     };
-                    let Some(sd) = svc.descriptors.get::<isdb::psi::desc::ServiceDescriptor>() else {
+                    let Some(sd) = svc.descriptors.get::<isdb::psi::desc::ServiceDescriptor>()
+                    else {
                         continue;
                     };
 
@@ -166,7 +167,10 @@ impl isdb::demux::Filter for Filter {
                 if service.has_event(event.event_id) {
                     return;
                 }
-                let Some(sed) = event.descriptors.get::<isdb::psi::desc::ShortEventDescriptor>() else {
+                let Some(sed) = event
+                    .descriptors
+                    .get::<isdb::psi::desc::ShortEventDescriptor>()
+                else {
                     return;
                 };
 

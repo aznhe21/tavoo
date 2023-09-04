@@ -1161,7 +1161,8 @@ impl Inner {
         fn find_aac_decoder(topology: &MF::IMFTopology) -> WinResult<MF::IMFTransform> {
             for i in 0..unsafe { topology.GetNodeCount()? } {
                 let node = unsafe { topology.GetNode(i)? };
-                let Ok(clsid) = (unsafe { node.GetGUID(&MF::MF_TOPONODE_TRANSFORM_OBJECTID) }) else {
+                let Ok(clsid) = (unsafe { node.GetGUID(&MF::MF_TOPONODE_TRANSFORM_OBJECTID) })
+                else {
                     continue;
                 };
                 if clsid == MF::CLSID_MSAACDecMFT {
@@ -1268,7 +1269,9 @@ impl Inner {
         event: &MF::IMFMediaEvent,
     ) -> WinResult<()> {
         fn get_event_object<T: ComInterface>(event: &MF::IMFMediaEvent) -> WinResult<T> {
-            let Ok(PropVariant::IUnknown(unk)) = PropVariant::try_from(unsafe{ event.GetValue()? }) else {
+            let Ok(PropVariant::IUnknown(unk)) =
+                PropVariant::try_from(unsafe { event.GetValue()? })
+            else {
                 return Err(MF::MF_E_INVALIDTYPE.into());
             };
 

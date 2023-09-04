@@ -84,8 +84,8 @@ impl<'a> Descriptor<'a> for CaContractInfoDescriptor<'a> {
             log::debug!("invalid CaContractInfoDescriptor::contract_verification_info_length");
             return None;
         };
-        let Some((contract_verification_info, data)) = data
-            .split_at_checked(contract_verification_info_length as usize)
+        let Some((contract_verification_info, data)) =
+            data.split_at_checked(contract_verification_info_length as usize)
         else {
             log::debug!("invalid CaContractInfoDescriptor::contract_verification_info");
             return None;

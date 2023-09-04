@@ -193,11 +193,9 @@ impl isdb::demux::Filter for Filter {
                 let Some(date) = tot.jst_time.date.to_date() else {
                     return;
                 };
-                let Some(date) = chrono::NaiveDate::from_ymd_opt(
-                    date.year,
-                    date.month as u32,
-                    date.day as u32
-                ) else {
+                let Some(date) =
+                    chrono::NaiveDate::from_ymd_opt(date.year, date.month as u32, date.day as u32)
+                else {
                     return;
                 };
                 let Some(time) = chrono::NaiveTime::from_hms_opt(
@@ -256,7 +254,8 @@ impl isdb::demux::Filter for Filter {
 
             management.data_units
         } else {
-            let Some(caption) = isdb::pes::caption::CaptionData::read(data_group.data_group_data) else {
+            let Some(caption) = isdb::pes::caption::CaptionData::read(data_group.data_group_data)
+            else {
                 return;
             };
 
@@ -269,7 +268,9 @@ impl isdb::demux::Filter for Filter {
 
             for code in &*drcs.codes {
                 for (i, font) in code.fonts.iter().enumerate() {
-                    let Some(data) = font.data.uncompressed() else { continue };
+                    let Some(data) = font.data.uncompressed() else {
+                        continue;
+                    };
 
                     // ヒープの無駄な使用を抑えるためにcontainsとinsertを分ける
                     if service.patterns.contains(data.pattern_data) {
