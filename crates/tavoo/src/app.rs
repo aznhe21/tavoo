@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use isdb::psi::table::ServiceId;
-use tavoo_components::{player, webview};
+use nativoo::{player, webview};
 use winit::event::{Event, WindowEvent};
 use winit::window::WindowBuilder;
 
@@ -57,7 +57,7 @@ struct PlayerEventHandler {
     is_oneseg: Arc<AtomicBool>,
 }
 
-impl tavoo_components::player::EventHandler for PlayerEventHandler {
+impl nativoo::player::EventHandler for PlayerEventHandler {
     fn on_player_event(&self, event: player::PlayerEvent) {
         self.proxy.dispatch_task(move |app| {
             if let Err(e) = app.player.handle_event(event) {
@@ -260,7 +260,7 @@ impl tavoo_components::player::EventHandler for PlayerEventHandler {
         });
     }
 
-    fn on_stream_changed(&self, _: tavoo_components::extract::StreamChanged) {
+    fn on_stream_changed(&self, _: nativoo::player::StreamChanged) {
         self.proxy.dispatch_task(|app| {
             if let (Some(video_component_tag), Some(audio_component_tag)) =
                 (app.player.active_video_tag(), app.player.active_audio_tag())

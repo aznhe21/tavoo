@@ -5,10 +5,11 @@
 #[macro_use]
 mod macros;
 
-pub mod bit;
-pub mod codec;
-pub mod extract;
-pub mod player;
-pub mod ring_buf;
+mod bit;
+mod codec;
+mod extract;
+mod ring_buf;
 mod sys;
+
+pub mod player;
 pub mod webview;

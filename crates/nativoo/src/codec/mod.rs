@@ -1,5 +1,7 @@
 //! 動画・音声のコーデック。
 
+#![allow(dead_code)]
+
 pub mod audio;
 pub mod video;
 

@@ -1,5 +1,7 @@
 //! TSファイルを別スレッドで順次処理する。
 
+#![allow(dead_code)]
+
 mod caption;
 
 use std::fmt;

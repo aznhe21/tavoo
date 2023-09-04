@@ -7,6 +7,7 @@ use std::time::Duration;
 use anyhow::Result;
 use isdb::psi::table::ServiceId;
 
+pub use crate::extract::StreamChanged;
 use crate::sys::player as imp;
 
 /// TSの処理中に発生する、メインスレッドで処理するためのイベント。
@@ -79,7 +80,7 @@ pub trait EventHandler: Send + 'static {
     fn on_service_changed(&self, service: &isdb::filters::sorter::Service);
 
     /// 選択中サービスのストリームについて何かが変更された際に呼ばれる。
-    fn on_stream_changed(&self, changed: crate::extract::StreamChanged);
+    fn on_stream_changed(&self, changed: StreamChanged);
 
     /// 選択中サービスで字幕パケットを受信した際に呼ばれる。
     fn on_caption(&self, pos: Option<Duration>, caption: &isdb::filters::sorter::Caption);

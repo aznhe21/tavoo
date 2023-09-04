@@ -1,5 +1,5 @@
 [package]
-name = "tavoo-components"
+name = "nativoo"
 version = "0.0.0"
 
 edition.workspace = true

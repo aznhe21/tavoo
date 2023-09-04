@@ -705,6 +705,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "nativoo"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "arrayvec",
+ "cfg-if",
+ "crossbeam-utils",
+ "fxhash",
+ "http",
+ "isdb",
+ "log",
+ "memchr",
+ "parking_lot",
+ "webview2-com-sys",
+ "windows 0.48.0",
+ "winit",
+]
+
+[[package]]
 name = "ndk"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1148,28 +1167,9 @@ dependencies = [
  "isdb",
  "log",
  "mime_guess",
+ "nativoo",
  "serde",
  "serde_json",
- "tavoo-components",
- "winit",
-]
-
-[[package]]
-name = "tavoo-components"
-version = "0.0.0"
-dependencies = [
- "anyhow",
- "arrayvec",
- "cfg-if",
- "crossbeam-utils",
- "fxhash",
- "http",
- "isdb",
- "log",
- "memchr",
- "parking_lot",
- "webview2-com-sys",
- "windows 0.48.0",
  "winit",
 ]
 

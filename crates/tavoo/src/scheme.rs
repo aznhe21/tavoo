@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use tavoo_components::webview::{http, Handler, Request, Response, ResponseBody};
+use nativoo::webview::{http, Handler, Request, Response, ResponseBody};
 
 /// `tavoo://`を扱うハンドラー。
 pub struct TavooHandler;

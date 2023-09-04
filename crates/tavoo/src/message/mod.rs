@@ -35,24 +35,24 @@ pub enum DualMonoMode {
     Mix,
 }
 
-impl From<tavoo_components::player::DualMonoMode> for DualMonoMode {
-    fn from(mode: tavoo_components::player::DualMonoMode) -> DualMonoMode {
+impl From<nativoo::player::DualMonoMode> for DualMonoMode {
+    fn from(mode: nativoo::player::DualMonoMode) -> DualMonoMode {
         match mode {
-            tavoo_components::player::DualMonoMode::Left => DualMonoMode::Left,
-            tavoo_components::player::DualMonoMode::Right => DualMonoMode::Right,
-            tavoo_components::player::DualMonoMode::Stereo => DualMonoMode::Stereo,
-            tavoo_components::player::DualMonoMode::Mix => DualMonoMode::Mix,
+            nativoo::player::DualMonoMode::Left => DualMonoMode::Left,
+            nativoo::player::DualMonoMode::Right => DualMonoMode::Right,
+            nativoo::player::DualMonoMode::Stereo => DualMonoMode::Stereo,
+            nativoo::player::DualMonoMode::Mix => DualMonoMode::Mix,
         }
     }
 }
 
-impl From<DualMonoMode> for tavoo_components::player::DualMonoMode {
-    fn from(mode: DualMonoMode) -> tavoo_components::player::DualMonoMode {
+impl From<DualMonoMode> for nativoo::player::DualMonoMode {
+    fn from(mode: DualMonoMode) -> nativoo::player::DualMonoMode {
         match mode {
-            DualMonoMode::Left => tavoo_components::player::DualMonoMode::Left,
-            DualMonoMode::Right => tavoo_components::player::DualMonoMode::Right,
-            DualMonoMode::Stereo => tavoo_components::player::DualMonoMode::Stereo,
-            DualMonoMode::Mix => tavoo_components::player::DualMonoMode::Mix,
+            DualMonoMode::Left => nativoo::player::DualMonoMode::Left,
+            DualMonoMode::Right => nativoo::player::DualMonoMode::Right,
+            DualMonoMode::Stereo => nativoo::player::DualMonoMode::Stereo,
+            DualMonoMode::Mix => nativoo::player::DualMonoMode::Mix,
         }
     }
 }

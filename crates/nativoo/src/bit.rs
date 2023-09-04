@@ -1,5 +1,7 @@
 //! ビット列を読み取る。
 
+#![allow(dead_code)]
+
 use std::marker::PhantomData;
 
 mod sealed {
@@ -97,9 +99,7 @@ impl<'a> BitReader<'a> {
     ///
     /// # サンプル
     ///
-    /// ```
-    /// use tavoo_components::bit::BitReader;
-    ///
+    /// ```ignore
     /// let mut br = BitReader::new(&[0, 1, 2]);
     /// assert_eq!(br.bits(), 24);
     /// br.skip(12);
@@ -116,9 +116,7 @@ impl<'a> BitReader<'a> {
     ///
     /// # サンプル
     ///
-    /// ```
-    /// use tavoo_components::bit::BitReader;
-    ///
+    /// ```ignore
     /// let mut br = BitReader::new(&[0, 1, 2]);
     /// assert_eq!(br.len(), 3);
     /// br.skip(12);
@@ -135,9 +133,7 @@ impl<'a> BitReader<'a> {
     ///
     /// # サンプル
     ///
-    /// ```
-    /// use tavoo_components::bit::BitReader;
-    ///
+    /// ```ignore
     /// let mut br = BitReader::new(&[0, 1, 2]);
     /// assert!(!br.is_empty());
     /// br.skip(23);
@@ -154,9 +150,7 @@ impl<'a> BitReader<'a> {
     ///
     /// # サンプル
     ///
-    /// ```
-    /// use tavoo_components::bit::BitReader;
-    ///
+    /// ```ignore
     /// let mut br = BitReader::new(&[0, 1, 2]);
     /// assert_eq!(br.as_bytes(), &[0, 1, 2]);
     /// br.skip(7);
@@ -173,9 +167,7 @@ impl<'a> BitReader<'a> {
     ///
     /// # サンプル
     ///
-    /// ```
-    /// use tavoo_components::bit::BitReader;
-    ///
+    /// ```ignore
     /// let mut br = BitReader::new(&[0, 1]);
     /// assert_eq!(br.bits(), 16);
     /// br.skip(12);
@@ -210,9 +202,7 @@ impl<'a> BitReader<'a> {
     ///
     /// # サンプル
     ///
-    /// ```
-    /// use tavoo_components::bit::BitReader;
-    ///
+    /// ```ignore
     /// let mut br = BitReader::new(&[0b10101010]);
     /// assert_eq!(br.read1(), Some(true));
     /// assert_eq!(br.read1(), Some(false));
@@ -263,9 +253,7 @@ impl<'a> BitReader<'a> {
     ///
     /// # サンプル
     ///
-    /// ```
-    /// use tavoo_components::bit::BitReader;
-    ///
+    /// ```ignore
     /// let mut br = BitReader::new(&[0b101000_01, 0b0100_0001, 0b0000_0001, 0x12, 0x34, 0x56, 0x78]);
     /// br.skip(6);
     /// assert_eq!(br.read::<6>(), Some(0b010100_u16));
@@ -295,7 +283,7 @@ impl<'a> BitReader<'a> {
     ///
     /// # サンプル
     ///
-    /// ```
+    /// ```ignore
     /// use tavoo_components::bit::BitReader;
     ///
     /// let mut br = BitReader::new(&[0b000000_11, 0b11_000000]);
@@ -326,9 +314,7 @@ impl<'a> BitReader<'a> {
     ///
     /// # サンプル
     ///
-    /// ```
-    /// use tavoo_components::bit::BitReader;
-    ///
+    /// ```ignore
     /// let mut br = BitReader::new(&[0b101000_01, 0b01010101, 0b11111111, 0b11111111, 0b111111_00, 1, 2]);
     /// assert_eq!(br.read_inside::<6>(), Some(0b101000_u8));
     /// assert_eq!(br.read_inside::<10>(), Some(0b01_01010101));
